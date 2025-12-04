@@ -7940,6 +7940,16 @@
 		)
 		(uuid "3378116d-1390-4658-8c48-9b94b6543fc1")
 	)
+	(text "Some address lines for A[0:15] are better placed on this port. \nPins used are general I/O ports when not in use. See Section 4.1 ECP5 Datasheet"
+		(exclude_from_sim no)
+		(at 241.046 145.542 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "ae3e485a-50ea-4102-b26e-23b882833861")
+	)
 	(text "Deviation from TN1260 in pullup:\nvalues for BOM simplification.\nCorrect values should be 1k \nbut 1.1k is used."
 		(exclude_from_sim no)
 		(at 108.204 45.212 0)
@@ -7974,24 +7984,8 @@
 		(uuid "e2613d03-587e-4fd0-8219-172e44ae4d7c")
 	)
 	(no_connect
-		(at 182.88 95.25)
-		(uuid "78553a6a-ef79-4382-aef2-d878ecb504bb")
-	)
-	(no_connect
-		(at 182.88 97.79)
-		(uuid "c28b1b3d-54b7-463b-bcdf-7ef7f1a4924d")
-	)
-	(no_connect
 		(at 220.98 107.95)
-		(uuid "c70744fc-f799-40bc-9209-b90298bef2dd")
-	)
-	(no_connect
-		(at 220.98 95.25)
-		(uuid "d19e4d74-5f6c-4689-aad1-578d6b8531bf")
-	)
-	(no_connect
-		(at 220.98 97.79)
-		(uuid "dbc7490f-3081-4010-90b6-23ce883e76ed")
+		(uuid "04249d29-fc0d-4e32-99ac-dd56663692d7")
 	)
 	(wire
 		(pts
@@ -8095,6 +8089,26 @@
 	)
 	(wire
 		(pts
+			(xy 153.67 100.33) (xy 182.88 100.33)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5d4a40ce-af6b-473c-aeb9-afde2be3960e")
+	)
+	(wire
+		(pts
+			(xy 220.98 105.41) (xy 250.19 105.41)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "65fade32-df14-4830-b6ed-f6c59df57bd0")
+	)
+	(wire
+		(pts
 			(xy 109.22 68.58) (xy 109.22 86.36)
 		)
 		(stroke
@@ -8115,16 +8129,6 @@
 	)
 	(wire
 		(pts
-			(xy 182.88 100.33) (xy 157.48 100.33)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "8d22460f-f89c-407d-80d5-32efee8a1929")
-	)
-	(wire
-		(pts
 			(xy 120.65 106.68) (xy 132.08 106.68)
 		)
 		(stroke
@@ -8135,7 +8139,7 @@
 	)
 	(wire
 		(pts
-			(xy 220.98 100.33) (xy 246.38 100.33)
+			(xy 220.98 100.33) (xy 255.27 100.33)
 		)
 		(stroke
 			(width 0)
@@ -8284,7 +8288,7 @@
 		(uuid "51615e02-75cd-45ca-8b50-cc3237810df6")
 	)
 	(label "FLASH_nHOLD"
-		(at 158.75 100.33 0)
+		(at 156.21 100.33 0)
 		(effects
 			(font
 				(size 1.524 1.524)
@@ -8314,7 +8318,7 @@
 		(uuid "5965dfe7-5628-48d2-81b3-0a0480500c2d")
 	)
 	(label "FLASH_nWP"
-		(at 231.14 100.33 0)
+		(at 245.11 100.33 0)
 		(effects
 			(font
 				(size 1.524 1.524)
@@ -8482,6 +8486,86 @@
 			(justify left bottom)
 		)
 		(uuid "ff6601d3-ade1-43b6-ab71-6e717c2d8f3e")
+	)
+	(global_label "D7_3V3"
+		(shape input)
+		(at 220.98 95.25 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "226d950f-b587-4afa-b9ea-56b8efa0d29f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 220.98 95.25 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "A7_3V3"
+		(shape input)
+		(at 182.88 97.79 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7af3b600-6e92-4b40-b78e-c1aa7cb8ff20")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 182.88 97.79 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "~{DEVICE_SELECT}_3V3"
+		(shape input)
+		(at 220.98 97.79 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c37814b1-251b-4f8b-b8af-3c572266769e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 220.98 97.79 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "D6_3V3"
+		(shape input)
+		(at 182.88 95.25 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "cd715ba3-d628-4886-b689-48bdf337e773")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 182.88 95.25 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 	)
 	(symbol
 		(lib_id "Memory_EEPROM:25LCxxx")
@@ -10418,7 +10502,8 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 220.98 105.41 270)
+		(at 250.19 105.41 0)
+		(mirror y)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -10426,7 +10511,7 @@
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec882a")
 		(property "Reference" "#PWR0167"
-			(at 217.17 105.41 0)
+			(at 250.19 109.22 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10435,7 +10520,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 224.536 105.41 0)
+			(at 250.19 101.854 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10443,7 +10528,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 220.98 105.41 0)
+			(at 250.19 105.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10451,7 +10536,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 220.98 105.41 0)
+			(at 250.19 105.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10459,7 +10544,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 220.98 105.41 0)
+			(at 250.19 105.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
