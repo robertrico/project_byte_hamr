@@ -13,4 +13,5 @@
   (lib (name "abs25")(type "KiCad")(uri "${KIPRJMOD}/footprints/crystal/abs25.pretty")(options "")(descr ""))
   (lib (name "abs07")(type "KiCad")(uri "${KIPRJMOD}/footprints/crystal/abs07.pretty")(options "")(descr ""))
   (lib (name "footprints")(type "KiCad")(uri "${KIPRJMOD}/footprints/footprints.pretty")(options "")(descr ""))
+  (lib (name "project_byte_hamr")(type "KiCad")(uri "/Users/hackbook/Development/project_byte_hamr")(options "")(descr ""))
 )
