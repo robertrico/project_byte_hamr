@@ -9457,16 +9457,16 @@
 	)
 	(global_label "SDRAM_D1"
 		(shape input)
-		(at 229.87 121.92 180)
+		(at 156.21 54.61 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "187aaa84-cd23-409f-99ef-b9a00c4a6598")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 229.87 121.92 0)
+			(at 156.21 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9637,16 +9637,16 @@
 	)
 	(global_label "SDRAM_D7"
 		(shape input)
-		(at 267.97 106.68 0)
+		(at 229.87 96.52 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "280c2075-3804-4247-9150-29a25a12dbfd")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 106.68 0)
+			(at 229.87 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9657,7 +9657,7 @@
 	)
 	(global_label "SDRAM_D2"
 		(shape input)
-		(at 267.97 116.84 0)
+		(at 267.97 109.22 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -9666,7 +9666,7 @@
 		)
 		(uuid "29bbc517-5218-4964-b1f2-392e44bdb43d")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 116.84 0)
+			(at 267.97 109.22 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9857,16 +9857,16 @@
 	)
 	(global_label "SDRAM_D11"
 		(shape input)
-		(at 204.47 50.8 180)
+		(at 156.21 46.99 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "3fa7a559-646f-4b15-a473-12c4b9812b90")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 50.8 0)
+			(at 156.21 46.99 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9937,16 +9937,16 @@
 	)
 	(global_label "SDRAM_D10"
 		(shape input)
-		(at 242.57 50.8 0)
+		(at 118.11 46.99 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "4e30a915-f3a2-43e9-920a-1b6e3344bc3b")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 242.57 50.8 0)
+			(at 118.11 46.99 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9957,16 +9957,16 @@
 	)
 	(global_label "SDRAM_D5"
 		(shape input)
-		(at 267.97 104.14 0)
+		(at 229.87 99.06 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "5444066f-5695-4de6-8506-f1b959d826a9")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 104.14 0)
+			(at 229.87 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9977,16 +9977,16 @@
 	)
 	(global_label "SDRAM_D0"
 		(shape input)
-		(at 242.57 53.34 0)
+		(at 138.43 124.46 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "54a185a6-57ef-4d46-9140-1316208b0622")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 242.57 53.34 0)
+			(at 138.43 124.46 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10097,16 +10097,16 @@
 	)
 	(global_label "CLK_25MHz"
 		(shape input)
-		(at 267.97 96.52 0)
+		(at 118.11 80.01 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "6144861a-9938-4514-8863-d76de2c23edd")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 96.52 0)
+			(at 118.11 80.01 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10117,7 +10117,7 @@
 	)
 	(global_label "SDRAM_D15"
 		(shape input)
-		(at 204.47 53.34 180)
+		(at 138.43 137.16 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10126,7 +10126,7 @@
 		)
 		(uuid "639a0897-afbf-49aa-bf48-c5c131cefe01")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 53.34 0)
+			(at 138.43 137.16 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10237,7 +10237,7 @@
 	)
 	(global_label "SDRAM_D3"
 		(shape input)
-		(at 229.87 116.84 180)
+		(at 229.87 101.6 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10246,7 +10246,7 @@
 		)
 		(uuid "6d4c005e-eff2-4073-9045-1b7753a989fb")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 229.87 116.84 0)
+			(at 229.87 101.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10297,7 +10297,7 @@
 	)
 	(global_label "SDRAM_DQM0"
 		(shape input)
-		(at 156.21 44.45 0)
+		(at 267.97 99.06 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10306,7 +10306,7 @@
 		)
 		(uuid "6e27a5f8-3bf4-4462-9de6-a5243ef261c4")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 156.21 44.45 0)
+			(at 267.97 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10397,16 +10397,16 @@
 	)
 	(global_label "SDRAM_D4"
 		(shape input)
-		(at 267.97 111.76 0)
+		(at 229.87 104.14 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "7fa34d58-61d4-4a75-af68-3c58204e111f")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 111.76 0)
+			(at 229.87 104.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10537,16 +10537,16 @@
 	)
 	(global_label "SDRAM_DQM1"
 		(shape input)
-		(at 204.47 45.72 180)
+		(at 156.21 44.45 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "9141ca3e-406d-43c8-8dbe-e07a2afc7837")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 45.72 0)
+			(at 156.21 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10677,7 +10677,7 @@
 	)
 	(global_label "SDRAM_D8"
 		(shape input)
-		(at 242.57 48.26 0)
+		(at 156.21 49.53 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10686,7 +10686,7 @@
 		)
 		(uuid "ae1a6d5c-251f-4309-a33e-f4c7cea12aef")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 242.57 48.26 0)
+			(at 156.21 49.53 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10877,7 +10877,7 @@
 	)
 	(global_label "SDRAM_D6"
 		(shape input)
-		(at 267.97 99.06 0)
+		(at 267.97 101.6 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10886,7 +10886,7 @@
 		)
 		(uuid "e227422c-0de6-40dd-ab17-1c15fbd4e2a5")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 267.97 99.06 0)
+			(at 267.97 101.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10897,7 +10897,7 @@
 	)
 	(global_label "SDRAM_D13"
 		(shape input)
-		(at 242.57 63.5 0)
+		(at 156.21 41.91 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10906,7 +10906,7 @@
 		)
 		(uuid "e28640be-b0e7-4213-b045-2f4251208807")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 242.57 63.5 0)
+			(at 156.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10917,16 +10917,16 @@
 	)
 	(global_label "SDRAM_D14"
 		(shape input)
-		(at 204.47 38.1 180)
+		(at 176.53 124.46 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "e4a58f20-b641-42bd-9562-30378eabbdca")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 38.1 0)
+			(at 176.53 124.46 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10957,7 +10957,7 @@
 	)
 	(global_label "SDRAM_D12"
 		(shape input)
-		(at 204.47 63.5 180)
+		(at 118.11 44.45 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10966,7 +10966,7 @@
 		)
 		(uuid "e91fd968-d864-422e-aea9-e53c2ced5c33")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 63.5 0)
+			(at 118.11 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10977,7 +10977,7 @@
 	)
 	(global_label "SDRAM_D9"
 		(shape input)
-		(at 204.47 48.26 180)
+		(at 118.11 64.77 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -10986,7 +10986,7 @@
 		)
 		(uuid "e95b602d-1100-4dd4-8284-50cb4852c2a6")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 204.47 48.26 0)
+			(at 118.11 64.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)

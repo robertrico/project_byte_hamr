@@ -4,6 +4,7 @@
 _autosave-*
 *~
 \#*\#
+.DS_STORE
 
 # KiCad lock files
 *.lck
