@@ -1,0 +1,28 @@
+Id,Designator,Footprint,Quantity,Designation,Supplier and ref,Notes:
+1,U1,BGA-381_pitch0.8mm_dia0.4mm,1,LFE5U-25F-6BG381C,Lattice Semiconductor :: LFE5U-25F-6BG381C,FPGA w/ BGA
+2,"C30,C51,C26,C27,C25,C33,C32,C50,C31,C28,C13,C53,C29,C18,C15,C36,C21,C52,C49,C35,C34,C14,C48",C_0603_1608Metric,23,22nF,Samsung Electro-Mechanics :: CL10B223KA8NNWC,Please provide standard or equivalent parts if needed.
+3,"R49,R50",R_0603_1608Metric,2,27,YAGEO :: RC0603FR-0727RL,Please provide standard or equivalent parts if needed.
+4,"R9,R32,RA2,RA3,RA1,R33,R31",R_0603_1608Metric,7,15k,YAGEO :: AC0603FR-0715KL,Please provide standard or equivalent parts if needed.
+5,"R1,R37",R_0603_1608Metric,2,549,YAGEO :: RC0603FR-07549RL,Please provide standard or equivalent parts if needed.
+6,D3,LED_0805_2012Metric,1,YELLOW,Lite-On Inc. :: LTST-C170KRKT,Please provide standard or equivalent parts if needed.
+7,"U5,U3,U4",TSOT-25,3,TLV62569DBV,Texas Instruments :: TLV62569DBVR,Please provide replacement if needed.
+8,"R11,R12,R28,R27",R_0603_1608Metric,4,10k,YAGEO :: AF0603FR-0710KL,Please provide standard or equivalent parts if needed.
+9,"U13,U8,U9,U12,U11,U14",DBQ24-L,6,SN74LVC8T245,Texas Instruments :: SN74LVC8T245DBQR,Please provide standard or equivalent parts if needed.
+10,"C12,C1,C5,C7,C3,C8,C4,C9,C11",C_0805_2012Metric,9,22uF,Samsung Electro-Mechanics :: CAP CER 22UF 6.3V X5R 0805,Please provide standard or equivalent parts if needed.
+11,RB3,R_0603_1608Metric,1,3.3k,YAGEO :: AC0603FR-073K3L,Please provide standard or equivalent parts if needed.
+12,"RP3,RP1,RP2",R_0805_2012Metric_Pad1.29x1.40mm_HandSolder_Jumper_NC,3,0,YAGEO :: RC0805JR-070RP,This can be left off. But I do want to make sure the two sides of the nets are connected.
+13,"C10,C2,C6",C_0603_1608Metric,3,100pF,YAGEO :: CC0603KRX7R8BB101,Please provide standard or equivalent parts if needed.
+14,R29,R_0603_1608Metric,1,1.1k,Panasonic Electronic Components :: RES SMD 1.1K OHM 1% 1/10W 0603,Please provide standard or equivalent parts if needed.
+15,"C22,C16,C20,C17,C19,C24,C23",C_0805_2012Metric,7,2.2uF,Taiyo Yuden :: LMK212BJ225KG-T,Please provide standard or equivalent parts if needed.
+16,D19,LED_0805_2012Metric,1,RED,Lite-On Inc. :: LTST-C170KRKT,Please provide standard or equivalent parts if needed.
+17,"D2,D1",D_SMA,2,STPS2L40AF,STMicroelectronics :: STPS2L40AF,Please provide standard or equivalent parts if needed.
+18,RB1,R_0603_1608Metric,1,18k,YAGEO :: RC0603FR-0718KL,Please provide standard or equivalent parts if needed.
+19,"L1,L2,L3",L_1008_1210,3,2.2uH,Murata Electronics :: DFE322520FD-2R2M=P2,Please provide standard or equivalent parts if needed.
+20,US1,USB-MICRO-B-FCI-10118192-0001LF,1,MICRO_USB,Amphenol ICC (FCI) :: 10118192-0001LF,Please provide standard or equivalent parts if needed.
+21,U10,SOA008-150-208mil,1,IS25LP128F-JBLE,"ISSI, Integrated Silicon Solution Inc :: IC FLASH 128MBIT SPI/QUAD 8SOIC",Please provide replacement if needed.
+22,J4,PinHeader_2x03_P2.54mm_Vertical,1,CONN_02X03,-,"Connector Pins, I will solder on."
+23,U2,TSOP54,1,AS4C32M16SB-7TCNTR,"Alliance Memory, Inc. :: AS4C32M16SB-7TCNTR",Please provide replacement if needed.
+24,U6,FT231X-QFN-20-1EP_4x4mm_P0.5mm_EP2x2mm,1,FT231XQ,"FTDI, Future Technology Devices International Ltd :: FT231XQ-R",Please provide replacement if needed.
+25,"R30,RB2",R_0603_1608Metric,2,4.7k,YAGEO :: AC0603FR-074K7L,Please provide standard or equivalent parts if needed.
+26,Y1,Crystal_SMD_7050_4Pads,1,FNETHE025,Diodes Incorporated :: FNETHE025,Please provide standard or equivalent parts if needed.
+27,J1,Connector_PinHeader_2.54mm:PinHeader_1x12_P2.54mm_Horizontal,1,PinHeader_1x12,-,"Connector Pins, I will solder on."

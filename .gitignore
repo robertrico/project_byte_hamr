@@ -18,9 +18,9 @@ _autosave-*
 *.net
 
 # Gerber and drill files (uncomment if you don't want to track manufacturing files)
-# *.gbr
-# *.drl
-# *.gbrjob
+*.gbr
+*.drl
+*.gbrjob
 
 # BOM and position files
 # *.csv
