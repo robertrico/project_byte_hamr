@@ -141,7 +141,7 @@ This project builds on the work of others:
 
 ## Why "Byte Hamr"?
 
-A byte-sized hammer for forging new Apple II peripherals. The Nordic theme reflects the rugged, tool-like nature of development hardware.
+"Hamr" is Old Norse for "shape" or "form" — the concept of shapeshifting in Norse mythology. Byte Hamr: shapeshifting bytes. An FPGA that can become any hardware you define. The shape changes based on what you program it to be.
 
 ## License
 
@@ -159,4 +159,4 @@ This is an early-stage project. Issues, suggestions, and pull requests welcome o
 
 ---
 
-*Byte Hamr Rev. 1 - 2024*
+*Byte Hamr Rev. 1 - 2025*
