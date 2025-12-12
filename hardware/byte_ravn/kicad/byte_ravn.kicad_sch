@@ -1,0 +1,103 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "d1b325fc-ebad-476a-a3a3-dff47a9f73d8")
+	(paper "A4")
+	(title_block
+		(title "Byte Hamr - Apple II FPGA Peripheral Card")
+		(date "2025-11-30")
+		(rev "1.0.0")
+	)
+	(lib_symbols)
+	(sheet
+		(at 202.565 127.635)
+		(size 12.7 5.08)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "0046948d-a13f-4806-afcb-93e44e5f5f39")
+		(property "Sheetname" "card"
+			(at 202.565 126.9234 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "card.kicad_sch"
+			(at 202.565 133.2996 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "byte_ravn"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8"
+					(page "6")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 174.625 142.875)
+		(size 12.7 6.985)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "83a52f73-8fcd-4378-9d92-72587b4762e9")
+		(property "Sheetname" "power"
+			(at 174.625 142.1634 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "power.kicad_sch"
+			(at 174.625 150.4446 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "byte_ravn"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

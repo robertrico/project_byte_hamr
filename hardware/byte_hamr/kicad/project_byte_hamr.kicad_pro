@@ -48,7 +48,7 @@
         "silk_text_thickness": 0.1,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.5
+          "min_clearance": 0.35
         }
       },
       "diff_pair_dimensions": [
@@ -58,7 +58,80 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "clearance|205523750|105282500|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc|8e9154e3-0741-46f0-82b8-69ff4aede047",
+          "zero ohm jumper"
+        ],
+        [
+          "clearance|205523750|106082500|508c7a8a-2370-409d-880f-3d19c5cc8a2b|8e9154e3-0741-46f0-82b8-69ff4aede047",
+          "zero ohm jumper"
+        ],
+        [
+          "clearance|221073750|70667500|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3|be62903b-02b5-47df-b1bb-dbc7cd00045d",
+          "zero ohm jumper"
+        ],
+        [
+          "clearance|221073750|71467500|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0|be62903b-02b5-47df-b1bb-dbc7cd00045d",
+          "zero ohm jumper"
+        ],
+        [
+          "clearance|224623750|67032500|ecb27069-cd61-4390-aacd-e82a09b83f89|ec119279-0e19-4af2-863f-c902878b93cb",
+          "zero ohm jumper"
+        ],
+        [
+          "clearance|224623750|67832500|9741c5e3-bb92-4198-b96a-ed9e9ce40a35|ec119279-0e19-4af2-863f-c902878b93cb",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|205523750|105282500|8e9154e3-0741-46f0-82b8-69ff4aede047|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|205523750|106082500|8e9154e3-0741-46f0-82b8-69ff4aede047|508c7a8a-2370-409d-880f-3d19c5cc8a2b",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|205900000|106082500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|205900000|106650000|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|205900000|106682500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|221073750|70667500|be62903b-02b5-47df-b1bb-dbc7cd00045d|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|221073750|71467500|be62903b-02b5-47df-b1bb-dbc7cd00045d|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|224623750|67032500|ec119279-0e19-4af2-863f-c902878b93cb|ecb27069-cd61-4390-aacd-e82a09b83f89",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|224623750|67832500|ec119279-0e19-4af2-863f-c902878b93cb|9741c5e3-bb92-4198-b96a-ed9e9ce40a35",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|225000000|67832500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|225000000|68400000|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          "zero ohm jumper"
+        ],
+        [
+          "solder_mask_bridge|225000000|68432500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          "zero ohm jumper"
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -127,7 +200,7 @@
         "min_connection": 0.0,
         "min_copper_edge_clearance": 0.5,
         "min_groove_width": 0.0,
-        "min_hole_clearance": 0.25,
+        "min_hole_clearance": 0.2,
         "min_hole_to_hole": 0.25,
         "min_microvia_diameter": 0.2,
         "min_microvia_drill": 0.1,
@@ -224,6 +297,10 @@
         {
           "diameter": 0.35,
           "drill": 0.2
+        },
+        {
+          "diameter": 0.5,
+          "drill": 0.3
         }
       ],
       "zones_allow_external_fillets": false
@@ -505,7 +582,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "gerbers/",
+      "plot": "../gerbers/gerbers/",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "",
