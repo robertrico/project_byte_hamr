@@ -10,7 +10,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 
 ## Features
 
-- Lattice ECP5-25F FPGA (25K LUTs, BGA381 package)
+- Lattice ECP5-85F FPGA (85K LUTs, BGA381 package)
 - 64MB SDRAM (AS4C32M16SB-7TCNTR)
 - 16MB SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
@@ -25,9 +25,9 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 
 | Parameter | Value |
 |-----------|-------|
-| FPGA | Lattice ECP5-25F (LFE5U-25F-6BG381C) |
-| Logic Elements | 24K LUTs |
-| Block RAM | 1008 Kbit |
+| FPGA | Lattice ECP5-85F (LFE5U-85F-8BG381I) |
+| Logic Elements | 84K LUTs |
+| Block RAM | 3744 Kbit |
 | SDRAM | 64MB, 16-bit bus |
 | Flash | 16MB SPI |
 | USB | Full-speed via FT231XQ |
@@ -45,7 +45,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
                                              |
 +-------------+     +----------+     +-------+--------+     +----------+
 | Apple II    |     | Level    |     |                |     |   SPI    |
-| Expansion   +---->+ Shifters +---->+   ECP5-25F     +---->+  Flash   |
+| Expansion   +---->+ Shifters +---->+   ECP5-85F     +---->+  Flash   |
 | Slot        |     | (5V/3.3V)|     |     FPGA       |     |  (16MB)  |
 +-------------+     +----------+     +-------+--------+     +----------+
                                              |
