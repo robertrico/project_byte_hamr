@@ -15,7 +15,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 - 16MB SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
 - JTAG header for development/debugging
-- 13-pin GPIO header (active accent to accent accent accent for expansion/debugging
+- 13-pin GPIO header for FPGA and peripheral expansion
 - Full Apple II bus interface with bidirectional level shifting
 - Dual power input (USB or Apple II bus) with automatic switching
 - On-board 25MHz oscillator
@@ -28,10 +28,10 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 | FPGA | Lattice ECP5-25F (LFE5U-25F-6BG381C) |
 | Logic Elements | 24K LUTs |
 | Block RAM | 1008 Kbit |
-| SDRAM | 32MB, 16-bit bus |
+| SDRAM | 64MB, 16-bit bus |
 | Flash | 16MB SPI |
 | USB | Full-speed via FT231XQ |
-| GPIO | 13 pins, accent voltage |
+| GPIO | 13 pins, 3.3V |
 | Power | +5V from USB or Apple II slot |
 | Dimensions | Standard Apple II card form factor |
 
@@ -40,7 +40,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 ```
                                     +------------------+
                                     |     SDRAM        |
-                                    |   (32MB x16)     |
+                                    |   (64MB x16)     |
                                     +--------+---------+
                                              |
 +-------------+     +----------+     +-------+--------+     +----------+
@@ -69,7 +69,7 @@ Power can be sourced from USB (+5V) or the Apple II slot, with Schottky diode OR
 
 Six 74LVC8T245 bidirectional level shifters translate between the Apple II's 5V bus and the FPGA's 3.3V I/O. The interface provides access to:
 
-- 16-bit address bus (accent)
+- 16-bit address bus
 - 8-bit data bus (bidirectional)
 - Control signals (R/W, PHI0, device select, etc.)
 
