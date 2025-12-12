@@ -20680,7 +20680,7 @@
 				)
 			)
 		)
-		(property "Value" "LFE5U-25F-6BG381C"
+		(property "Value" "LFE5U-85F-8BG381I"
 			(at 157.48 26.67 0)
 			(effects
 				(font
@@ -20714,7 +20714,7 @@
 				)
 			)
 		)
-		(property "MPN" "LFE5U-85F-6BG381C"
+		(property "MPN" "LFE5U-85F-8BG381I"
 			(at 157.48 48.26 0)
 			(effects
 				(font

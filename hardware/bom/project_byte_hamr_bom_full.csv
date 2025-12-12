@@ -1,5 +1,5 @@
 Id,Designator,Footprint,Quantity,Designation,Supplier and ref,Notes:
-1,U1,BGA-381_pitch0.8mm_dia0.4mm,1,LFE5U-25F-6BG381C,Lattice Semiconductor :: LFE5U-25F-6BG381C,FPGA w/ BGA
+1,U1,BGA-381_pitch0.8mm_dia0.4mm,1,LFE5U-85F-8BG381I,Lattice Semiconductor :: LFE5U-85F-8BG381I,FPGA w/ BGA
 2,"C30,C51,C26,C27,C25,C33,C32,C50,C31,C28,C13,C53,C29,C18,C15,C36,C21,C52,C49,C35,C34,C14,C48",C_0603_1608Metric,23,22nF,Samsung Electro-Mechanics :: CL10B223KA8NNWC,Please provide standard or equivalent parts if needed.
 3,"R49,R50",R_0603_1608Metric,2,27,YAGEO :: RC0603FR-0727RL,Please provide standard or equivalent parts if needed.
 4,"R9,R32,RA2,RA3,RA1,R33,R31",R_0603_1608Metric,7,15k,YAGEO :: AC0603FR-0715KL,Please provide standard or equivalent parts if needed.

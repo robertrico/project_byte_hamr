@@ -12,7 +12,7 @@
 11,"RP3,RP1,RP2","R_0805_2012Metric_Pad1.29x1.40mm_HandSolder_Jumper_NC",3,"0",,,
 12,"C10,C2,C6","C_0603_1608Metric",3,"100pF",,,
 13,"R29","R_0603_1608Metric",1,"1.1k",,,
-14,"U1","BGA-381_pitch0.8mm_dia0.4mm",1,"LFE5U-25F-6BG381C",,,
+14,"U1","BGA-381_pitch0.8mm_dia0.4mm",1,"LFE5U-85F-8BG381I",,,
 15,"C22,C16,C20,C17,C19,C24,C23","C_0805_2012Metric",7,"2.2uF",,,
 16,"D19","LED_0805_2012Metric",1,"RED",,,
 17,"D2,D1","D_SMA",2,"STPS2L40AF",,,
