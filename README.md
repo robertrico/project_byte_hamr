@@ -77,6 +77,8 @@ Six 74LVC8T245 bidirectional level shifters translate between the Apple II's 5V 
 
 **Rev 1** - Sent to fabrication (December 2025)
 
+See [VERSION.md](VERSION.md) for full version history.
+
 ## Repository Structure
 
 ```
@@ -145,9 +147,7 @@ This project builds on the work of others:
 
 ## License
 
-Hardware design files are released under the CERN Open Hardware License v2 (CERN-OHL-S-2.0).
-
-Gateware and software are released under the MIT License unless otherwise noted.
+This project is released under the [MIT License](LICENSE.md).
 
 ## Author
 
