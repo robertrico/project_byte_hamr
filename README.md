@@ -2,6 +2,8 @@
 
 An open-source FPGA expansion card for the Apple II family of computers.
 
+![Byte Hamr](docs/project_byte_hamr.jpg)
+
 ## Overview
 
 Byte Hamr brings modern FPGA capabilities to the Apple II, II+, IIe, and IIgs. Unlike purpose-built cards that serve a single function, Byte Hamr is a general-purpose platform for developing and running custom hardware designs on vintage Apple hardware.
@@ -73,6 +75,28 @@ Six 74LVC8T245 bidirectional level shifters translate between the Apple II's 5V 
 - 8-bit data bus (bidirectional)
 - Control signals (R/W, PHI0, device select, etc.)
 
+## GPIO Header
+
+13-pin header for FPGA expansion and peripheral connection:
+
+| Pin | Signal | FPGA Site | Description |
+|-----|--------|-----------|-------------|
+| 1 | GPIO1 | L1 | General purpose I/O |
+| 2 | GPIO2 | K1 | General purpose I/O |
+| 3 | GPIO3 | J1 | General purpose I/O |
+| 4 | GPIO4 | H1 | General purpose I/O |
+| 5 | GPIO5 | F2 | General purpose I/O |
+| 6 | GPIO6 | E2 | General purpose I/O |
+| 7 | GPIO7 | E1 | General purpose I/O |
+| 8 | GPIO8 | D1 | General purpose I/O |
+| 9 | GPIO9 | C1 | General purpose I/O |
+| 10 | GPIO10 | A4 | General purpose I/O |
+| 11 | GPIO11 | B5 | General purpose I/O |
+| 12 | GPIO12 | A5 | General purpose I/O |
+| 13 | GND | - | Ground |
+
+All GPIO pins are 3.3V LVCMOS. See [byte_hamr.lpf](hardware/byte_hamr/constraints/byte_hamr.lpf) for full pin constraints.
+
 ## Project Status
 
 **Rev 1** - Sent to fabrication (December 2025)
@@ -82,42 +106,55 @@ See [VERSION.md](VERSION.md) for full version history.
 ## Repository Structure
 
 ```
-byte-hamr/
+project_byte_hamr/
 ├── hardware/
-│   ├── kicad/          # KiCad project files
-│   ├── gerbers/        # Manufacturing files
-│   └── bom/            # Bill of materials
+│   ├── byte_hamr/          # Main FPGA card
+│   │   ├── kicad/          # KiCad project files
+│   │   ├── bom/            # Bill of materials
+│   │   └── constraints/    # FPGA pin constraints
+│   └── byte_ravn/          # GPIO breakout board
+│       ├── kicad/          # KiCad project files
+│       ├── bom/            # Bill of materials
+│       └── gerbers/        # Manufacturing files
 ├── gateware/
-│   └── (coming soon)   # FPGA designs
+│   └── signal_check/       # Board bring-up test
 ├── software/
-│   └── (coming soon)   # Apple II software
-└── docs/
-    └── (coming soon)   # Documentation
+│   └── (coming soon)       # Apple II software
+└── docs/                   # Documentation and datasheets
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Yosys (synthesis)
-- nextpnr-ecp5 (place and route)
-- openFPGALoader (programming)
+<!-- TODO: Verify these links are correct and add installation instructions -->
+- [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) (recommended) or individual tools:
+  - [Yosys](https://github.com/YosysHQ/yosys) (synthesis)
+  - [nextpnr-ecp5](https://github.com/YosysHQ/nextpnr) (place and route)
+  - [openFPGALoader](https://github.com/trabucayre/openFPGALoader) (programming)
 - Apple IIe or compatible system
 
 ### Building Gateware
 
-(Coming after Rev 1 hardware validation)
+```bash
+make                    # Build default design (signal_check)
+make DESIGN=xxx         # Build specific design
+make help               # Show all available targets
+```
 
 ### Programming
 
-Via USB:
 ```bash
-openFPGALoader --board bytehamr bitstream.bit
+make prog               # Program via JTAG (volatile, for testing)
+make prog-flash         # Program SPI flash (persistent)
 ```
 
-Via JTAG:
+### Utility Commands
+
 ```bash
-openFPGALoader --cable yourjtag bitstream.bit
+make pinout             # Regenerate FPGA pinout from schematics
+make lpf                # Regenerate LPF constraints
+make clean              # Remove build files
 ```
 
 ## Testing
@@ -127,11 +164,10 @@ Bringup sequence for new boards:
 1. Visual inspection
 2. Power rail verification (+5V, +3.3V, +2.5V, +1.1V)
 3. USB enumeration (FTDI detection)
-4. FPGA configuration (LED blink test)
+4. FPGA configuration with [signal_check](gateware/signal_check/SIGNAL_CHECK.md)
 5. Oscillator verification (25MHz on scope)
 6. Apple II bus communication (PEEK/POKE test)
-7. SDRAM test
-8. Full system integration
+7. Full system integration
 
 ## Design References
 
@@ -157,6 +193,10 @@ Robert Rico
 
 This is an early-stage project. Issues, suggestions, and pull requests welcome once Rev 1 hardware is validated.
 
----
+## Up Next: Byte Ravn
 
-*Byte Hamr Rev. 1 - 2025*
+**Byte Ravn** is a companion breakout board that connects to the Byte Hamr GPIO header, providing easy access to FPGA I/O for prototyping and peripheral development.
+
+Design files are in [hardware/byte_ravn/](hardware/byte_ravn/).
+
+---

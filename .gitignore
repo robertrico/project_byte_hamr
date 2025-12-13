@@ -35,3 +35,19 @@ _autosave-*
 fp-info-cache
 
 docs/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.txt
+
+# Build outputs
+build/
+*.json
+*.config
+*.bit
+*.svf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Yosys/nextpnr intermediate files
+*.log
+*.rpt
