@@ -127,7 +127,6 @@ project_byte_hamr/
 
 ### Prerequisites
 
-<!-- TODO: Verify these links are correct and add installation instructions -->
 - [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) (recommended) or individual tools:
   - [Yosys](https://github.com/YosysHQ/yosys) (synthesis)
   - [nextpnr-ecp5](https://github.com/YosysHQ/nextpnr) (place and route)
@@ -174,7 +173,7 @@ Bringup sequence for new boards:
 This project builds on the work of others:
 
 - [ULX3S](https://github.com/emard/ulx3s) - ECP5 reference design, power architecture
-- [A2FPGA](https://github.com/a2fpga/a2fpga_core) - Apple II FPGA integration concepts
+- [Xander's 8-bit fun](https://xjmaas.wordpress.com/my-apple-collection/apple-edge-connector-template-for-eagle/) - Apple II Edge Card Design
 - [Understanding the Apple IIe](https://archive.org/details/understanding_the_apple_iie) - Jim Sather's essential reference
 
 ## Why "Byte Hamr"?
