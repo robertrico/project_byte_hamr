@@ -100,6 +100,7 @@
 		(pad_to_mask_clearance 0)
 		(allow_soldermask_bridges_in_footprints no)
 		(tenting front back)
+		(grid_origin 163.496795 121.5)
 		(pcbplotparams
 			(layerselection 0x00000000_00000000_55555555_5755f5ff)
 			(plot_on_all_layers_selection 0x00000000_00000000_00000000_00000000)
@@ -1988,7 +1989,6 @@
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059dfb617")
 		(sheetname "/power/")
 		(sheetfile "power.kicad_sch")
-		(attr exclude_from_pos_files)
 		(fp_poly
 			(pts
 				(xy -0.4 -0.5) (xy 0.4 -0.5) (xy 0.4 0.5) (xy -0.4 0.5)
@@ -12607,7 +12607,6 @@
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059dfbf34")
 		(sheetname "/power/")
 		(sheetfile "power.kicad_sch")
-		(attr exclude_from_pos_files)
 		(fp_poly
 			(pts
 				(xy -0.4 -0.5) (xy 0.4 -0.5) (xy 0.4 0.5) (xy -0.4 0.5)
@@ -22916,7 +22915,6 @@
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059dfb08a")
 		(sheetname "/power/")
 		(sheetfile "power.kicad_sch")
-		(attr exclude_from_pos_files)
 		(fp_poly
 			(pts
 				(xy -0.4 -0.5) (xy 0.4 -0.5) (xy 0.4 0.5) (xy -0.4 0.5)

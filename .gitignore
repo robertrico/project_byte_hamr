@@ -25,6 +25,10 @@ _autosave-*
 # BOM and position files
 # *.csv
 
+# PCBWay production - only track zip archives
+hardware/byte_hamr/kicad/pcbway_production/*
+!hardware/byte_hamr/kicad/pcbway_production/*.zip
+
 # 3D model cache
 *.3dshapes/
 
