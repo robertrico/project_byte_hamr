@@ -164,19 +164,19 @@ module signal_check_top (
     end
 
     // =========================================================================
-    // Heartbeat - 1Hz blinker shows FPGA is alive
+    // Heartbeat - 250kHz square wave for oscilloscope testing
     // =========================================================================
 
-    reg [24:0] heartbeat_cnt;
-    reg        heartbeat_led;
+    reg [5:0] heartbeat_cnt;
+    reg       heartbeat_led;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            heartbeat_cnt <= 25'd0;
+            heartbeat_cnt <= 6'd0;
             heartbeat_led <= 1'b0;
         end else begin
-            if (heartbeat_cnt == 25'd12_500_000) begin  // 25MHz / 12.5M = 2Hz toggle = 1Hz blink
-                heartbeat_cnt <= 25'd0;
+            if (heartbeat_cnt == 6'd49) begin  // 25MHz / 50 = 500kHz toggle = 250kHz square wave
+                heartbeat_cnt <= 6'd0;
                 heartbeat_led <= ~heartbeat_led;
             end else begin
                 heartbeat_cnt <= heartbeat_cnt + 1'b1;
@@ -478,7 +478,56 @@ module signal_check_top (
     // Sample the Apple II bus on PHI0 rising edge
     // Detect any bus activity (shows Apple II is alive and connected)
     //
+    // Test mode: Generate fake PHI0 (~1MHz) when no external PHI0 detected
+    // This allows testing GPIO3 activity indicator without an Apple II
+    //
     // =========================================================================
+
+    // Fake PHI0 generator for standalone testing (~1MHz from 25MHz clock)
+    reg [4:0]  fake_phi0_cnt;
+    reg        fake_phi0;
+    reg [19:0] ext_phi0_detect_cnt;  // Detect if external PHI0 is present
+    reg        ext_phi0_present;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            fake_phi0_cnt <= 5'd0;
+            fake_phi0 <= 1'b0;
+        end else begin
+            if (fake_phi0_cnt == 5'd12) begin  // 25MHz / 25 = 1MHz
+                fake_phi0_cnt <= 5'd0;
+                fake_phi0 <= ~fake_phi0;
+            end else begin
+                fake_phi0_cnt <= fake_phi0_cnt + 1'b1;
+            end
+        end
+    end
+
+    // Detect external PHI0: if we see edges, external clock is present
+    reg [2:0] ext_phi0_sync;
+    always @(posedge clk) begin
+        ext_phi0_sync <= {ext_phi0_sync[1:0], PHI0};
+    end
+    wire ext_phi0_edge = (ext_phi0_sync[2] != ext_phi0_sync[1]);
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ext_phi0_detect_cnt <= 20'd0;
+            ext_phi0_present <= 1'b0;
+        end else begin
+            if (ext_phi0_edge) begin
+                ext_phi0_detect_cnt <= 20'd500_000;  // 20ms timeout
+                ext_phi0_present <= 1'b1;
+            end else if (ext_phi0_detect_cnt != 0) begin
+                ext_phi0_detect_cnt <= ext_phi0_detect_cnt - 1'b1;
+            end else begin
+                ext_phi0_present <= 1'b0;
+            end
+        end
+    end
+
+    // Use external PHI0 if present, otherwise use fake for testing
+    wire phi0_active = ext_phi0_present ? PHI0 : fake_phi0;
 
     reg [2:0]  phi0_sync;
     reg [15:0] apple_addr_sample;
@@ -487,9 +536,9 @@ module signal_check_top (
     reg        apple_activity;
     reg [23:0] activity_timeout;
 
-    // Synchronize PHI0 to system clock (metastability protection)
+    // Synchronize selected PHI0 to system clock (metastability protection)
     always @(posedge clk) begin
-        phi0_sync <= {phi0_sync[1:0], PHI0};
+        phi0_sync <= {phi0_sync[1:0], phi0_active};
     end
 
     wire phi0_rising = (phi0_sync[2:1] == 2'b01);
@@ -517,7 +566,13 @@ module signal_check_top (
         end
     end
 
-    assign GPIO3 = apple_activity;
+    // =========================================================================
+    // Level Shifter Test - Direct signal passthrough
+    // =========================================================================
+    // GPIO3 directly follows nI_O_SELECT OR nI_O_STROBE (active low, so invert)
+    // GPIO3 HIGH = either SELECT or STROBE is LOW (active)
+
+    assign GPIO3 = ~nI_O_SELECT | ~nI_O_STROBE;
 
     // Apple II data bus - tri-state (never drive during test)
     assign D0 = 1'bZ;

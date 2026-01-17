@@ -26,13 +26,13 @@ SPEED    := 8
 # Directories
 BUILD_DIR     := build
 GATEWARE_DIR  := gateware
-CONSTRAINT_DIR := hardware/byte_hamr/constraints
+CONSTRAINT_DIR := gateware/constraints
 LPF           := $(CONSTRAINT_DIR)/byte_hamr.lpf
 
 # Default design
 DESIGN ?= signal_check
 
-.PHONY: all clean help synth pnr bit prog prog-flash pinout lpf sim wave
+.PHONY: all clean help synth pnr bit prog prog-flash prog-detect pinout lpf sim wave
 
 # =============================================================================
 # Default target
@@ -153,13 +153,24 @@ wave: sim
 # Programming
 # =============================================================================
 
+# JTAG cable: FT231X with bitbang over modem control pins
+# Pin mapping from schematic: CTS→TDO, DSR→TCK, DCD→TMS, RI→TDI
+# Format: --pins TDI:TDO:TCK:TMS
+CABLE    := ft231X
+JTAG_PINS := RI:CTS:DSR:DCD
+SERIAL   ?= DT03D4KG
+
 prog: $(BIT)
 	@echo "=== Programming via JTAG (SRAM) ==="
-	$(LOADER) $(BIT)
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) $(BIT)
 
 prog-flash: $(BIT)
 	@echo "=== Programming SPI Flash ==="
-	$(LOADER) -f $(BIT)
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) -f $(BIT)
+
+prog-detect:
+	@echo "=== Detecting FPGA ==="
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) --detect
 
 # =============================================================================
 # Pinout and constraint generation
