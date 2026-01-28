@@ -96,23 +96,23 @@ module signal_check_top (
     input  wire        Q3,
     input  wire        uSync,
 
-    // Control signals
+    // Control signals (directly from Apple II)
     input  wire        R_nW,
-    input  wire        nRES,
-    input  wire        nIRQ,
-    input  wire        nNMI,
+    output wire        nRES,     // Reset - OPENDRAIN: 1=release, 0=pull low
     input  wire        nDEVICE_SELECT,
     input  wire        nI_O_SELECT,
     input  wire        nI_O_STROBE,
-    input  wire        RDY,
-    input  wire        DMA_IN,
-    input  wire        INT_IN,
-    input  wire        nINH,
-    input  wire        nDMA,
+    input  wire        DMA_OUT,   // From higher priority slots (active = no higher slot using DMA)
+    input  wire        INT_OUT,   // From higher priority slots (active = no higher slot interrupting)
 
-    // Output control signals
-    output wire        DMA_OUT,
-    output wire        INT_OUT,
+    // Control signals (directly to Apple II bus)
+    output wire        nIRQ,
+    output wire        nNMI,
+    input  wire        RDY,      // Input only - observe CPU stall state
+    output wire        nINH,
+    output wire        nDMA,
+    output wire        DMA_IN,    // To lower priority slots (directly pass through)
+    output wire        INT_IN,    // To lower priority slots (directly pass through)
 
     // ----- GPIO Breakout (directly to FPGA) -----
     output wire        GPIO1,         // Heartbeat
@@ -154,14 +154,8 @@ module signal_check_top (
 
     wire clk = CLK_25MHz;
 
-    // Simple power-on reset (hold reset for 2^16 cycles = ~2.6ms)
-    reg [15:0] reset_cnt = 16'h0;
-    wire rst_n = reset_cnt[15];
-
-    always @(posedge clk) begin
-        if (!reset_cnt[15])
-            reset_cnt <= reset_cnt + 1'b1;
-    end
+    // Internal reset (active immediately after config)
+    wire rst_n = 1'b1;
 
     // =========================================================================
     // Heartbeat - 250kHz square wave for oscilloscope testing
@@ -469,7 +463,8 @@ module signal_check_top (
     end
 
     assign GPIO2 = sdram_test_pass;
-    assign GPIO4 = sdram_test_fail;
+    // GPIO4 now used for nDEVICE_SELECT debug (see below)
+    // assign GPIO4 = sdram_test_fail;
 
     // =========================================================================
     // Apple II Bus Monitor
@@ -541,7 +536,8 @@ module signal_check_top (
         phi0_sync <= {phi0_sync[1:0], phi0_active};
     end
 
-    wire phi0_rising = (phi0_sync[2:1] == 2'b01);
+    wire phi0_rising  = (phi0_sync[2:1] == 2'b01);
+    wire phi0_falling = (phi0_sync[2:1] == 2'b10);
 
     // Sample bus on PHI0 rising edge
     always @(posedge clk or negedge rst_n) begin
@@ -574,19 +570,70 @@ module signal_check_top (
 
     assign GPIO3 = ~nI_O_SELECT | ~nI_O_STROBE;
 
-    // Apple II data bus - tri-state (never drive during test)
-    assign D0 = 1'bZ;
-    assign D1 = 1'bZ;
-    assign D2 = 1'bZ;
-    assign D3 = 1'bZ;
-    assign D4 = 1'bZ;
-    assign D5 = 1'bZ;
-    assign D6 = 1'bZ;
-    assign D7 = 1'bZ;
+    // GPIO4: Debug output for nDEVICE_SELECT
+    // GPIO4 HIGH = nDEVICE_SELECT is LOW (slot selected in $C0n0 space)
+    assign GPIO4 = ~nDEVICE_SELECT;
 
-    // Don't assert any control outputs during test
-    assign DMA_OUT = 1'b0;
-    assign INT_OUT = 1'b0;
+    // =========================================================================
+    // Device Select Register File ($C0C0-$C0CF for slot 4)
+    // =========================================================================
+    // 16 read/write registers addressed by A[3:0]
+    // Write: CPU writes are captured on PHI0 falling edge (data stable)
+    // Read:  Register contents driven onto bus during reads (OE gated by bodge)
+
+    reg [7:0] slot_reg [0:15];
+
+    // IMPORTANT: Init to non-zero value (0xFF). Yosys has limited tri-state
+    // analysis and may optimize away the write path if registers init to 0x00,
+    // concluding they can never change (since it can't prove the inout pin
+    // input path delivers non-zero data). Non-zero init prevents this.
+    integer i;
+    initial begin
+        for (i = 0; i < 16; i = i + 1)
+            slot_reg[i] = 8'hFF;
+    end
+
+    // Write: direct capture (simplified diagnostic version)
+    // Capture data whenever device is selected and CPU is writing.
+    // No phi0_falling dependency - just sample on every clock edge.
+    // The last sample during the write window wins (data is stable).
+    wire device_selected = ~nDEVICE_SELECT;
+
+    reg write_pending;
+
+    always @(posedge clk) begin
+        if (device_selected && !R_nW) begin
+            slot_reg[apple_addr[3:0]] <= apple_data_in;
+            write_pending <= 1'b1;
+        end else begin
+            write_pending <= 1'b0;
+        end
+    end
+
+    // Read: drive register content during read cycles
+    wire [7:0] read_data = slot_reg[apple_addr[3:0]];
+    wire data_drive = R_nW;
+
+    assign D0 = data_drive ? read_data[0] : 1'bZ;
+    assign D1 = data_drive ? read_data[1] : 1'bZ;
+    assign D2 = data_drive ? read_data[2] : 1'bZ;
+    assign D3 = data_drive ? read_data[3] : 1'bZ;
+    assign D4 = data_drive ? read_data[4] : 1'bZ;
+    assign D5 = data_drive ? read_data[5] : 1'bZ;
+    assign D6 = data_drive ? read_data[6] : 1'bZ;
+    assign D7 = data_drive ? read_data[7] : 1'bZ;
+
+    // All control lines high-Z - be completely passive
+    assign nIRQ = 1'bZ;
+    assign nNMI = 1'bZ;
+    assign nINH = 1'bZ;
+    assign nDMA = 1'bZ;
+    assign nRES = 1'b1;  // OPENDRAIN: 1=release (high-Z), never assert reset
+
+    // Pass daisy chain through to lower priority slots (1-3)
+    // DMA_OUT/INT_OUT come from higher slots, pass to DMA_IN/INT_IN for lower slots
+    assign DMA_IN = DMA_OUT;
+    assign INT_IN = INT_OUT;
 
     // =========================================================================
     // GPIO Walking 1s Test
@@ -614,9 +661,13 @@ module signal_check_top (
         end
     end
 
-    assign GPIO5  = gpio_walk_pattern[0];
-    assign GPIO6  = gpio_walk_pattern[1];
-    assign GPIO7  = gpio_walk_pattern[2];
+    // GPIO5: Debug output for R_nW
+    // GPIO5 HIGH = R_nW is HIGH (read cycle)
+    assign GPIO5  = R_nW;
+    // GPIO6: write_pending debug - HIGH when a write to our slot was detected
+    assign GPIO6  = write_pending;
+    // GPIO7: D0 input debug - shows raw state of data bit 0
+    assign GPIO7  = apple_data_in[0];
     assign GPIO8  = gpio_walk_pattern[3];
     assign GPIO9  = gpio_walk_pattern[4];
     assign GPIO10 = gpio_walk_pattern[5];

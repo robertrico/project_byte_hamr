@@ -111,7 +111,7 @@ bit: $(BIT)
 
 $(BIT): $(CFG)
 	@echo "=== Generating Bitstream ==="
-	$(ECPPACK) --input $< --bit $@ --svf $(SVF)
+	$(ECPPACK) --input $< --bit $@ --svf $(SVF) --freq 62.0
 	@echo "Bitstream ready: $@"
 
 # =============================================================================
