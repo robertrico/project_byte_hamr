@@ -266,6 +266,16 @@ module pattern_rom_top (
     // Device select decode
     wire device_selected = ~nDEVICE_SELECT;
 
+    // ---- Apple II bus synchronization ----
+    // Edge-detect device select write cycles to prevent multiple triggers
+    reg       device_write_prev;
+    wire      device_write = device_selected && !R_nW;
+    wire      write_strobe = device_write && !device_write_prev;  // Rising edge of write cycle
+
+    always @(posedge clk) begin
+        device_write_prev <= device_write;
+    end
+
     // Initialize all registers. ECP5 FPGAs power-on to initial values.
     // iverilog also needs these for correct simulation.
     integer i;
@@ -303,6 +313,9 @@ module pattern_rom_top (
         // Refresh
         refresh_cnt    = REFRESH_INTERVAL;
         refresh_needed = 1'b0;
+
+        // Bus synchronization
+        device_write_prev = 1'b0;
 
     end
 
@@ -412,10 +425,10 @@ module pattern_rom_top (
     always @(posedge clk) begin
 
         // =================================================================
-        // Register Write Handling
+        // Register Write Handling (edge-triggered on PHI0 falling)
         // =================================================================
 
-        if (device_selected && !R_nW) begin
+        if (write_strobe) begin
             case (apple_addr[3:0])
                 4'h0: reg_channel <= apple_data_in;
                 4'h1: reg_addr <= apple_data_in;
@@ -661,8 +674,8 @@ module pattern_rom_top (
         endcase
     end
 
-    // Drive Apple II data bus (directly from R_nW for minimum latency on reads)
-    wire data_drive = R_nW;
+    // Drive Apple II data bus only when device selected AND read cycle
+    wire data_drive = device_selected && R_nW;
 
     assign D0 = data_drive ? read_data[0] : 1'bZ;
     assign D1 = data_drive ? read_data[1] : 1'bZ;
