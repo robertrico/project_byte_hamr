@@ -263,18 +263,40 @@ module pattern_rom_top (
     // Scratch registers ($05-$0F)
     reg [7:0] slot_reg [0:15];
 
-    // Device select decode
-    wire device_selected = ~nDEVICE_SELECT;
-
     // ---- Apple II bus synchronization ----
-    // Edge-detect device select write cycles to prevent multiple triggers
-    reg       device_write_prev;
-    wire      device_write = device_selected && !R_nW;
-    wire      write_strobe = device_write && !device_write_prev;  // Rising edge of write cycle
+    // Synchronize PHI0 with 2FF chain for metastability protection + edge detect
+    reg [2:0] phi0_sync;
 
     always @(posedge clk) begin
-        device_write_prev <= device_write;
+        phi0_sync <= {phi0_sync[1:0], PHI0};
     end
+
+    // Detect PHI0 falling edge (after sync)
+    wire phi0_falling = phi0_sync[2] && !phi0_sync[1];
+
+    // Capture control signals while RAW PHI0 is high, hold when low
+    // This preserves the valid state from when PHI0 was high
+    reg        sampled_device_sel;
+    reg        sampled_write;
+    reg [3:0]  sampled_addr;
+    reg [7:0]  sampled_data;
+
+    always @(posedge clk) begin
+        if (PHI0) begin
+            // While PHI0 high: continuously capture (last value before fall wins)
+            sampled_device_sel <= ~nDEVICE_SELECT;
+            sampled_write      <= ~R_nW;
+            sampled_addr       <= apple_addr[3:0];
+            sampled_data       <= apple_data_in;
+        end
+        // When PHI0 low: hold values - they stay valid for write_strobe
+    end
+
+    // Generate write strobe on synchronized PHI0 falling edge
+    wire write_strobe = phi0_falling && sampled_device_sel && sampled_write;
+
+    // Raw device_selected for read path (directly driven, low latency needed)
+    wire device_selected = ~nDEVICE_SELECT;
 
     // Initialize all registers. ECP5 FPGAs power-on to initial values.
     // iverilog also needs these for correct simulation.
@@ -315,7 +337,11 @@ module pattern_rom_top (
         refresh_needed = 1'b0;
 
         // Bus synchronization
-        device_write_prev = 1'b0;
+        phi0_sync = 3'b0;
+        sampled_device_sel = 1'b0;
+        sampled_write = 1'b0;
+        sampled_addr = 4'b0;
+        sampled_data = 8'b0;
 
     end
 
@@ -429,13 +455,13 @@ module pattern_rom_top (
         // =================================================================
 
         if (write_strobe) begin
-            case (apple_addr[3:0])
-                4'h0: reg_channel <= apple_data_in;
-                4'h1: reg_addr <= apple_data_in;
+            case (sampled_addr)
+                4'h0: reg_channel <= sampled_data;
+                4'h1: reg_addr <= sampled_data;
                 4'h2: ;  // DATA is read-only
                 4'h3: begin  // CMD register
                     if (!sdram_busy && pattern_loaded) begin
-                        if (apple_data_in == 8'h02) begin  // Read command
+                        if (sampled_data == 8'h02) begin  // Read command
                             cmd_pending <= 1'b1;
                             sdram_busy <= 1'b1;
                             latched_linear_addr <= computed_linear_addr;
@@ -443,7 +469,7 @@ module pattern_rom_top (
                     end
                 end
                 4'h4: ;  // STATUS is read-only
-                default: slot_reg[apple_addr[3:0]] <= apple_data_in;
+                default: slot_reg[sampled_addr] <= sampled_data;
             endcase
         end
 
@@ -706,27 +732,15 @@ module pattern_rom_top (
     assign GPIO2 = ready;
     assign GPIO3 = pattern_loading;
     assign GPIO4 = sdram_busy;
-    assign GPIO5 = cmd_pending;
-    assign GPIO6 = sdram_state[0];  // State machine debug
-    assign GPIO7 = sdram_state[1];  // State machine debug
-    assign GPIO8 = sdram_state[2];  // State machine debug (for stuck diagnosis)
 
-    // Walking 1s pattern on GPIO9-12
-    reg [23:0] gpio_walk_cnt = 24'd0;
-    reg [7:0]  gpio_walk_pattern = 8'b00000001;
-
-    always @(posedge clk) begin
-        if (gpio_walk_cnt == 24'd12_500_000) begin  // 0.5s
-            gpio_walk_cnt <= 24'd0;
-            gpio_walk_pattern <= {gpio_walk_pattern[6:0], gpio_walk_pattern[7]};
-        end else begin
-            gpio_walk_cnt <= gpio_walk_cnt + 1'b1;
-        end
-    end
-
-    assign GPIO9  = gpio_walk_pattern[4];
-    assign GPIO10 = gpio_walk_pattern[5];
-    assign GPIO11 = gpio_walk_pattern[6];
-    assign GPIO12 = gpio_walk_pattern[7];
+    // Raw Apple II bus signals for debugging:
+    assign GPIO5  = PHI0;              // ~1MHz clock
+    assign GPIO6  = ~nDEVICE_SELECT;   // HIGH when slot selected (active low inverted)
+    assign GPIO7  = R_nW;              // HIGH=read, LOW=write
+    assign GPIO8  = ~nI_O_SELECT;      // HIGH when $C800 ROM space selected
+    assign GPIO9  = ~nI_O_STROBE;      // HIGH when $C800-$CFFF accessed
+    assign GPIO10 = PHI1;              // Complementary clock
+    assign GPIO11 = write_strobe;      // Our generated write strobe
+    assign GPIO12 = sampled_device_sel;  // Sampled device select (1 clk delay)
 
 endmodule
