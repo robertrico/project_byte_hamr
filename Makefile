@@ -32,7 +32,8 @@ LPF           := $(CONSTRAINT_DIR)/byte_hamr.lpf
 # Default design
 DESIGN ?= signal_check
 
-.PHONY: all clean help synth pnr bit prog prog-flash prog-detect pinout lpf sim wave
+.PHONY: all clean help synth pnr bit prog prog-flash prog-detect pinout lpf sim wave unit unit-wave \
+        extract-dsk create-dsk list-dsk
 
 # =============================================================================
 # Default target
@@ -58,10 +59,19 @@ help:
 	@echo "  make sim          - Run simulation"
 	@echo "  make wave         - Run simulation and open waveform viewer"
 	@echo ""
+	@echo "Unit Testing:"
+	@echo "  make unit MODULE=xxx DESIGN=yyy - Run unit test for a module"
+	@echo "  make unit-wave MODULE=xxx       - Run unit test and view waveform"
+	@echo ""
 	@echo "Utility targets:"
 	@echo "  make pinout       - Regenerate FPGA pinout JSON"
 	@echo "  make lpf          - Regenerate LPF constraints"
 	@echo "  make clean        - Remove build files"
+	@echo ""
+	@echo "Apple II Disk Utilities:"
+	@echo "  make extract-dsk DSK=x.dsk  - Extract files (FORCE=1 to overwrite)"
+	@echo "  make create-dsk DSK=NAME     - Create disk from software/NAME/"
+	@echo "  make list-dsk                - List disks in ADTPro folder"
 	@echo ""
 	@echo "Available designs:"
 	@for d in $(GATEWARE_DIR)/*/; do echo "  $$(basename $$d)"; done
@@ -127,8 +137,8 @@ else
     VVP      := vvp
 endif
 
-# Simulation files
-SIM_SRC := $(wildcard $(DESIGN_DIR)/*_tb.v)
+# Simulation files - main design testbench
+SIM_MAIN_TB := $(DESIGN_DIR)/$(DESIGN)_tb.v
 SIM_OUT := $(BUILD_DIR)/$(DESIGN)_tb.vvp
 VCD     := $(BUILD_DIR)/$(DESIGN)_tb.vcd
 
@@ -137,9 +147,9 @@ sim: $(SIM_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_SRC) | $(BUILD_DIR)
+$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) | $(BUILD_DIR)
 	@echo "=== Compiling Testbench ==="
-	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_SRC)
+	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MAIN_TB)
 
 wave: sim
 	@echo "=== Opening Waveform Viewer ==="
@@ -147,6 +157,34 @@ wave: sim
 		gtkwave $(VCD) & \
 	else \
 		echo "No VCD file found. Run 'make sim' first."; \
+	fi
+
+# =============================================================================
+# Unit Testing (for individual modules)
+# =============================================================================
+# Usage: make unit DESIGN=logic_hamr_v1 MODULE=decimate_pack
+
+MODULE ?=
+UNIT_SRC := $(DESIGN_DIR)/$(MODULE).v
+UNIT_TB  := $(DESIGN_DIR)/$(MODULE)_tb.v
+UNIT_OUT := $(BUILD_DIR)/$(MODULE)_tb.vvp
+UNIT_VCD := $(BUILD_DIR)/$(MODULE)_tb.vcd
+
+unit: $(UNIT_OUT)
+	@echo "=== Running Unit Test: $(MODULE) ==="
+	cd $(BUILD_DIR) && $(VVP) $(MODULE)_tb.vvp
+	@if [ -f $(UNIT_VCD) ]; then echo "VCD written to $(UNIT_VCD)"; fi
+
+$(UNIT_OUT): $(UNIT_SRC) $(UNIT_TB) | $(BUILD_DIR)
+	@echo "=== Compiling Unit Testbench: $(MODULE) ==="
+	$(IVERILOG) -o $@ -s $(MODULE)_tb $(UNIT_SRC) $(UNIT_TB)
+
+unit-wave: unit
+	@echo "=== Opening Unit Test Waveform ==="
+	@if [ -f $(UNIT_VCD) ]; then \
+		gtkwave $(UNIT_VCD) & \
+	else \
+		echo "No VCD file found."; \
 	fi
 
 # =============================================================================
@@ -184,6 +222,33 @@ pinout:
 lpf: pinout
 	@echo "=== Generating LPF Constraints ==="
 	python3 scripts/generate_lpf.py
+
+# =============================================================================
+# Apple II Disk Utilities
+# =============================================================================
+
+ADTPRO_DISKS := /Applications/ADTPro-v.r.m/disks
+SOFTWARE_DIR := software
+DSK ?=
+FORCE ?=
+
+extract-dsk:
+ifndef DSK
+	@echo "Usage: make extract-dsk DSK=diskname.dsk [FORCE=1]"
+	@exit 1
+endif
+	software/utils/extract_dsk.sh $(if $(FORCE),--force,) $(DSK) $(SOFTWARE_DIR)
+
+create-dsk:
+ifndef DSK
+	@echo "Usage: make create-dsk DSK=DISKNAME"
+	@echo "       Sources from software/DISKNAME/"
+	@exit 1
+endif
+	software/utils/create_dsk.sh $(SOFTWARE_DIR)/$(DSK)
+
+list-dsk:
+	@for f in $(ADTPRO_DISKS)/*.dsk; do [ -f "$$f" ] && basename "$$f"; done 2>/dev/null || echo "No .dsk files found"
 
 # =============================================================================
 # Cleanup
