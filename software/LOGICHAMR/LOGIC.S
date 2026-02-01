@@ -1,0 +1,624 @@
+ LST OFF
+********************************
+* LOGIC ANALYZER DISPLAY       *
+********************************
+*
+ ORG $8000
+ JMP MAIN
+*-------------------------------
+* ZERO PAGES
+*-------------------------------
+*
+PRVBIT EQU $80
+CURSMPL EQU $81
+TRANS EQU $82
+SMPLPTR EQU $83
+BUFFPTR EQU $84
+TEMP EQU $90
+CURCOL EQU $92
+CURBIT EQU $93
+CURMASK EQU $94
+TXTPTR EQU $FA
+SMPLBLK EQU $FB
+*
+*-------------------------------
+* CONSTANTS
+*-------------------------------
+*
+NUMCOLS EQU 38 ; COLS PER ROW
+BASELINE EQU 0 ; STARTING LINE FOR CHAN 0
+*
+*-------------------------------
+* UTILITIES                    *
+*-------------------------------
+*
+ PUT INCLUDE ; INCLUDE DRAW UTILS
+BELL EQU $FF3A
+*
+*-------------------------------
+* MACROS                       *
+*-------------------------------
+*-------------------------------
+*GET SAMPLE                    *
+*-------------------------------
+*
+FILLBUF
+ STY $C0C0 ; STORE CHANNEL
+ LDX #$00
+L2
+ STX $C0C1 ; STARTING ADDR
+ LDA #$02
+ STA $C0C3
+W LDA $C0C4
+ LSR  ; IF WAITING, LOOP
+ BCS W
+ LDA $C0C2
+ STA TMPBUF,X
+ INX
+ CPX #$26
+ BNE L2
+ LDA #02 ;SET TO READY
+ STA $C0C4
+ RTS
+
+
+GETSMPL MAC
+ LDA #<]1
+ STA SMPLPTR
+ LDA #>]1
+ STA SMPLPTR+1
+ JSR CALCHAN
+ <<<
+*
+*-------------------------------
+*DRAW CHANNEL                  *
+*-------------------------------
+*
+DC MAC
+ LDA #<]2
+ STA BUFFPTR
+ LDA #>]2
+ STA BUFFPTR+1
+ LDX ]1
+ JSR DRCH
+ <<<
+*
+SETPRINT MAC
+ LDA #<]1 ; LINE
+ STA TXTPTR
+ LDA #>]1
+ STA TXTPTR+1
+
+ LDA #]2
+ JSR PRINTLN
+ <<<
+*
+*-------------------------------
+* MAIN ROUTINE                 *
+*-------------------------------
+*
+MAIN JSR HGR ; CLEAR + HIRES
+ LDA #$0C
+ STA $C0C5
+ LDA #$10
+ STA $C0C3
+U LDA $C0C4
+ AND #$02
+ BEQ U
+*
+ JSR CLRTXT
+*
+ >>> SETPRINT.MSG;0 ;STATUS
+*
+*-------------------------------
+* DRAW CHANNELS
+*-------------------------------
+* CH1
+ LDY #00
+ JSR FILLBUF
+
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$10;ROW1BUF
+ >>> DC.#$11;TRANSBUF
+ >>> DC.#$12;TRANSBUF
+ >>> DC.#$13;TRANSBUF
+ >>> DC.#$14;TRANSBUF
+ >>> DC.#$15;TRANSBUF
+ >>> DC.#$16;ROW8BUF
+* CH2
+ LDY #01
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$1F;ROW1BUF
+ >>> DC.#$20;TRANSBUF
+ >>> DC.#$21;TRANSBUF
+ >>> DC.#$22;TRANSBUF
+ >>> DC.#$23;TRANSBUF
+ >>> DC.#$24;TRANSBUF
+ >>> DC.#$25;ROW8BUF
+* CH3
+ LDY #02
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$2E;ROW1BUF
+ >>> DC.#$2F;TRANSBUF
+ >>> DC.#$30;TRANSBUF
+ >>> DC.#$31;TRANSBUF
+ >>> DC.#$32;TRANSBUF
+ >>> DC.#$33;TRANSBUF
+ >>> DC.#$34;ROW8BUF
+* CH4
+ LDY #03
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$3D;ROW1BUF
+ >>> DC.#$3E;TRANSBUF
+ >>> DC.#$3F;TRANSBUF
+ >>> DC.#$40;TRANSBUF
+ >>> DC.#$41;TRANSBUF
+ >>> DC.#$42;TRANSBUF
+ >>> DC.#$43;ROW8BUF
+* CH5
+ LDY #04
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$4C;ROW1BUF
+ >>> DC.#$4D;TRANSBUF
+ >>> DC.#$4E;TRANSBUF
+ >>> DC.#$4F;TRANSBUF
+ >>> DC.#$50;TRANSBUF
+ >>> DC.#$51;TRANSBUF
+ >>> DC.#$52;ROW8BUF
+* CH6
+ LDY #05
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$5B;ROW1BUF
+ >>> DC.#$5C;TRANSBUF
+ >>> DC.#$5D;TRANSBUF
+ >>> DC.#$5E;TRANSBUF
+ >>> DC.#$5F;TRANSBUF
+ >>> DC.#$60;TRANSBUF
+ >>> DC.#$61;ROW8BUF
+* CH7
+ LDY #06
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$6A;ROW1BUF
+ >>> DC.#$6B;TRANSBUF
+ >>> DC.#$6C;TRANSBUF
+ >>> DC.#$6D;TRANSBUF
+ >>> DC.#$6E;TRANSBUF
+ >>> DC.#$6F;TRANSBUF
+ >>> DC.#$70;ROW8BUF
+* CH8
+ LDY #07
+ JSR FILLBUF
+ >>> GETSMPL.TMPBUF
+ >>> DC.#$79;ROW1BUF
+ >>> DC.#$7A;TRANSBUF
+ >>> DC.#$7B;TRANSBUF
+ >>> DC.#$7C;TRANSBUF
+ >>> DC.#$7D;TRANSBUF
+ >>> DC.#$7E;TRANSBUF
+ >>> DC.#$7F;ROW8BUF
+*
+*-------------------------------
+* DRAW TOP BORDER
+*-------------------------------
+*
+ LDA #$7F
+ LDX #$00
+ JSR DRAWBRD
+ LDX #$01
+ JSR DRAWBRD ; A SHOULD STILL HAVE #$7F
+
+ LDA #$01
+ LDX #$02
+ JSR DRAWBRD
+ LDX #$03
+ JSR DRAWBRD ; A SHOULD STILL HAVE #$01
+*
+*-------------------------------
+* DRAW SIDE BORDERS
+*-------------------------------
+*
+ LDX #$02
+BORDLR
+ LDA HI,X
+ STA HIGH
+ LDA LO,X
+ STA LOW
+ LDA #$03
+ LDY #$00
+ STA (LOW),Y
+ LDA #$60
+ LDY #$27
+ STA (LOW),Y
+ INX
+ CPX #$9F
+ BNE BORDLR
+*
+*-------------------------------
+* DRAW BOTTOM BORDER
+*-------------------------------
+*
+ LDA #$7F
+ LDX #$9F
+ JSR DRAWBRD
+ LDX #$9E
+ JSR DRAWBRD ; A SHOULD STILL HAVE #$7F
+
+ LDA #$01
+ LDX #$9D
+ JSR DRAWBRD
+ LDX #$9C
+ JSR DRAWBRD ; A SHOULD STILL HAVE #$01
+*
+*-------------------------------
+* TODO FIX CORNERS
+*-------------------------------
+*
+*-------------------------------
+* DRAW CURSOR
+*-------------------------------
+ LDA #$14 ; COL 20
+ STA CURCOL
+
+ JSR CALCSAMP
+ JSR CONVTIME
+; CURRENT TIME
+ >>> SETPRINT.MSG2;1
+
+ LDA #$01 ; BIT 3
+ STA CURBIT
+ LDX CURBIT
+ LDA BITMASKS,X
+ STA CURMASK
+ JSR DRAWCUR
+*
+ JMP MAINLOOP
+*
+********************************
+*
+*------------------------
+* SUBROUTINES
+*-------------------------------
+*
+QUIT STA $C051
+ STA $C054
+ RTS
+*
+CLRTXT LDA #$A0
+ LDX #39
+:LOOP STA $650,X
+ STA $6D0,X
+ STA $750,X
+ STA $7D0,X
+ DEX
+ BPL :LOOP
+ RTS
+*
+PRINTLN TAX
+ LDA TXTLO,X
+ STA STAUX+1
+ STA STMAIN+1
+ LDA TXTHI,X
+ STA STAUX+2
+ STA STMAIN+2
+
+ LDY #$00
+ LDX #$00
+PRLOOP LDA (TXTPTR),Y
+ BEQ PRDONE
+ ORA #$80
+ STA $C055
+STAUX STA $FFFF,X
+ INY
+
+ LDA (TXTPTR),Y
+ BEQ PRDONE2
+ ORA #$80
+ STA $C054
+STMAIN STA $FFFF,X
+ INY
+ INXO
+ CPX #40
+ BCC PRLOOP
+
+PRDONE2 STA $C054
+PRDONE STA $C054
+ RTS
+*
+*-------------------------------
+* MAIN LOOP
+*-------------------------------
+*
+MAINLOOP LDA $C000
+ BPL MAINLOOP ; NO KEYBOARD
+ STA $C010 ; STROBE
+
+ CMP #$9B ; ESC
+ BEQ QUIT
+
+ CMP #$88 ; LEFT
+ BEQ GOLEFT
+
+ CMP #$95 ; RIGHT
+ BEQ GORIGHT
+
+ JMP MAINLOOP
+*
+*-------------------------------
+* LEFT CURSOR
+*-------------------------------
+*
+MVLEFT LDA CURBIT
+ BNE LEFTBIT
+ LDA CURCOL
+ CMP #$01 ; EDGE?
+ BEQ BLOCKED ; BEEP + DONT MOVE
+ DEC CURCOL
+ LDA #$06 ; BIT 6
+ STA CURBIT
+ JMP UPDMASK
+
+LEFTBIT DEC CURBIT
+ JMP UPDMASK
+
+GOLEFT JSR DRAWCUR ; ERASE
+ JSR MVLEFT
+ JSR DRAWCUR ; DRAW
+ JSR CALCSAMP
+ JSR CONVTIME
+; TIME
+ >>> SETPRINT.MSG2;1
+
+ JMP MAINLOOP
+*
+*-------------------------------
+* RIGHT CURSOR
+*-------------------------------
+*
+MVRIGHT LDA CURBIT
+ CMP #$06 ; BIT 6?
+ BNE RIGHTBIT
+ LDA CURCOL
+ CMP #$26 ; EDGE?
+ BEQ BLOCKED
+ INC CURCOL
+ LDA #$00
+ STA CURBIT
+ JMP UPDMASK
+
+RIGHTBIT INC CURBIT
+ JMP UPDMASK
+
+GORIGHT JSR DRAWCUR ; ERASE
+ JSR MVRIGHT
+ JSR DRAWCUR ; DRAW
+ JSR CALCSAMP
+ JSR CONVTIME
+; TIME
+ >>> SETPRINT.MSG2;1
+ JMP MAINLOOP
+*
+*-------------------------------
+* CURSOR UPDATE
+*-------------------------------
+*
+UPDMASK LDX CURBIT
+ LDA BITMASKS,X
+ STA CURMASK
+ RTS
+
+BLOCKED JSR BELL
+ RTS
+
+*
+DRAWCUR LDX #$00
+DCLOOP LDA HI,X
+ STA HIGH
+ LDA LO,X
+ STA LOW
+ LDY CURCOL
+ LDA (LOW),Y
+ EOR CURMASK
+ STA (LOW),Y
+ INX
+ CPX #$A0
+ BNE DCLOOP
+ RTS
+*
+*-------------------------------
+* CALC PRINT TIME              *
+*-------------------------------
+*
+CALCSAMP LDA CURCOL
+ SEC
+ SBC #$01 ; 0 -37
+ STA TEMP2 ; SAVE
+
+ LDA #$00
+ STA VALMID ; CLEAR HIGH BYTE
+ LDA TEMP2
+ ASL ; X 2
+ ROL VALMID
+ ASL  ; X 4
+ ROL VALMID
+ ASL  ; X 8
+ ROL VALMID
+ STA VALLO
+
+ ; SUB (COL-1)
+ LDA VALLO
+ SEC
+ SBC TEMP2
+ STA VALLO
+ LDA VALMID
+ SBC #$00 ; BORROW
+ STA VALMID
+
+ ; ADD CURBIT
+ LDA VALLO
+ CLC
+ ADC CURBIT
+ STA VALLO
+ LDA VALMID
+ ADC #$00
+ STA VALMID
+
+ LDA #$00
+ STA VALHI
+
+ ; BUFFER OFFSET
+ LDA VALLO
+ CLC
+ ADC BUFLO
+ STA VALLO
+ LDA VALMID
+ ADC BUFMID
+ STA VALMID
+ LDA VALHI
+ ADC BUFHI
+ STA VALHI
+ RTS
+*
+TEMP2 DS 1
+*
+CONVTIME LDX #$07 ; 8 DIGITS, START RIGHT
+:LOOP LDA #$00
+ STA REMAIN
+
+ LDY #24 ; 24 BITS
+:DIV ASL VALLO
+ ROL VALMID
+ ROL VALHI
+ ROL REMAIN
+ LDA REMAIN
+ CMP #10
+ BCC :NOSUB
+ SBC #10
+ STA REMAIN
+ INC VALLO
+:NOSUB DEY
+ BNE :DIV
+
+ LDA REMAIN
+ CLC
+ ADC #$B0 ; ASCII "0", HI BIT
+ STA TIMESTR,X
+ DEX
+ BPL :LOOP
+ RTS
+*
+*-------------------------------
+* DRAW LOOPS                   *
+* LDX BEFORE CALLING           *
+*-------------------------------
+*
+DRAWBRD PHA  ;STASH THE VAL TO WRITE
+ LDA HI,X
+ STA HIGH
+ LDA LO,X
+ STA LOW
+ LDY #$00
+ PLA  ; RESTORE THE VALUE TO WRITE
+]DRAW STA (LOW),Y
+ INY
+ CPY #NUMCOLS+2 ; TO THE END
+ BNE ]DRAW
+ RTS
+*
+*-------------------------------
+*DRAW CHANNEL - LOAD X BEFORE  *
+*-------------------------------
+*
+DRCH LDA HI,X
+ STA HIGH
+ LDA LO,X
+ STA LOW
+ LDY #$00
+]DRAW LDA (BUFFPTR),Y
+ STA (LOW),Y
+ INY
+ CPY #NUMCOLS+1
+ BNE ]DRAW
+ RTS
+*
+*-------------------------------
+* CALC LOOP                    *
+*-------------------------------
+*
+CALCHAN LDA #$00
+ STA PRVBIT ; INIT PREV TO 0
+ LDY #$00 ; COL COUNT
+CALCLOOP
+ LDA (SMPLPTR),Y ; GET SAMPLE
+ STA CURSMPL ; SAVE
+;CALC TRANSITIONS
+;TRANS = SAMPLE EOR ((SAMPLE ASL)
+;            AND #$7E ORA PRVBIT)
+ ASL ; SHIFT LEFT
+ AND #$7E ; CLEAR BITS 0 & 7
+ ORA PRVBIT ; BRING IN PREV BIT 6
+ EOR CURSMPL ; XOR W/ ORIG = TRANS
+ STA TRANS
+ STA TRANSBUF,Y ; STORE TRANSITIONS
+; CALC ROW1 = SAMPLE ORA TRANS
+ LDA CURSMPL
+ ORA TRANS
+ STA ROW1BUF,Y
+; CALC ROW8 = !SAMPLE ORA TRANS
+ LDA CURSMPL
+ EOR #$7F ;INVERT ONLY 7 BITS
+ ORA TRANS
+ STA ROW8BUF,Y
+; SAVE BIT 6 FOR NEXT COL PRVBIT
+ LDA CURSMPL
+ AND #$40 ; GET BIT 6
+ BEQ SAVEPREV ; IF 0, STORE 0
+ LDA #$01 ; IF SET, STORE 1
+SAVEPREV STA PRVBIT
+ INY
+ CPY #NUMCOLS+1
+ BNE CALCLOOP
+ RTS
+*
+*
+BITMASKS HEX 01020408102040
+*
+*-------------------------------
+* BUFFERS                      *
+*-------------------------------
+*
+TMPBUF DS 38
+ROW1BUF DS 40
+ROW8BUF DS 40
+TRANSBUF DS 40
+MSG ASC "STATUS: READY"
+ DFB $00
+
+BUFLO DFB $00
+BUFMID DFB $00
+BUFHI DFB $00
+VALLO DS 1
+VALMID DS 1
+VALHI DS 1
+REMAIN DS 1
+MSG2 ASC "TIME: "
+TIMESTR ASC "00000000"
+ ASC " NS"
+ DFB $00
+
+*
+*-------------------------------
+* LINE ADDRESSES               *
+*-------------------------------
+*
+TXTLO DFB $50,$D0,$50,$D0
+TXTHI DFB $06,$06,$07,$07
+ PUT LINEADDR
+*
+********************************
+********************************
