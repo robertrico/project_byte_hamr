@@ -1,37 +1,48 @@
 // =============================================================================
-// Byte Hamr Logic Hamr - Decimated Sample Pattern Generator
+// Byte Hamr Logic Hamr - Capture Engine
 // =============================================================================
 //
-// Generates waveform patterns using the decimate_pack module to convert
-// sample streams into Apple II HIRES-compatible 7-bit bytes.
+// Real-time 8-channel logic analyzer with trigger detection and pre-trigger
+// buffering. Captures signals at 1 MHz sample rate and generates Apple II
+// HIRES-compatible display data through the decimate_pack module.
 //
-// Pattern Generation:
-//   - Generates square wave samples (1010101...)
-//   - Processes through decimate_pack with configurable stretch factor
-//   - Stores 8 channels × 38 bytes = 304 bytes in SDRAM
-//   - Each channel has phase offset (even=start low, odd=start high)
+// Capture Flow:
+//   1. Configure trigger channel, edge mode, and window preset
+//   2. ARM the capture engine (write to $C0C9)
+//   3. Pre-trigger samples continuously fill BRAM circular buffer
+//   4. On trigger, BRAM contents + post-trigger samples written to SDRAM
+//   5. Regenerate command processes captured data through decimate_pack
+//   6. Display buffer ready for Apple II to read
 //
 // Register Map (offsets from $C0C0):
-//   $00 CHANNEL  R/W  Channel select (0-7)
+//   $00 CHANNEL  R/W  Channel select (0-7) for display buffer read
 //   $01 ADDR     R/W  Byte index within channel (0-37)
-//   $02 DATA     R    Read result from SDRAM
-//   $03 CMD      W    $02=Read byte, $10=Regenerate pattern
-//   $04 STATUS   R    [0]=busy [1]=ready (init + pattern loaded)
-//   $05 STRETCH  R/W  Stretch factor (1-15, default 3)
-//   $06-$0F      R/W  Scratch registers (loopback testing)
+//   $02 DATA     R    Read result from SDRAM display buffer
+//   $03 CMD      W    $02=Read byte, $10=Regenerate from captured data
+//   $04 STATUS   R    [0]=busy [1]=ready [2]=armed [3]=captured
+//   $05 STRETCH  R    Stretch factor (from window preset, read-only)
+//   $06 TRIG_CH  R/W  Trigger channel (0-7)
+//   $07 TRIG_MODE R/W Trigger mode (0=rising edge, 1=falling edge)
+//   $08 WINDOW   R/W  Window preset (0=38us, 1=88us, 2=133us, 3=266us)
+//   $09 ARM      W    Write any value to ARM capture engine
+//   $0A DEBUG_EN R/W  Debug pattern enable (0=real probes, 1=test pattern)
 //
-// SDRAM Address Mapping:
-//   Linear address = (CHANNEL * 38) + ADDR
-//   BA[1:0]     = 2'd0 (bank 0 only)
-//   Row[12:0]   = 13'd0 (fixed)
-//   Column[9:0] = linear_address[9:0] (max 303 fits in 10 bits)
+// Window Presets:
+//   Preset 0: 38 samples,  2 pre + 36 post,  stretch 7 (max zoom)
+//   Preset 1: 88 samples,  4 pre + 84 post,  stretch 3 (default)
+//   Preset 2: 133 samples, 7 pre + 126 post, stretch 2
+//   Preset 3: 266 samples, 13 pre + 253 post, stretch 1 (min zoom)
 //
-// GPIO outputs:
-//   GPIO1:  Heartbeat (250kHz)
-//   GPIO2:  Ready (init_done && pattern_loaded)
-//   GPIO3:  Pattern load in progress
-//   GPIO4:  SDRAM busy
-//   GPIO5-12: Debug signals
+// SDRAM Memory Map:
+//   0x0000-0x010F  Capture buffer (max 266 samples × 8 bits)
+//   0x1000-0x112F  Display buffer (8 channels × 38 bytes)
+//
+// GPIO Pins:
+//   GPIO1:     Heartbeat output (250kHz)
+//   GPIO2:     Ready output (init complete + display loaded)
+//   GPIO3:     Armed output (waiting for trigger)
+//   GPIO4:     Captured output (capture complete)
+//   GPIO5-12:  Probe inputs [0-7] for signal capture
 //
 // =============================================================================
 
@@ -130,18 +141,20 @@ module logic_hamr_v1_top (
     output wire        INT_IN,
 
     // ----- GPIO Breakout -----
-    output wire        GPIO1,
-    output wire        GPIO2,
-    output wire        GPIO3,
-    output wire        GPIO4,
-    output wire        GPIO5,
-    output wire        GPIO6,
-    output wire        GPIO7,
-    output wire        GPIO8,
-    output wire        GPIO9,
-    output wire        GPIO10,
-    output wire        GPIO11,
-    output wire        GPIO12
+    // GPIO1-4: Debug outputs
+    output wire        GPIO1,   // Heartbeat
+    output wire        GPIO2,   // Ready
+    output wire        GPIO3,   // Armed
+    output wire        GPIO4,   // Captured
+    // GPIO5-12: Probe inputs for signal capture
+    input  wire        GPIO5,   // PROBE[0]
+    input  wire        GPIO6,   // PROBE[1]
+    input  wire        GPIO7,   // PROBE[2]
+    input  wire        GPIO8,   // PROBE[3]
+    input  wire        GPIO9,   // PROBE[4]
+    input  wire        GPIO10,  // PROBE[5]
+    input  wire        GPIO11,  // PROBE[6]
+    input  wire        GPIO12   // PROBE[7]
 );
 
     // =========================================================================
@@ -156,6 +169,9 @@ module logic_hamr_v1_top (
                                SDRAM_D11, SDRAM_D10, SDRAM_D9, SDRAM_D8,
                                SDRAM_D7, SDRAM_D6, SDRAM_D5, SDRAM_D4,
                                SDRAM_D3, SDRAM_D2, SDRAM_D1, SDRAM_D0};
+
+    // Combine GPIO5-12 inputs into PROBE bus for capture
+    wire [7:0] PROBE = {GPIO12, GPIO11, GPIO10, GPIO9, GPIO8, GPIO7, GPIO6, GPIO5};
 
     // =========================================================================
     // Clock
@@ -197,30 +213,43 @@ module logic_hamr_v1_top (
 
     // State machine states
     localparam [4:0]
+        // SDRAM initialization states (keep)
         ST_INIT_WAIT       = 5'd0,
         ST_PRECHARGE       = 5'd1,
         ST_REFRESH1        = 5'd2,
         ST_REFRESH2        = 5'd3,
         ST_LOAD_MODE       = 5'd4,
-        ST_GEN_INIT        = 5'd5,   // Initialize pattern generator
-        ST_GEN_SAMPLE      = 5'd6,   // Generate next sample
-        ST_GEN_WAIT        = 5'd7,   // Wait for decimate_pack
-        ST_GEN_WRITE       = 5'd8,   // Write byte to SDRAM
-        ST_GEN_NEXT        = 5'd9,   // Next byte or channel
-        ST_IDLE            = 5'd10,
-        ST_ACTIVATE        = 5'd11,
-        ST_READ_CMD        = 5'd12,
-        ST_READ_WAIT       = 5'd13,
-        ST_READ_CAPTURE    = 5'd14,
-        ST_DONE            = 5'd15,
-        ST_REFRESH         = 5'd16,
-        ST_REFRESH_WAIT    = 5'd17;
 
-    // Pattern configuration: 8 channels × 38 bytes = 304 total
+        // Capture engine states (new - replace ST_GEN_*)
+        ST_CAP_IDLE        = 5'd5,   // Waiting for ARM command
+        ST_CAP_ARMED       = 5'd6,   // Sampling to BRAM, awaiting trigger
+        ST_CAP_WRITE       = 5'd7,   // Writing post-trigger sample to SDRAM
+        ST_CAP_CAPTURED    = 5'd8,   // Capture complete
+        ST_BRAM_XFER       = 5'd9,   // Transferring pre-trigger from BRAM to SDRAM
+
+        // Regenerate states (process captured data through decimate_pack)
+        ST_REGEN_INIT      = 5'd10,  // Initialize regeneration
+        ST_REGEN_READ      = 5'd11,  // Read sample from capture buffer
+        ST_REGEN_WAIT      = 5'd12,  // Wait for SDRAM read
+        ST_REGEN_PROCESS   = 5'd13,  // Feed sample to decimate_pack
+        ST_REGEN_WRITE     = 5'd14,  // Write display byte to SDRAM
+        ST_REGEN_NEXT      = 5'd15,  // Next sample/channel
+
+        // Apple II read states (keep)
+        ST_ACTIVATE        = 5'd16,
+        ST_READ_CMD        = 5'd17,
+        ST_READ_WAIT       = 5'd18,
+        ST_READ_CAPTURE    = 5'd19,
+        ST_DONE            = 5'd20,
+
+        // Refresh states (keep)
+        ST_REFRESH         = 5'd21,
+        ST_REFRESH_WAIT    = 5'd22;
+
+    // Display buffer configuration
     localparam BYTES_PER_CHANNEL = 6'd38;
     localparam NUM_CHANNELS = 4'd8;
-    // We need 266 pixels (38 × 7) to fill the display
-    // Generate square wave samples until we have 38 bytes
+    localparam DISPLAY_BUFFER_BASE = 13'h0200;  // SDRAM address for display buffer (512, past capture buffer)
 
     // SDRAM hardware control
     reg [4:0]  sdram_state;
@@ -241,7 +270,7 @@ module logic_hamr_v1_top (
     reg        cmd_pending;
 
     // Latched command parameters (linear address)
-    reg [8:0]  latched_linear_addr;
+    reg [9:0]  latched_linear_addr;  // 10 bits for capture (0-266) + display (512-815)
 
     // Pattern generation state
     reg [2:0]  gen_channel;       // Current channel (0-7)
@@ -263,6 +292,7 @@ module logic_hamr_v1_top (
     reg        dec_rst;
     reg        dec_sample_in;
     reg        dec_sample_valid;
+    reg        dec_flush;          // Flush partial byte at end of channel
     wire [6:0] dec_byte_out;
     wire       dec_byte_valid;
 
@@ -279,8 +309,56 @@ module logic_hamr_v1_top (
     reg [7:0] reg_data;      // $02: DATA (read result)
     reg [7:0] reg_stretch;   // $05: STRETCH factor (1-15, default 3)
 
-    // Scratch registers ($06-$0F)
+    // Scratch registers ($06-$0F) - partially repurposed for capture
     reg [7:0] slot_reg [0:15];
+
+    // =========================================================================
+    // Capture Engine Configuration Registers
+    // =========================================================================
+
+    reg [2:0]  reg_trig_ch;      // $C0C6: Trigger channel (0-7)
+    reg        reg_trig_mode;    // $C0C7: 0=rising edge, 1=falling edge
+    reg [1:0]  reg_window;       // $C0C8: Window preset (0-3 internal, maps to 1-4)
+    reg        reg_debug_en;     // $C0CA: Debug test pattern enable
+
+    // Capture state flags
+    reg        armed;            // Capture armed, waiting for trigger
+    reg        captured;         // Capture complete, data available
+
+    // Window preset lookup table (active values based on reg_window)
+    reg [8:0]  cfg_total_samples;   // Total samples to capture
+    reg [3:0]  cfg_pre_samples;     // Pre-trigger sample count
+    reg [8:0]  cfg_post_samples;    // Post-trigger sample count
+    reg [7:0]  cfg_stretch;         // Stretch factor for display
+
+    always @(*) begin
+        case (reg_window)
+            2'd0: begin  // Preset 1: 38us window (max zoom)
+                cfg_total_samples = 9'd38;
+                cfg_pre_samples   = 4'd2;
+                cfg_post_samples  = 9'd36;
+                cfg_stretch       = 8'd7;
+            end
+            2'd1: begin  // Preset 2: 88us window (default)
+                cfg_total_samples = 9'd88;
+                cfg_pre_samples   = 4'd4;
+                cfg_post_samples  = 9'd84;
+                cfg_stretch       = 8'd3;
+            end
+            2'd2: begin  // Preset 3: 133us window
+                cfg_total_samples = 9'd133;
+                cfg_pre_samples   = 4'd7;
+                cfg_post_samples  = 9'd126;
+                cfg_stretch       = 8'd2;
+            end
+            2'd3: begin  // Preset 4: 266us window (min zoom)
+                cfg_total_samples = 9'd266;
+                cfg_pre_samples   = 4'd13;
+                cfg_post_samples  = 9'd253;
+                cfg_stretch       = 8'd1;
+            end
+        endcase
+    end
 
     // =========================================================================
     // Apple II Bus Synchronization
@@ -342,7 +420,7 @@ module logic_hamr_v1_top (
 
         // Command interface
         cmd_pending         = 1'b0;
-        latched_linear_addr = 9'd0;
+        latched_linear_addr = 10'd0;
 
         // Pattern generation
         gen_channel      = 3'd0;
@@ -356,6 +434,7 @@ module logic_hamr_v1_top (
         dec_rst          = 1'b1;
         dec_sample_in    = 1'b0;
         dec_sample_valid = 1'b0;
+        dec_flush        = 1'b0;
         captured_byte    = 7'd0;
         byte_pending     = 1'b0;
 
@@ -369,6 +448,16 @@ module logic_hamr_v1_top (
         sampled_write      = 1'b0;
         sampled_addr       = 4'b0;
         sampled_data       = 8'b0;
+
+        // Capture engine configuration
+        reg_trig_ch   = 3'd0;       // Default: trigger on channel 0
+        reg_trig_mode = 1'b0;       // Default: rising edge
+        reg_window    = 2'd1;       // Default: preset 2 (88us window)
+        reg_debug_en  = 1'b0;       // Default: use real probes
+
+        // Capture state
+        armed    = 1'b0;
+        captured = 1'b0;
     end
 
     // =========================================================================
@@ -380,10 +469,141 @@ module logic_hamr_v1_top (
         .rst(dec_rst),
         .sample_in(dec_sample_in),
         .sample_valid(dec_sample_valid),
+        .flush(dec_flush),             // Emit partial byte at end of channel
         .stretch_factor(reg_stretch),  // Full 8 bits (1-255)
         .byte_out(dec_byte_out),
         .byte_valid(dec_byte_valid)
     );
+
+    // =========================================================================
+    // Sample Clock Generation (1 MHz from 25 MHz)
+    // =========================================================================
+
+    reg [4:0] sample_div;
+    wire sample_strobe = (sample_div == 5'd24);
+
+    always @(posedge clk) begin
+        if (sample_div == 5'd24)
+            sample_div <= 5'd0;
+        else
+            sample_div <= sample_div + 1'b1;
+    end
+
+    // =========================================================================
+    // Probe Input Synchronization and Edge Detection
+    // =========================================================================
+
+    reg [7:0] probe_sync1;      // First sync stage
+    reg [7:0] probe_sync2;      // Second sync stage (use this for sampling)
+
+    always @(posedge clk) begin
+        probe_sync1 <= PROBE;
+        probe_sync2 <= probe_sync1;
+    end
+
+    // =========================================================================
+    // Debug Test Pattern Generator
+    // =========================================================================
+    // When reg_debug_en is set, generates different frequency square waves
+    // on each channel for testing without external signals.
+
+    reg [15:0] debug_counter;
+
+    always @(posedge clk) begin
+        if (sample_strobe)
+            debug_counter <= debug_counter + 1'b1;
+    end
+
+    // Each bit divides by different amount (higher bit = slower frequency)
+    // PROBE[0] = slowest (~3.9 kHz), PROBE[7] = fastest (~500 kHz)
+    wire [7:0] debug_pattern = {
+        debug_counter[0],   // PROBE[7]: 500 kHz
+        debug_counter[1],   // PROBE[6]: 250 kHz
+        debug_counter[2],   // PROBE[5]: 125 kHz
+        debug_counter[3],   // PROBE[4]: 62.5 kHz
+        debug_counter[4],   // PROBE[3]: 31.25 kHz
+        debug_counter[5],   // PROBE[2]: 15.6 kHz
+        debug_counter[6],   // PROBE[1]: 7.8 kHz
+        debug_counter[7]    // PROBE[0]: 3.9 kHz
+    };
+
+    // Mux between real probe inputs and debug pattern
+    wire [7:0] probe_input = reg_debug_en ? debug_pattern : probe_sync2;
+
+    // =========================================================================
+    // Edge Detection (on probe_input, works with both debug and real probes)
+    // =========================================================================
+
+    reg [7:0] probe_prev;       // Previous sample for edge detection
+
+    always @(posedge clk) begin
+        if (sample_strobe)
+            probe_prev <= probe_input;
+    end
+
+    // Edge detection (computed continuously, checked at sample_strobe)
+    wire [7:0] probe_rising  = probe_input & ~probe_prev;
+    wire [7:0] probe_falling = ~probe_input & probe_prev;
+
+    // =========================================================================
+    // Trigger Detection
+    // =========================================================================
+
+    // Extract trigger channel edge based on mode
+    wire trig_rising  = probe_rising[reg_trig_ch];
+    wire trig_falling = probe_falling[reg_trig_ch];
+    wire trigger_edge = reg_trig_mode ? trig_falling : trig_rising;
+
+    // Trigger is valid only when armed
+    wire trigger_detected = armed && trigger_edge && sample_strobe;
+
+    // =========================================================================
+    // Pre-Trigger BRAM Circular Buffer
+    // =========================================================================
+    // Small circular buffer to store samples before trigger event.
+    // Max 13 bytes for preset 4 (266 samples with 13 pre-trigger).
+
+    reg [7:0] pretrig_bram [0:15];  // 16-byte buffer (max 13 used)
+    reg [3:0] bram_wr_ptr;          // Write pointer (circular)
+    reg [3:0] bram_rd_ptr;          // Read pointer (for transfer)
+    reg [3:0] bram_count;           // Number of valid samples in buffer
+
+    // Capture state registers
+    reg [8:0]  capture_wr_idx;      // SDRAM write index during capture
+    reg [8:0]  post_trigger_cnt;    // Countdown of remaining post-trigger samples
+    reg [3:0]  bram_xfer_idx;       // Index during BRAM to SDRAM transfer
+    reg [7:0]  current_sample;      // Latched sample for SDRAM write
+    reg [7:0]  trigger_sample;      // Preserved trigger sample (not overwritten during BRAM xfer)
+    reg        post_trigger_mode;   // Set after trigger, prevents re-triggering
+
+    // Regeneration state registers
+    reg [2:0]  regen_channel;       // Current channel being regenerated
+    reg [8:0]  regen_sample_idx;    // Current sample index in capture buffer
+    reg [5:0]  regen_byte_idx;      // Current byte index in display buffer
+
+    // Initialize sampling and capture state registers
+    integer k;
+    initial begin
+        sample_div        = 5'd0;
+        probe_sync1       = 8'd0;
+        probe_sync2       = 8'd0;
+        probe_prev        = 8'd0;
+        debug_counter     = 16'd0;
+        bram_wr_ptr       = 4'd0;
+        bram_rd_ptr       = 4'd0;
+        bram_count        = 4'd0;
+        capture_wr_idx    = 9'd0;
+        post_trigger_cnt  = 9'd0;
+        bram_xfer_idx     = 4'd0;
+        current_sample    = 8'd0;
+        trigger_sample    = 8'd0;
+        post_trigger_mode = 1'b0;
+        regen_channel     = 3'd0;
+        regen_sample_idx  = 9'd0;
+        regen_byte_idx    = 6'd0;
+        for (k = 0; k < 16; k = k + 1)
+            pretrig_bram[k] = 8'd0;
+    end
 
     // =========================================================================
     // SDRAM Pin Assignments
@@ -484,21 +704,38 @@ module logic_hamr_v1_top (
                 4'h3: begin  // CMD register
                     if (!sdram_busy) begin
                         if (sampled_data == 8'h02 && pattern_loaded) begin
-                            // $02 = Read byte from SDRAM
+                            // $02 = Read byte from SDRAM display buffer
                             cmd_pending <= 1'b1;
                             sdram_busy <= 1'b1;
-                            latched_linear_addr <= computed_linear_addr;
-                        end else if (sampled_data == 8'h10) begin
-                            // $10 = Regenerate pattern with current stretch factor
+                            latched_linear_addr <= DISPLAY_BUFFER_BASE[9:0] + {1'b0, computed_linear_addr};
+                        end else if (sampled_data == 8'h10 && captured) begin
+                            // $10 = Regenerate display from captured data
                             pattern_loaded <= 1'b0;
                             sdram_busy <= 1'b1;
-                            sdram_state <= ST_GEN_INIT;
+                            sdram_state <= ST_REGEN_INIT;
                             sdram_delay <= 16'd2;
                         end
                     end
                 end
                 4'h4: ;  // STATUS is read-only
-                4'h5: reg_stretch <= sampled_data;  // STRETCH factor
+                4'h5: reg_stretch <= sampled_data;  // STRETCH factor (manual override)
+                4'h6: reg_trig_ch <= sampled_data[2:0];  // Trigger channel (0-7)
+                4'h7: reg_trig_mode <= sampled_data[0];  // Trigger mode (0=rising, 1=falling)
+                4'h8: reg_window <= sampled_data[1:0];   // Window preset (0-3)
+                4'h9: begin  // ARM command
+                    if (!armed && !sdram_busy) begin
+                        // ARM the capture engine
+                        armed <= 1'b1;
+                        captured <= 1'b0;
+                        pattern_loaded <= 1'b0;
+                        sdram_busy <= 1'b1;
+                        bram_wr_ptr <= 4'd0;
+                        bram_count <= 4'd0;
+                        post_trigger_mode <= 1'b0;  // Reset post-trigger mode
+                        sdram_state <= ST_CAP_ARMED;
+                    end
+                end
+                4'hA: reg_debug_en <= sampled_data[0];   // Debug pattern enable
                 default: slot_reg[sampled_addr] <= sampled_data;
             endcase
         end
@@ -557,179 +794,304 @@ module logic_hamr_v1_top (
                     sdram_addr <= 13'b000_0_00_010_0_000;  // CAS=2, burst=1
                     sdram_delay <= 16'd2;
                     sdram_init_done <= 1'b1;
-                    sdram_state <= ST_GEN_INIT;
+                    sdram_state <= ST_CAP_IDLE;  // Go to capture idle, not pattern gen
                 end else begin
                     sdram_delay <= sdram_delay - 1'b1;
                 end
             end
 
-            // ---- PATTERN GENERATION ----
+            // ---- CAPTURE ENGINE ----
 
-            ST_GEN_INIT: begin
-                if (sdram_delay == 0) begin
-                    // Initialize pattern generator for first channel
-                    dec_rst <= 1'b1;  // Reset decimate_pack
-                    gen_channel <= 3'd0;
-                    gen_byte_idx <= 6'd0;
-                    gen_sample_cnt <= 7'd0;
-                    gen_sample_phase <= 1'b0;  // Channel 0 starts with 0
-                    byte_pending <= 1'b0;  // Clear any pending byte from previous run
-                    pattern_loading <= 1'b1;
-                    sdram_delay <= 16'd2;
-                    sdram_state <= ST_GEN_SAMPLE;
-                end else begin
-                    sdram_delay <= sdram_delay - 1'b1;
+            ST_CAP_IDLE: begin
+                // Waiting for ARM command (handled in register write section)
+                // Handle refresh while idle
+                if (refresh_needed) begin
+                    sdram_state <= ST_REFRESH;
+                end else if (cmd_pending) begin
+                    // Handle read commands while in capture idle
+                    cmd_pending <= 1'b0;
+                    sdram_state <= ST_ACTIVATE;
                 end
             end
 
-            ST_GEN_SAMPLE: begin
-                // Capture any byte that becomes valid (continuously)
-                if (dec_byte_valid && !byte_pending) begin
-                    captured_byte <= dec_byte_out;
-                    byte_pending <= 1'b1;
-                end
+            ST_CAP_ARMED: begin
+                // Handle refresh even when armed
+                if (refresh_needed && !sample_strobe) begin
+                    sdram_state <= ST_REFRESH;
+                end else if (sample_strobe) begin
+                    // Write current sample to circular BRAM buffer
+                    pretrig_bram[bram_wr_ptr] <= probe_input;
 
-                // Release reset one cycle before generating samples
-                if (sdram_delay == 1) begin
-                    dec_rst <= 1'b0;
-                end
-
-                if (sdram_delay == 0) begin
-                    // If a byte just arrived OR was already pending, write it first
-                    // (Check dec_byte_valid directly because byte_pending update is non-blocking)
-                    if (byte_pending || dec_byte_valid) begin
-                        sdram_cmd <= CMD_ACTIVE;
-                        sdram_ba <= 2'd0;
-                        sdram_addr <= 13'd0;  // Row 0
-                        sdram_delay <= 16'd2;
-                        sdram_state <= ST_GEN_WRITE;
-                    end else if (gen_byte_idx < BYTES_PER_CHANNEL) begin
-                        // Generate next sample (square wave until we have 38 bytes)
-                        dec_sample_in <= gen_sample_phase;
-                        gen_sample_phase <= ~gen_sample_phase;  // Toggle for square wave
-                        dec_sample_valid <= 1'b1;
-                        gen_sample_cnt <= gen_sample_cnt + 1'b1;
-                        gen_wait_cnt <= reg_stretch;  // Wait for stretch cycles (1-255)
-                        sdram_state <= ST_GEN_WAIT;
+                    // Update circular buffer pointers
+                    if (bram_count < cfg_pre_samples) begin
+                        // Buffer not yet full
+                        bram_count <= bram_count + 1'b1;
+                        bram_wr_ptr <= bram_wr_ptr + 1'b1;
                     end else begin
-                        // All 38 bytes written, move to next channel
-                        sdram_state <= ST_GEN_NEXT;
+                        // Buffer full, wrap around
+                        bram_wr_ptr <= (bram_wr_ptr == cfg_pre_samples - 1) ? 4'd0 : bram_wr_ptr + 1'b1;
                     end
-                end else begin
-                    sdram_delay <= sdram_delay - 1'b1;
-                end
-            end
 
-            ST_GEN_WAIT: begin
-                // Capture any byte that becomes valid
-                if (dec_byte_valid && !byte_pending) begin
-                    captured_byte <= dec_byte_out;
-                    byte_pending <= 1'b1;
-                end
-
-                // If we have a byte to write, go write it immediately
-                // (don't wait for sample to finish - we might get another byte!)
-                if (byte_pending || dec_byte_valid) begin
-                    sdram_cmd <= CMD_ACTIVE;
-                    sdram_ba <= 2'd0;
-                    sdram_addr <= 13'd0;  // Row 0
-                    sdram_delay <= 16'd2;
-                    sdram_state <= ST_GEN_WRITE;
-                end else if (gen_wait_cnt > 0) begin
-                    // Wait for decimate_pack to process stretch_factor pixels
-                    gen_wait_cnt <= gen_wait_cnt - 1'b1;
-                end else begin
-                    // Processing complete, go back to sample generation
-                    sdram_state <= ST_GEN_SAMPLE;
-                end
-            end
-
-            ST_GEN_WRITE: begin
-                if (sdram_delay == 0) begin
-                    sdram_cmd <= CMD_WRITE;
-                    sdram_addr <= {3'b010, gen_linear_addr, 1'b0};  // A10=1 auto-precharge
-                    sdram_dq_out <= {8'h00, 1'b0, captured_byte};  // Bit 7 = 0 (palette)
-                    sdram_dq_oe <= 1'b1;
-                    gen_byte_idx <= gen_byte_idx + 1'b1;
-                    sdram_delay <= 16'd4;  // tWR + tRP
-                    // Return to appropriate state
-                    if (gen_wait_cnt > 0) begin
-                        sdram_state <= ST_GEN_WAIT;  // Continue waiting for sample to finish
-                    end else begin
-                        sdram_state <= ST_GEN_SAMPLE;  // Sample done, get next
-                    end
-                    // Capture new byte if one arrives, otherwise clear pending
-                    if (dec_byte_valid) begin
-                        captured_byte <= dec_byte_out;
-                        // byte_pending stays 1
-                    end else begin
-                        byte_pending <= 1'b0;
-                    end
-                end else begin
-                    // Continue capturing bytes while waiting for SDRAM
-                    if (dec_byte_valid && !byte_pending) begin
-                        captured_byte <= dec_byte_out;
-                        byte_pending <= 1'b1;
-                    end
-                    // Keep counting down sample wait time during SDRAM operations
-                    if (gen_wait_cnt > 0) begin
-                        gen_wait_cnt <= gen_wait_cnt - 1'b1;
-                    end
-                    sdram_delay <= sdram_delay - 1'b1;
-                end
-            end
-
-            ST_GEN_NEXT: begin
-                // Capture any remaining bytes
-                if (dec_byte_valid && !byte_pending) begin
-                    captured_byte <= dec_byte_out;
-                    byte_pending <= 1'b1;
-                end
-
-                if (sdram_delay == 0) begin
-                    // Check if we need to write any pending byte
-                    if (byte_pending) begin
+                    // Check for trigger (only if not already in post-trigger mode)
+                    if (trigger_detected && !post_trigger_mode && (bram_count >= cfg_pre_samples)) begin
+                        // Trigger detected and we have enough pre-trigger samples
+                        post_trigger_mode <= 1'b1;  // Prevent re-triggering
+                        // Latch the current sample for first post-trigger write
+                        current_sample <= probe_input;
+                        trigger_sample <= probe_input;  // Preserve trigger sample (survives BRAM xfer)
+                        // Calculate read pointer: oldest sample in circular buffer
+                        bram_rd_ptr <= (bram_wr_ptr >= cfg_pre_samples) ?
+                                       (bram_wr_ptr - cfg_pre_samples + 1) :
+                                       (cfg_pre_samples[3:0] - bram_wr_ptr);
+                        bram_xfer_idx <= 4'd0;
+                        capture_wr_idx <= 9'd0;
+                        post_trigger_cnt <= cfg_post_samples;
+                        sdram_state <= ST_BRAM_XFER;
+                    end else if (post_trigger_mode) begin
+                        // In post-trigger mode, sample and go to write
+                        current_sample <= probe_input;
                         sdram_cmd <= CMD_ACTIVE;
                         sdram_ba <= 2'd0;
                         sdram_addr <= 13'd0;
                         sdram_delay <= 16'd2;
-                        sdram_state <= ST_GEN_WRITE;
-                    end else if (gen_byte_idx < BYTES_PER_CHANNEL) begin
-                        // Still waiting for bytes, keep waiting
-                        sdram_delay <= 16'd3;
-                    end else if (gen_channel < NUM_CHANNELS - 1) begin
-                        // Move to next channel
-                        gen_channel <= gen_channel + 1'b1;
-                        gen_byte_idx <= 6'd0;
-                        gen_sample_cnt <= 7'd0;
-                        gen_sample_phase <= ~gen_channel[0];  // Odd channels start high
-                        dec_rst <= 1'b1;  // Reset decimate_pack for new channel
+                        sdram_state <= ST_CAP_WRITE;
+                    end
+                end
+            end
+
+            ST_BRAM_XFER: begin
+                // Transfer pre-trigger samples from BRAM to SDRAM capture buffer
+                if (sdram_delay == 0) begin
+                    if (bram_xfer_idx < cfg_pre_samples) begin
+                        // Activate row for write
+                        sdram_cmd <= CMD_ACTIVE;
+                        sdram_ba <= 2'd0;
+                        sdram_addr <= 13'd0;  // Row 0 for capture buffer
+                        current_sample <= pretrig_bram[bram_rd_ptr];
+                        bram_rd_ptr <= (bram_rd_ptr == cfg_pre_samples - 1) ? 4'd0 : bram_rd_ptr + 1'b1;
                         sdram_delay <= 16'd2;
-                        sdram_state <= ST_GEN_SAMPLE;
+                        sdram_state <= ST_CAP_WRITE;
                     end else begin
-                        // All channels done
-                        pattern_loading <= 1'b0;
-                        pattern_loaded <= 1'b1;
-                        sdram_busy <= 1'b0;  // Clear busy so reads/regenerates work
-                        sdram_state <= ST_IDLE;
+                        // All pre-trigger samples transferred, now capture post-trigger
+                        // Restore the preserved trigger sample for first post-trigger write
+                        current_sample <= trigger_sample;
+                        sdram_cmd <= CMD_ACTIVE;
+                        sdram_ba <= 2'd0;
+                        sdram_addr <= 13'd0;
+                        sdram_delay <= 16'd2;
+                        sdram_state <= ST_CAP_WRITE;
                     end
                 end else begin
                     sdram_delay <= sdram_delay - 1'b1;
                 end
             end
 
-            // ---- OPERATIONAL ----
+            ST_CAP_WRITE: begin
+                if (sdram_delay == 0) begin
+                    // Write current sample to SDRAM capture buffer
+                    sdram_cmd <= CMD_WRITE;
+                    sdram_addr <= {2'b01, 1'b0, capture_wr_idx, 1'b0};  // Capture buffer at base 0
+                    sdram_dq_out <= {8'h00, current_sample};
+                    sdram_dq_oe <= 1'b1;
+                    capture_wr_idx <= capture_wr_idx + 1'b1;
+                    sdram_delay <= 16'd4;  // tWR + tRP
 
-            ST_IDLE: begin
-                if (sdram_delay != 0) begin
+                    // Determine next state
+                    if (bram_xfer_idx < cfg_pre_samples) begin
+                        // Still transferring pre-trigger samples
+                        bram_xfer_idx <= bram_xfer_idx + 1'b1;
+                        sdram_state <= ST_BRAM_XFER;
+                    end else if (post_trigger_cnt > 0) begin
+                        // More post-trigger samples to capture
+                        post_trigger_cnt <= post_trigger_cnt - 1'b1;
+                        // Wait for next sample strobe
+                        sdram_state <= ST_CAP_ARMED;  // Re-use armed state for sampling
+                    end else begin
+                        // Capture complete
+                        armed <= 1'b0;
+                        captured <= 1'b1;
+                        sdram_busy <= 1'b0;
+                        sdram_state <= ST_CAP_CAPTURED;
+                    end
+                end else begin
+                    // While waiting, capture next sample on strobe
+                    if (sample_strobe && (bram_xfer_idx >= cfg_pre_samples) && (post_trigger_cnt > 0)) begin
+                        current_sample <= probe_input;
+                    end
                     sdram_delay <= sdram_delay - 1'b1;
-                end else if (refresh_needed) begin
+                end
+            end
+
+            ST_CAP_CAPTURED: begin
+                // Capture complete, waiting for regenerate or new ARM
+                if (refresh_needed) begin
                     sdram_state <= ST_REFRESH;
                 end else if (cmd_pending) begin
                     cmd_pending <= 1'b0;
                     sdram_state <= ST_ACTIVATE;
                 end
             end
+
+            // ---- REGENERATION (process captured data through decimate_pack) ----
+
+            ST_REGEN_INIT: begin
+                if (sdram_delay == 0) begin
+                    // Initialize regeneration for first channel
+                    dec_rst <= 1'b1;  // Reset decimate_pack
+                    dec_flush <= 1'b0;
+                    regen_channel <= 3'd0;
+                    gen_channel <= 3'd0;  // MUST reset for correct display buffer addressing
+                    regen_sample_idx <= 9'd0;
+                    regen_byte_idx <= 6'd0;
+                    gen_byte_idx <= 6'd0;  // Reuse for display buffer byte tracking
+                    byte_pending <= 1'b0;
+                    pattern_loading <= 1'b1;
+                    reg_stretch <= cfg_stretch;  // Use window preset stretch factor
+                    sdram_delay <= 16'd2;
+                    sdram_state <= ST_REGEN_READ;
+                end else begin
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            ST_REGEN_READ: begin
+                // Capture any pending byte from decimate_pack
+                if (dec_byte_valid && !byte_pending) begin
+                    captured_byte <= dec_byte_out;
+                    byte_pending <= 1'b1;
+                end
+
+                // Release reset after first cycle
+                if (sdram_delay == 1) begin
+                    dec_rst <= 1'b0;
+                end
+
+                if (sdram_delay == 0) begin
+                    // Check if we have a byte to write first
+                    if (byte_pending || dec_byte_valid) begin
+                        sdram_cmd <= CMD_ACTIVE;
+                        sdram_ba <= 2'd0;
+                        sdram_addr <= 13'd0;  // Row 0
+                        sdram_delay <= 16'd2;
+                        sdram_state <= ST_REGEN_WRITE;
+                    end else if (regen_sample_idx < cfg_total_samples) begin
+                        // Read next sample from capture buffer
+                        sdram_cmd <= CMD_ACTIVE;
+                        sdram_ba <= 2'd0;
+                        sdram_addr <= 13'd0;
+                        sdram_delay <= 16'd2;
+                        latched_linear_addr <= regen_sample_idx;
+                        sdram_state <= ST_REGEN_WAIT;
+                    end else begin
+                        // All samples processed for this channel
+                        sdram_state <= ST_REGEN_NEXT;
+                    end
+                end else begin
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            ST_REGEN_WAIT: begin
+                // Wait for SDRAM read
+                if (sdram_delay == 0) begin
+                    sdram_cmd <= CMD_READ;
+                    sdram_addr <= {2'b01, latched_linear_addr, 1'b0};
+                    sdram_delay <= 16'd3;  // CAS latency
+                    sdram_state <= ST_REGEN_PROCESS;
+                end else begin
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            ST_REGEN_PROCESS: begin
+                // Capture bytes from decimate_pack
+                if (dec_byte_valid && !byte_pending) begin
+                    captured_byte <= dec_byte_out;
+                    byte_pending <= 1'b1;
+                end
+
+                if (sdram_delay == 0) begin
+                    // Extract the bit for current channel from captured sample
+                    dec_sample_in <= sdram_dq_sample[regen_channel];
+                    dec_sample_valid <= 1'b1;
+                    regen_sample_idx <= regen_sample_idx + 1'b1;
+                    sdram_delay <= 16'd2;
+                    sdram_state <= ST_REGEN_READ;
+                end else begin
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            ST_REGEN_WRITE: begin
+                // Write display byte to SDRAM
+                if (sdram_delay == 0) begin
+                    sdram_cmd <= CMD_WRITE;
+                    // Display buffer address: 0x200 + (channel * 38) + byte_idx
+                    sdram_addr <= {2'b01, DISPLAY_BUFFER_BASE[9:0] + {1'b0, gen_channel_times_38} + {4'b0, gen_byte_idx}, 1'b0};
+                    sdram_dq_out <= {8'h00, 1'b0, captured_byte};  // Bit 7 = 0 (palette)
+                    sdram_dq_oe <= 1'b1;
+                    gen_byte_idx <= gen_byte_idx + 1'b1;
+                    sdram_delay <= 16'd4;
+
+                    // Capture new byte or clear pending
+                    if (dec_byte_valid) begin
+                        captured_byte <= dec_byte_out;
+                    end else begin
+                        byte_pending <= 1'b0;
+                    end
+
+                    sdram_state <= ST_REGEN_READ;
+                end else begin
+                    if (dec_byte_valid && !byte_pending) begin
+                        captured_byte <= dec_byte_out;
+                        byte_pending <= 1'b1;
+                    end
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            ST_REGEN_NEXT: begin
+                // Assert flush to emit any partial byte
+                dec_flush <= 1'b1;
+
+                // Check for remaining bytes to write
+                if (dec_byte_valid && !byte_pending) begin
+                    captured_byte <= dec_byte_out;
+                    byte_pending <= 1'b1;
+                end
+
+                if (sdram_delay == 0) begin
+                    if (byte_pending) begin
+                        // Write the pending byte
+                        sdram_cmd <= CMD_ACTIVE;
+                        sdram_ba <= 2'd0;
+                        sdram_addr <= 13'd0;
+                        sdram_delay <= 16'd2;
+                        sdram_state <= ST_REGEN_WRITE;
+                    end else if (regen_channel < NUM_CHANNELS - 1) begin
+                        // Move to next channel (don't wait for exactly 38 bytes)
+                        dec_flush <= 1'b0;
+                        regen_channel <= regen_channel + 1'b1;
+                        gen_channel <= regen_channel + 1'b1;  // Update for address calc
+                        regen_sample_idx <= 9'd0;
+                        gen_byte_idx <= 6'd0;
+                        dec_rst <= 1'b1;  // Reset decimate_pack for new channel
+                        sdram_delay <= 16'd2;
+                        sdram_state <= ST_REGEN_READ;
+                    end else begin
+                        // All channels done
+                        dec_flush <= 1'b0;
+                        pattern_loading <= 1'b0;
+                        pattern_loaded <= 1'b1;
+                        sdram_busy <= 1'b0;
+                        sdram_state <= ST_CAP_IDLE;
+                    end
+                end else begin
+                    sdram_delay <= sdram_delay - 1'b1;
+                end
+            end
+
+            // ---- SDRAM READ OPERATIONS ----
 
             ST_ACTIVATE: begin
                 sdram_cmd <= CMD_ACTIVE;
@@ -742,7 +1104,7 @@ module logic_hamr_v1_top (
             ST_READ_CMD: begin
                 if (sdram_delay == 0) begin
                     sdram_cmd <= CMD_READ;
-                    sdram_addr <= {3'b010, latched_linear_addr, 1'b0};
+                    sdram_addr <= {2'b01, latched_linear_addr, 1'b0};
                     sdram_delay <= 16'd2;
                     sdram_state <= ST_READ_WAIT;
                 end else begin
@@ -767,7 +1129,8 @@ module logic_hamr_v1_top (
             ST_DONE: begin
                 if (sdram_delay == 0) begin
                     sdram_busy <= 1'b0;
-                    sdram_state <= ST_IDLE;
+                    // Return to appropriate capture state
+                    sdram_state <= captured ? ST_CAP_CAPTURED : ST_CAP_IDLE;
                 end else begin
                     sdram_delay <= sdram_delay - 1'b1;
                 end
@@ -783,7 +1146,13 @@ module logic_hamr_v1_top (
 
             ST_REFRESH_WAIT: begin
                 if (sdram_delay == 0) begin
-                    sdram_state <= ST_IDLE;
+                    // Return to appropriate capture state
+                    if (armed)
+                        sdram_state <= ST_CAP_ARMED;
+                    else if (captured)
+                        sdram_state <= ST_CAP_CAPTURED;
+                    else
+                        sdram_state <= ST_CAP_IDLE;
                 end else begin
                     sdram_delay <= sdram_delay - 1'b1;
                 end
@@ -798,7 +1167,7 @@ module logic_hamr_v1_top (
     // =========================================================================
 
     wire ready = sdram_init_done && pattern_loaded;
-    wire [7:0] status_reg = {6'b0, ready, sdram_busy};
+    wire [7:0] status_reg = {4'b0, captured, armed, ready, sdram_busy};
 
     reg [7:0] read_data;
     always @(*) begin
@@ -807,14 +1176,14 @@ module logic_hamr_v1_top (
             4'h0: read_data = reg_channel;
             4'h1: read_data = reg_addr;
             4'h2: read_data = reg_data;
-            4'h3: read_data = 8'h00;
-            4'h4: read_data = status_reg;
-            4'h5: read_data = reg_stretch;
-            4'h6: read_data = slot_reg[6];
-            4'h7: read_data = slot_reg[7];
-            4'h8: read_data = slot_reg[8];
-            4'h9: read_data = slot_reg[9];
-            4'hA: read_data = slot_reg[10];
+            4'h3: read_data = 8'h00;  // CMD write-only
+            4'h4: read_data = status_reg;  // [0]=busy [1]=ready [2]=armed [3]=captured
+            4'h5: read_data = cfg_stretch;  // Current stretch (from window preset)
+            4'h6: read_data = {5'b0, reg_trig_ch};     // Trigger channel
+            4'h7: read_data = {7'b0, reg_trig_mode};   // Trigger mode
+            4'h8: read_data = {6'b0, reg_window};      // Window preset (0-3)
+            4'h9: read_data = 8'h00;  // ARM write-only
+            4'hA: read_data = {7'b0, reg_debug_en};    // Debug enable
             4'hB: read_data = slot_reg[11];
             4'hC: read_data = slot_reg[12];
             4'hD: read_data = slot_reg[13];
@@ -848,19 +1217,16 @@ module logic_hamr_v1_top (
     assign INT_IN = INT_OUT;
 
     // =========================================================================
-    // GPIO Outputs
+    // GPIO Debug Outputs
     // =========================================================================
+    // GPIO1: Heartbeat (assigned above)
+    // GPIO2: Ready (system initialized)
+    // GPIO3: Armed (waiting for trigger)
+    // GPIO4: Captured (capture complete)
+    // GPIO5-12: Now inputs for probe capture
 
-    assign GPIO2  = ready;
-    assign GPIO3  = pattern_loading;
-    assign GPIO4  = sdram_busy;
-    assign GPIO5  = PHI0;
-    assign GPIO6  = ~nDEVICE_SELECT;
-    assign GPIO7  = R_nW;
-    assign GPIO8  = dec_byte_valid;
-    assign GPIO9  = dec_sample_valid;
-    assign GPIO10 = PHI1;
-    assign GPIO11 = write_strobe;
-    assign GPIO12 = sampled_device_sel;
+    assign GPIO2 = ready;
+    assign GPIO3 = armed;
+    assign GPIO4 = captured;
 
 endmodule

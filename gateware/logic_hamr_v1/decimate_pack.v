@@ -23,6 +23,7 @@ module decimate_pack (
     input  wire       rst,
     input  wire       sample_in,
     input  wire       sample_valid,
+    input  wire       flush,           // Emit partial byte when all samples processed
     input  wire [7:0] stretch_factor,
 
     output reg  [6:0] byte_out,
@@ -107,6 +108,14 @@ module decimate_pack (
                 if (stretch_cnt == 8'd1) begin
                     active <= 1'b0;
                 end
+            end
+
+            // Flush: emit partial byte if there are accumulated bits
+            if (flush && !active && bit_pos > 0) begin
+                byte_out   <= accum;
+                byte_valid <= 1'b1;
+                accum      <= 7'd0;
+                bit_pos    <= 3'd0;
             end
         end
     end

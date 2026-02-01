@@ -27,7 +27,11 @@ SPEED    := 8
 BUILD_DIR     := build
 GATEWARE_DIR  := gateware
 CONSTRAINT_DIR := gateware/constraints
-LPF           := $(CONSTRAINT_DIR)/byte_hamr.lpf
+
+# Constraints: use design-specific LPF if it exists, otherwise use base
+LPF_BASE    := $(CONSTRAINT_DIR)/byte_hamr.lpf
+LPF_DESIGN  := $(GATEWARE_DIR)/$(DESIGN)/$(DESIGN).lpf
+LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 
 # Default design
 DESIGN ?= signal_check

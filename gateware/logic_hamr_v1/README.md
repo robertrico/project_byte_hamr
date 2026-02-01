@@ -1,203 +1,206 @@
-# Decimation Algorithm Findings
+# Logic Hamr v1 - Capture Engine
 
 ## Overview
 
-This document captures the technical findings for converting raw sample data into Apple II HIRES-compatible byte streams for the Byte Hamr logic analyzer.
+Logic Hamr v1 is an 8-channel logic analyzer for the Byte Hamr FPGA card. It captures real-time signals at 1 MHz sample rate, detects trigger conditions with pre-trigger buffering, and generates Apple II HIRES-compatible display data through decimation.
 
-## Apple II HIRES Byte Format
+## Features
 
-### Bit Layout
-- Bits 0-6: Pixel data (7 pixels per byte)
-- Bit 7: Palette select (unused for waveform rendering)
-- Maximum byte value: $7F (all pixels on)
+- 8-channel simultaneous capture via GPIO5-12
+- Configurable trigger: rising or falling edge on any channel
+- Pre-trigger buffering via BRAM circular buffer
+- 4 window presets (38us, 88us, 133us, 266us)
+- Built-in debug test pattern generator for testing
+- SDRAM-backed capture and display buffers
 
-### Pixel Ordering
-- Bit 0 = leftmost pixel on screen
-- Bit 6 = rightmost pixel on screen
-- First sample in time = bit 0 = leftmost on screen
+## GPIO Pin Assignment
 
-### Example Values
-| Hex | Binary | Screen Appearance |
-|-----|--------|-------------------|
-| $00 | 0000000 | All pixels off |
-| $7F | 1111111 | All pixels on |
-| $38 | 0111000 | 3 off, 3 on, 1 off |
-| $07 | 0000111 | 3 on, 4 off |
+| Pin | Direction | Function |
+|-----|-----------|----------|
+| GPIO1 | Output | Heartbeat (250kHz square wave) |
+| GPIO2 | Output | Ready (init complete + display loaded) |
+| GPIO3 | Output | Armed (waiting for trigger) |
+| GPIO4 | Output | Captured (capture complete) |
+| GPIO5 | Input | PROBE[0] |
+| GPIO6 | Input | PROBE[1] |
+| GPIO7 | Input | PROBE[2] |
+| GPIO8 | Input | PROBE[3] |
+| GPIO9 | Input | PROBE[4] |
+| GPIO10 | Input | PROBE[5] |
+| GPIO11 | Input | PROBE[6] |
+| GPIO12 | Input | PROBE[7] |
 
-## Rendering Model
+## Register Map
 
-### Channel Dimensions
-- 8 channels total
-- 12 horizontal lines per channel
-- 38 columns (bytes) across screen width
-- 266 usable pixels (38 × 7)
+All registers are at offsets from $C0C0 (slot 4) or the appropriate slot base address.
 
-### Waveform Representation
-- HIGH signal: Pixels on in top row
-- LOW signal: Pixels on in bottom row
-- Transition: Vertical line connecting top to bottom
-- Sample data bytes represent horizontal cross-section at each row
+| Offset | Name | R/W | Description |
+|--------|------|-----|-------------|
+| $00 | CHANNEL | R/W | Channel select (0-7) for display buffer read |
+| $01 | ADDR | R/W | Byte index within channel (0-37) |
+| $02 | DATA | R | Read result from SDRAM display buffer |
+| $03 | CMD | W | Command register (see below) |
+| $04 | STATUS | R | Status register (see below) |
+| $05 | STRETCH | R | Stretch factor (from window preset, read-only) |
+| $06 | TRIG_CH | R/W | Trigger channel (0-7) |
+| $07 | TRIG_MODE | R/W | Trigger mode (0=rising edge, 1=falling edge) |
+| $08 | WINDOW | R/W | Window preset (0-3) |
+| $09 | ARM | W | Write any value to ARM capture engine |
+| $0A | DEBUG_EN | R/W | Debug pattern enable (0=real probes, 1=test pattern) |
+
+### Command Register ($03)
+
+| Value | Action |
+|-------|--------|
+| $02 | Read byte from display buffer (use CHANNEL/ADDR first) |
+| $10 | Regenerate display buffer from captured data |
+
+### Status Register ($04)
+
+| Bit | Name | Description |
+|-----|------|-------------|
+| 0 | BUSY | SDRAM operation in progress |
+| 1 | READY | SDRAM initialized AND display buffer loaded |
+| 2 | ARMED | Capture engine armed, waiting for trigger |
+| 3 | CAPTURED | Capture complete, data available |
+
+## Window Presets
+
+| Preset | Total Samples | Pre-trigger | Post-trigger | Stretch | Time Window |
+|--------|--------------|-------------|--------------|---------|-------------|
+| 0 | 38 | 2 | 36 | 7 | 38 us (max zoom) |
+| 1 | 88 | 4 | 84 | 3 | 88 us (default) |
+| 2 | 133 | 7 | 126 | 2 | 133 us |
+| 3 | 266 | 13 | 253 | 1 | 266 us (min zoom) |
+
+The stretch factor determines how many pixels each sample occupies on screen:
+- Stretch 1: Each sample = 1 pixel (compressed view, 266 samples visible)
+- Stretch 7: Each sample = 7 pixels (zoomed view, 38 samples visible)
+
+## Capture Flow
+
+1. **Configure trigger**: Set TRIG_CH (0-7) and TRIG_MODE (0=rising, 1=falling)
+2. **Select window**: Set WINDOW preset (0-3) based on desired time scale
+3. **ARM capture**: Write any value to ARM register ($09)
+4. **Wait for trigger**: Monitor STATUS bit 3 (CAPTURED) or GPIO4
+5. **Regenerate display**: Write $10 to CMD register ($03)
+6. **Wait for ready**: Monitor STATUS bit 1 (READY) or GPIO2
+7. **Read display data**: Set CHANNEL/ADDR, write $02 to CMD, read DATA
+
+## Debug Test Pattern
+
+When DEBUG_EN ($0A) is set to 1, the probe inputs are replaced with an internally generated test pattern. Each channel generates a different frequency square wave:
+
+| Channel | Frequency |
+|---------|-----------|
+| PROBE[0] | 3.9 kHz |
+| PROBE[1] | 7.8 kHz |
+| PROBE[2] | 15.6 kHz |
+| PROBE[3] | 31.25 kHz |
+| PROBE[4] | 62.5 kHz |
+| PROBE[5] | 125 kHz |
+| PROBE[6] | 250 kHz |
+| PROBE[7] | 500 kHz |
+
+This allows testing the capture engine without external signals.
+
+## SDRAM Memory Map
+
+| Address Range | Size | Description |
+|---------------|------|-------------|
+| 0x0000-0x010F | 270 bytes | Capture buffer (max 266 samples + margin) |
+| 0x1000-0x112F | 304 bytes | Display buffer (8 channels x 38 bytes) |
 
 ## Decimation Algorithm
 
-### Core Concept
-The algorithm is a FIFO-based pipeline that decouples sample rate from byte boundaries.
+The capture engine uses the decimate_pack module to convert raw samples into Apple II HIRES-compatible bytes.
 
-### Pipeline Stages
+### Pipeline
 ```
-[Raw Samples] → [Stretch] → [Pixel FIFO] → [7-bit Pack] → [Byte Stream] → [SDRAM]
-```
-
-### State Machine Variables
-```
-bit_pos      : 0-6, current position within output byte
-accum        : byte accumulator, builds LSB-first
-sample_val   : current sample (0 or 1)
-stretch_cnt  : pixels remaining for current sample
+[Captured Samples] -> [Stretch] -> [Pixel FIFO] -> [7-bit Pack] -> [Display Buffer]
 ```
 
-### Algorithm Pseudocode
-```
-bit_pos = 0
-accum = 0
+### Apple II HIRES Byte Format
 
-for each sample in capture_buffer:
-    for i = 0 to (pixels_per_sample - 1):
-        if sample == 1:
-            accum |= (1 << bit_pos)
-        bit_pos++
-        if bit_pos == 7:
-            emit(accum)
-            accum = 0
-            bit_pos = 0
-```
+- Bits 0-6: Pixel data (7 pixels per byte)
+- Bit 7: Always 0 (palette select, unused)
+- Bit 0 = leftmost pixel on screen
+- First sample in time = leftmost on screen
 
-### Key Properties
-1. No bit swapping required - LSB-first packing matches Apple II expectations
-2. Sample boundaries do not align with byte boundaries
-3. Each byte may contain parts of multiple samples
-4. Each sample may span multiple bytes
-5. Continuous pixel stream, chunked into 7-bit segments on output
+### Screen Dimensions
 
-## Stretch Factor (Pixels Per Sample)
+- 8 channels displayed
+- 38 columns (bytes) per channel
+- 266 usable pixels per channel (38 x 7)
 
-### Relationship to Zoom
-| Pixels/Sample | Visual Result |
-|---------------|---------------|
-| 1 | Compressed, transitions blur together |
-| 2 | Marginal, transitions visible but tight |
-| 3+ | Clean, distinct high/low/transition regions |
+## Design-Specific Constraints
 
-### Recommended Minimum
-3 pixels per sample for clear waveform visibility.
+This design uses a design-specific LPF file (`logic_hamr_v1.lpf`) that configures GPIO5-12 as inputs with pull-down resistors. This overrides the base constraints file when building.
 
-### Screen Capacity at Different Stretch Factors
-| Pixels/Sample | Samples on Screen | Time Window (1 MHz) |
-|---------------|-------------------|---------------------|
-| 1 | 266 | 266 µs |
-| 2 | 133 | 133 µs |
-| 3 | 88 | 88 µs |
-| 7 | 38 | 38 µs |
+## Build and Test
 
-## Worked Example
+```bash
+# Synthesize
+make DESIGN=logic_hamr_v1
 
-### Input
-- Sample sequence: `0 1 0 1`
-- Stretch factor: 3 pixels per sample
+# Run simulation
+make sim DESIGN=logic_hamr_v1
 
-### Pixel Stream (after stretch)
-```
-0 0 0 1 1 1 0 0 0 1 1 1
+# View waveform
+make wave DESIGN=logic_hamr_v1
+
+# Program FPGA (volatile)
+make prog DESIGN=logic_hamr_v1
+
+# Program flash (persistent)
+make prog-flash DESIGN=logic_hamr_v1
 ```
 
-### Byte Packing (LSB-first)
+## Example Usage (Apple II)
+
+```asm
+* Configure trigger on channel 0, rising edge
+        LDA #$00
+        STA $C0C6        ; TRIG_CH = 0
+        STA $C0C7        ; TRIG_MODE = rising
+
+* Select window preset 1 (88us)
+        LDA #$01
+        STA $C0C8        ; WINDOW = 1
+
+* Enable debug pattern (optional)
+        LDA #$01
+        STA $C0CA        ; DEBUG_EN = 1
+
+* ARM capture
+        STA $C0C9        ; Write anything to ARM
+
+* Wait for capture
+WAIT    LDA $C0C4        ; Read STATUS
+        AND #$08         ; Check CAPTURED bit
+        BEQ WAIT
+
+* Regenerate display
+        LDA #$10
+        STA $C0C3        ; CMD = regenerate
+
+* Wait for ready
+WAIT2   LDA $C0C4
+        AND #$02         ; Check READY bit
+        BEQ WAIT2
+
+* Read channel 0, byte 0
+        LDA #$00
+        STA $C0C0        ; CHANNEL = 0
+        STA $C0C1        ; ADDR = 0
+        LDA #$02
+        STA $C0C3        ; CMD = read
+
+* Wait not busy
+WAIT3   LDA $C0C4
+        AND #$01
+        BNE WAIT3
+
+* Get data
+        LDA $C0C2        ; Read DATA
 ```
-Byte 0 (pixels 0-6):
-  bit 0 = 0, bit 1 = 0, bit 2 = 0
-  bit 3 = 1, bit 4 = 1, bit 5 = 1
-  bit 6 = 0
-  Result: $38
-
-Byte 1 (pixels 7-13):
-  bit 0 = 0, bit 1 = 0, bit 2 = 1
-  bit 3 = 1, bit 4 = 1, bit 5 = (next data)
-  ...
-```
-
-### Screen Output for $38
-```
-○ ○ ○ ● ● ● ○
-```
-Matches expected: 3 low, 3 high, 1 low (start of next period)
-
-## Test Patterns
-
-### Verified Patterns
-| Pattern | Hex Sequence | Display |
-|---------|--------------|---------|
-| All high | 7F 7F 7F... | Solid horizontal line |
-| All low | 00 00 00... | Empty row |
-| Alternating columns | 00 7F 00 7F... | Clean square wave, 1 column period |
-
-### Button Debounce Example (Realistic)
-```
-Samples: HHHH...HHHH L HH LL H LLL H LLLL...LLLL (bounce pattern)
-```
-Produces non-uniform byte values at transition points, uniform $7F or $00 during stable periods.
-
-## FPGA Implementation Notes
-
-### FIFO Approach
-- Input: samples at capture rate
-- Output: bytes at display rate
-- Decouples sample timing from byte boundaries
-- Buffer depth flexible (single register to deep FIFO)
-
-### No Byte-Boundary Alignment Required
-The algorithm handles arbitrary sample/byte phase relationships. No special cases for alignment.
-
-### Transition Detection
-Not required in the byte-packing stage. Transitions appear naturally when sample value changes. Vertical line rendering is handled by the 6502 display code comparing first/last row data.
-
-## Integration with Apple II Software
-
-### Data Contract
-FPGA provides 38 bytes per channel. Apple II software handles all rendering:
-1. Reads 38 bytes per channel from SDRAM
-2. Writes to HIRES addresses via LUT
-3. XOR between first/last row detects transitions
-4. Draws vertical lines where transitions detected
-
-### Memory Layout in SDRAM
-```
-Channel 0: [38 bytes]
-Channel 1: [38 bytes]
-Channel 2: [38 bytes]
-Channel 3: [38 bytes]
-Channel 4: [38 bytes]
-Channel 5: [38 bytes]
-Channel 6: [38 bytes]
-Channel 7: [38 bytes]
-```
-
-Total per screen: 38 × 8 = 304 bytes
-
-### FPGA Responsibility
-Fill these 304 bytes with decimated sample data. The Apple II rendering code already exists and works - verified with test pattern `00 7F 00 7F...` producing clean square waves.
-
-## Path Forward
-
-### Immediate Next Steps
-1. Implement stretch + pack algorithm in FPGA gateware
-2. Test with known patterns ($00, $7F, alternating)
-3. Verify against Apple II rendering
-
-### Validation Targets
-1. 50 kHz square wave at 1 MHz sample rate
-2. Button debounce capture
-3. Scroll through captured buffer
-
-### Success Criteria
-- Waveform visually matches expected signal shape
-- No byte-boundary artifacts
-- Zoom (stretch factor change) produces expected scaling
