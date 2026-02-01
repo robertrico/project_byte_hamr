@@ -33,7 +33,7 @@ LPF           := $(CONSTRAINT_DIR)/byte_hamr.lpf
 DESIGN ?= signal_check
 
 .PHONY: all clean help synth pnr bit prog prog-flash prog-detect pinout lpf sim wave unit unit-wave \
-        extract-dsk create-dsk list-dsk
+        assemble extract-dsk create-dsk list-dsk
 
 # =============================================================================
 # Default target
@@ -67,6 +67,9 @@ help:
 	@echo "  make pinout       - Regenerate FPGA pinout JSON"
 	@echo "  make lpf          - Regenerate LPF constraints"
 	@echo "  make clean        - Remove build files"
+	@echo ""
+	@echo "6502 Assembly:"
+	@echo "  make assemble ASM_SRC=path  - Assemble with Merlin32"
 	@echo ""
 	@echo "Apple II Disk Utilities:"
 	@echo "  make extract-dsk DSK=x.dsk  - Extract files (FORCE=1 to overwrite)"
@@ -222,6 +225,21 @@ pinout:
 lpf: pinout
 	@echo "=== Generating LPF Constraints ==="
 	python3 scripts/generate_lpf.py
+
+# =============================================================================
+# 6502 Assembly (Merlin32)
+# =============================================================================
+
+MERLIN32     := /Users/hambook/Development/Merlin32_v1.2/MacOs/Merlin32
+MERLIN_LIB   := /Users/hambook/Development/Merlin32_v1.2/Library
+ASM_SRC      ?=
+
+assemble:
+ifndef ASM_SRC
+	@echo "Usage: make assemble ASM_SRC=software/PROJECT/SOURCE.S"
+	@exit 1
+endif
+	$(MERLIN32) $(MERLIN_LIB) $(ASM_SRC)
 
 # =============================================================================
 # Apple II Disk Utilities

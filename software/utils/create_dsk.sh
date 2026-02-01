@@ -45,6 +45,10 @@ for FILE in "$FOLDER"/*; do
     [[ -f "$FILE" ]] || continue
 
     FILENAME="${FILE##*/}"
+
+    # Skip Merlin32 metadata and hidden files
+    [[ "$FILENAME" == "_FileInformation.txt" ]] && continue
+    [[ "$FILENAME" == .* ]] && continue
     EXT="${FILENAME##*.}"
     EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
@@ -60,12 +64,35 @@ for FILE in "$FOLDER"/*; do
             ;;
         bin|obj)
             TYPE="BIN"
-            ADDR="0x2000"
+            ADDR="0x8000"  # Default load address
+            # Check _FileInformation.txt for Merlin32 metadata
+            FILEINFO="${FOLDER}/_FileInformation.txt"
+            if [[ -f "$FILEINFO" ]]; then
+                # Parse AuxType from Merlin32's metadata file
+                AUXTYPE=$(grep "^${FILENAME}=" "$FILEINFO" | sed -n 's/.*AuxType(\([0-9A-Fa-f]*\)).*/\1/p')
+                if [[ -n "$AUXTYPE" && "$AUXTYPE" != "0000" ]]; then
+                    ADDR="0x${AUXTYPE}"
+                fi
+            fi
             IS_TEXT=false
             ;;
         *)
-            TYPE="TXT"
-            IS_TEXT=true
+            # Files without extension treated as BIN (Merlin32 output)
+            if [[ "$FILENAME" == "$EXT" ]]; then
+                TYPE="BIN"
+                ADDR="0x8000"
+                FILEINFO="${FOLDER}/_FileInformation.txt"
+                if [[ -f "$FILEINFO" ]]; then
+                    AUXTYPE=$(grep "^${FILENAME}=" "$FILEINFO" | sed -n 's/.*AuxType(\([0-9A-Fa-f]*\)).*/\1/p')
+                    if [[ -n "$AUXTYPE" && "$AUXTYPE" != "0000" ]]; then
+                        ADDR="0x${AUXTYPE}"
+                    fi
+                fi
+                IS_TEXT=false
+            else
+                TYPE="TXT"
+                IS_TEXT=true
+            fi
             ;;
     esac
 

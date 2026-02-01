@@ -3,7 +3,9 @@
 * LOGIC ANALYZER DISPLAY       *
 ********************************
 *
+ DSK LOGIC
  ORG $8000
+ TYP $06
  JMP MAIN
 *-------------------------------
 * ZERO PAGES
