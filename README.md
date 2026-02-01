@@ -95,7 +95,7 @@ Six 74LVC8T245 bidirectional level shifters translate between the Apple II's 5V 
 | 12 | GPIO12 | A5 | General purpose I/O |
 | 13 | GND | - | Ground |
 
-All GPIO pins are 3.3V LVCMOS. See [byte_hamr.lpf](hardware/byte_hamr/constraints/byte_hamr.lpf) for full pin constraints.
+All GPIO pins are 3.3V LVCMOS. See [byte_hamr.lpf](gateware/constraints/byte_hamr.lpf) for full pin constraints.
 
 ## Project Status
 
@@ -108,36 +108,48 @@ See [VERSION.md](VERSION.md) for full version history.
 ```
 project_byte_hamr/
 ├── hardware/
-│   ├── byte_hamr/          # Main FPGA card
-│   │   ├── kicad/          # KiCad project files
-│   │   ├── bom/            # Bill of materials
-│   │   └── constraints/    # FPGA pin constraints
-│   └── byte_ravn/          # GPIO breakout board
-│       ├── kicad/          # KiCad project files
+│   └── byte_hamr/          # Main FPGA card
+│       ├── kicad/          # KiCad schematic and PCB
 │       ├── bom/            # Bill of materials
 │       └── gerbers/        # Manufacturing files
 ├── gateware/
-│   └── signal_check/       # Board bring-up test
+│   ├── constraints/        # FPGA pin constraints (LPF)
+│   ├── signal_check/       # Board bring-up test
+│   ├── sdram_test/         # Register-driven SDRAM access
+│   ├── pattern_rom/        # SDRAM-backed pattern ROM
+│   └── logic_hamr_v1/      # 8-channel logic analyzer
 ├── software/
-│   └── (coming soon)       # Apple II software
-└── docs/                   # Documentation and datasheets
+│   ├── ASM/                # 6502 assembly source (Merlin32)
+│   ├── LOGICHAMR/          # Logic analyzer disk contents
+│   └── utils/              # Disk image utilities
+└── docs/                   # Documentation
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
+**Gateware:**
 - [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) (recommended) or individual tools:
   - [Yosys](https://github.com/YosysHQ/yosys) (synthesis)
   - [nextpnr-ecp5](https://github.com/YosysHQ/nextpnr) (place and route)
   - [openFPGALoader](https://github.com/trabucayre/openFPGALoader) (programming)
-- Apple IIe or compatible system
+
+**6502 Assembly:**
+- [Merlin32](https://brutaldeluxe.fr/products/crossdevtools/merlin/) (cross-assembler)
+
+**Disk Utilities:**
+- [AppleCommander](https://applecommander.github.io/) (disk image manipulation)
+- [ADTPro](https://adtpro.com/) (disk transfer to real hardware)
+- Java runtime
 
 ### Building Gateware
 
 ```bash
 make                    # Build default design (signal_check)
 make DESIGN=xxx         # Build specific design
+make sim                # Run simulation
+make wave               # Run simulation and open GTKWave
 make help               # Show all available targets
 ```
 
@@ -148,6 +160,35 @@ make prog               # Program via JTAG (volatile, for testing)
 make prog-flash         # Program SPI flash (persistent)
 ```
 
+### Software Development Workflow
+
+```
+┌─────────────┐     ┌───────────────┐     ┌─────────────┐     ┌───────────┐
+│  Merlin32   │────▶│ AppleCommander│────▶│   ADTPro    │────▶│ Apple IIe │
+│  (assemble) │     │ (create .dsk) │     │  (transfer) │     │   (run)   │
+└─────────────┘     └───────────────┘     └─────────────┘     └───────────┘
+```
+
+```bash
+# 1. Edit source in software/LOGICHAMR/*.S
+
+# 2. Assemble with Merlin32
+make assemble ASM_SRC=software/LOGICHAMR/LOGIC.S
+
+# 3. Create disk image (auto-copied to ADTPro disks folder)
+make create-dsk DSK=LOGICHAMR
+
+# 4. Transfer via ADTPro to real hardware
+
+# 5. On Apple II: BRUN LOGIC
+```
+
+**Disk utilities:**
+```bash
+make extract-dsk DSK=file.dsk     # Extract files from disk image
+make list-dsk                     # List disks in ADTPro folder
+```
+
 ### Utility Commands
 
 ```bash
@@ -155,6 +196,15 @@ make pinout             # Regenerate FPGA pinout from schematics
 make lpf                # Regenerate LPF constraints
 make clean              # Remove build files
 ```
+
+## Gateware Designs
+
+| Design | Description |
+|--------|-------------|
+| [signal_check](gateware/signal_check/SIGNAL_CHECK.md) | Board bring-up test (SDRAM, GPIO, bus monitor) |
+| sdram_test | Register-driven SDRAM access from Apple II |
+| pattern_rom | SDRAM-backed pattern ROM for display testing |
+| [logic_hamr_v1](gateware/logic_hamr_v1/README.md) | 8-channel logic analyzer with HIRES display |
 
 ## Testing
 
@@ -191,11 +241,3 @@ Robert Rico
 ## Contributing
 
 This is an early-stage project. Issues, suggestions, and pull requests welcome once Rev 1 hardware is validated.
-
-## Up Next: Byte Ravn
-
-**Byte Ravn** is a companion breakout board that connects to the Byte Hamr GPIO header, providing easy access to FPGA I/O for prototyping and peripheral development.
-
-Design files are in [hardware/byte_ravn/](hardware/byte_ravn/).
-
----
