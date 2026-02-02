@@ -299,6 +299,7 @@ module logic_hamr_v1_top (
     // Byte capture register - captures bytes from decimate_pack
     reg [6:0]  captured_byte;
     reg        byte_pending;
+    reg        byte_captured_during_write;  // Flag: new byte arrived during SDRAM write delay
 
     // =========================================================================
     // Register File
@@ -340,7 +341,7 @@ module logic_hamr_v1_top (
                 cfg_stretch       = 8'd7;
             end
             2'd1: begin  // Preset 2: 88us window (default)
-                cfg_total_samples = 9'd88;
+                cfg_total_samples = 9'd88;   // 88 * 3 = 264 pixels (2 short, but no overflow)
                 cfg_pre_samples   = 4'd4;
                 cfg_post_samples  = 9'd84;
                 cfg_stretch       = 8'd3;
@@ -437,6 +438,7 @@ module logic_hamr_v1_top (
         dec_flush        = 1'b0;
         captured_byte    = 7'd0;
         byte_pending     = 1'b0;
+        byte_captured_during_write = 1'b0;
 
         // Refresh
         refresh_cnt    = REFRESH_INTERVAL;
@@ -464,6 +466,8 @@ module logic_hamr_v1_top (
     // Decimate Pack Module Instance
     // =========================================================================
 
+    wire dec_ready;  // decimate_pack ready for next sample
+
     decimate_pack u_decimate_pack (
         .clk(clk),
         .rst(dec_rst),
@@ -472,7 +476,8 @@ module logic_hamr_v1_top (
         .flush(dec_flush),             // Emit partial byte at end of channel
         .stretch_factor(reg_stretch),  // Full 8 bits (1-255)
         .byte_out(dec_byte_out),
-        .byte_valid(dec_byte_valid)
+        .byte_valid(dec_byte_valid),
+        .ready(dec_ready)
     );
 
     // =========================================================================
@@ -702,7 +707,19 @@ module logic_hamr_v1_top (
                 4'h1: reg_addr <= sampled_data;
                 4'h2: ;  // DATA is read-only
                 4'h3: begin  // CMD register
-                    if (!sdram_busy) begin
+                    if (sampled_data == 8'hFF) begin
+                        // $FF = SOFT RESET - force state machine back to idle
+                        sdram_state <= ST_CAP_IDLE;
+                        sdram_busy <= 1'b0;
+                        armed <= 1'b0;
+                        captured <= 1'b0;
+                        pattern_loaded <= 1'b0;
+                        cmd_pending <= 1'b0;
+                        dec_rst <= 1'b1;  // Reset decimate_pack
+                        byte_pending <= 1'b0;
+                        byte_captured_during_write <= 1'b0;
+                        post_trigger_mode <= 1'b0;
+                    end else if (!sdram_busy) begin
                         if (sampled_data == 8'h02 && pattern_loaded) begin
                             // $02 = Read byte from SDRAM display buffer
                             cmd_pending <= 1'b1;
@@ -945,6 +962,7 @@ module logic_hamr_v1_top (
                     regen_byte_idx <= 6'd0;
                     gen_byte_idx <= 6'd0;  // Reuse for display buffer byte tracking
                     byte_pending <= 1'b0;
+                    byte_captured_during_write <= 1'b0;
                     pattern_loading <= 1'b1;
                     reg_stretch <= cfg_stretch;  // Use window preset stretch factor
                     sdram_delay <= 16'd2;
@@ -984,6 +1002,8 @@ module logic_hamr_v1_top (
                         sdram_state <= ST_REGEN_WAIT;
                     end else begin
                         // All samples processed for this channel
+                        // Add delay to let decimate_pack finish processing last sample
+                        sdram_delay <= 16'd4;
                         sdram_state <= ST_REGEN_NEXT;
                     end
                 end else begin
@@ -1011,12 +1031,17 @@ module logic_hamr_v1_top (
                 end
 
                 if (sdram_delay == 0) begin
-                    // Extract the bit for current channel from captured sample
-                    dec_sample_in <= sdram_dq_sample[regen_channel];
-                    dec_sample_valid <= 1'b1;
-                    regen_sample_idx <= regen_sample_idx + 1'b1;
-                    sdram_delay <= 16'd2;
-                    sdram_state <= ST_REGEN_READ;
+                    // Wait for decimate_pack to be ready before sending next sample
+                    // This prevents overrunning when stretch_factor > 2
+                    if (dec_ready) begin
+                        // Extract the bit for current channel from captured sample
+                        dec_sample_in <= sdram_dq_sample[regen_channel];
+                        dec_sample_valid <= 1'b1;
+                        regen_sample_idx <= regen_sample_idx + 1'b1;
+                        sdram_delay <= 16'd2;
+                        sdram_state <= ST_REGEN_READ;
+                    end
+                    // If not ready, stay in this state and keep checking
                 end else begin
                     sdram_delay <= sdram_delay - 1'b1;
                 end
@@ -1025,26 +1050,38 @@ module logic_hamr_v1_top (
             ST_REGEN_WRITE: begin
                 // Write display byte to SDRAM
                 if (sdram_delay == 0) begin
-                    sdram_cmd <= CMD_WRITE;
-                    // Display buffer address: 0x200 + (channel * 38) + byte_idx
-                    sdram_addr <= {2'b01, DISPLAY_BUFFER_BASE[9:0] + {1'b0, gen_channel_times_38} + {4'b0, gen_byte_idx}, 1'b0};
-                    sdram_dq_out <= {8'h00, 1'b0, captured_byte};  // Bit 7 = 0 (palette)
-                    sdram_dq_oe <= 1'b1;
-                    gen_byte_idx <= gen_byte_idx + 1'b1;
+                    // Only write if we haven't filled all 38 bytes yet
+                    if (gen_byte_idx < BYTES_PER_CHANNEL) begin
+                        sdram_cmd <= CMD_WRITE;
+                        // Display buffer address: 0x200 + (channel * 38) + byte_idx
+                        sdram_addr <= {2'b01, DISPLAY_BUFFER_BASE[9:0] + {1'b0, gen_channel_times_38} + {4'b0, gen_byte_idx}, 1'b0};
+                        sdram_dq_out <= {8'h00, 1'b0, captured_byte};  // Bit 7 = 0 (palette)
+                        sdram_dq_oe <= 1'b1;
+                        gen_byte_idx <= gen_byte_idx + 1'b1;
+                    end
                     sdram_delay <= 16'd4;
 
-                    // Capture new byte or clear pending
+                    // Check if we captured a new byte during the delay OR right now
                     if (dec_byte_valid) begin
                         captured_byte <= dec_byte_out;
+                        // byte_pending stays 1 - new byte just arrived
+                    end else if (byte_captured_during_write) begin
+                        // Byte was captured during delay, byte_pending stays 1
+                        // captured_byte already has the right value
                     end else begin
+                        // No new byte, clear pending
                         byte_pending <= 1'b0;
                     end
+                    byte_captured_during_write <= 1'b0;  // Reset flag for next write
 
                     sdram_state <= ST_REGEN_READ;
                 end else begin
-                    if (dec_byte_valid && !byte_pending) begin
+                    // Capture any new byte while waiting to issue write command
+                    // The byte we're about to write is already committed (captured_byte),
+                    // so we can safely overwrite it with a new value for the NEXT write
+                    if (dec_byte_valid) begin
                         captured_byte <= dec_byte_out;
-                        byte_pending <= 1'b1;
+                        byte_captured_during_write <= 1'b1;  // Remember we got one
                     end
                     sdram_delay <= sdram_delay - 1'b1;
                 end
@@ -1061,8 +1098,12 @@ module logic_hamr_v1_top (
                 end
 
                 if (sdram_delay == 0) begin
-                    if (byte_pending) begin
-                        // Write the pending byte
+                    if (byte_pending || dec_byte_valid) begin
+                        // Write the pending byte (check dec_byte_valid too in case flush just emitted)
+                        if (dec_byte_valid && !byte_pending) begin
+                            captured_byte <= dec_byte_out;
+                            byte_pending <= 1'b1;
+                        end
                         sdram_cmd <= CMD_ACTIVE;
                         sdram_ba <= 2'd0;
                         sdram_addr <= 13'd0;

@@ -27,7 +27,8 @@ module decimate_pack (
     input  wire [7:0] stretch_factor,
 
     output reg  [6:0] byte_out,
-    output reg        byte_valid
+    output reg        byte_valid,
+    output wire       ready            // High when ready to accept next sample
 );
 
     // =========================================================================
@@ -39,6 +40,10 @@ module decimate_pack (
     reg [7:0] stretch_cnt;    // Pixels remaining for current sample
     reg       sample_latched; // Latched sample value
     reg       active;         // Processing pixels for a sample
+
+    // Ready signal: can accept new sample when not actively processing,
+    // or on the last cycle of processing (stretch_cnt will be 0 next cycle)
+    assign ready = !active || (stretch_cnt == 8'd1);
 
     // =========================================================================
     // Initialization
@@ -80,7 +85,8 @@ module decimate_pack (
             end
 
             // Process pixels while active
-            if (active && stretch_cnt > 0) begin
+            // Skip processing if new sample is arriving (let the sample_valid block handle it)
+            if (active && stretch_cnt > 0 && !sample_valid) begin
                 // Accumulate current sample bit at bit_pos (LSB-first)
                 if (sample_latched) begin
                     accum <= accum | (7'd1 << bit_pos);
