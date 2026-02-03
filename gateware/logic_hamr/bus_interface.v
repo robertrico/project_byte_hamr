@@ -1,5 +1,5 @@
 // =============================================================================
-// Bus Interface for Logic Hamr v2
+// Bus Interface for Logic Hamr
 // =============================================================================
 //
 // Handles the Apple II register interface:

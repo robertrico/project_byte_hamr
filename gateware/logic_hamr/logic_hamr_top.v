@@ -1,5 +1,5 @@
 // =============================================================================
-// Logic Hamr v2 - Top Level Integration
+// Logic Hamr - Top Level Integration
 // =============================================================================
 //
 // Modular architecture with parallel regeneration.
@@ -20,7 +20,7 @@
 //
 // =============================================================================
 
-module logic_hamr_v2_top (
+module logic_hamr_top (
     // System clock
     input  wire        CLK_25MHz,
 

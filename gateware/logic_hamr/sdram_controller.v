@@ -1,5 +1,5 @@
 // =============================================================================
-// SDRAM Controller for Logic Hamr v2
+// SDRAM Controller for Logic Hamr
 // =============================================================================
 //
 // Provides a simple SRAM-like interface to the SDRAM, abstracting all timing

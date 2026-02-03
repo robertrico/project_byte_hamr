@@ -1,5 +1,5 @@
 // =============================================================================
-// Capture Engine for Logic Hamr v2
+// Capture Engine for Logic Hamr
 // =============================================================================
 //
 // Manages the complete capture lifecycle:

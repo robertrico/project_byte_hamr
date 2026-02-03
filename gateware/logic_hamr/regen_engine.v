@@ -1,5 +1,5 @@
 // =============================================================================
-// Regeneration Engine for Logic Hamr v2
+// Regeneration Engine for Logic Hamr
 // =============================================================================
 //
 // Core redesign: Processes all 8 channels in PARALLEL from a single SDRAM pass.
