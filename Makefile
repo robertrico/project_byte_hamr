@@ -27,6 +27,7 @@ SPEED    := 8
 BUILD_DIR     := build
 GATEWARE_DIR  := gateware
 CONSTRAINT_DIR := gateware/constraints
+REPORT_DIR    := reporting
 
 # Constraints: use design-specific LPF if it exists, otherwise use base
 LPF_BASE    := $(CONSTRAINT_DIR)/byte_hamr.lpf
@@ -36,8 +37,8 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 # Default design
 DESIGN ?= signal_check
 
-.PHONY: all clean help synth pnr bit prog prog-flash prog-detect pinout lpf sim wave unit unit-wave \
-        assemble extract-dsk create-dsk list-dsk
+.PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
+        sim wave unit unit-wave assemble extract-dsk create-dsk list-dsk report
 
 # =============================================================================
 # Default target
@@ -58,6 +59,17 @@ help:
 	@echo "  make bit          - Generate bitstream"
 	@echo "  make prog         - Program via JTAG (volatile)"
 	@echo "  make prog-flash   - Program SPI flash (persistent)"
+	@echo ""
+	@echo "Reporting:"
+	@echo "  make report       - View build summary for DESIGN"
+	@echo "  Reports saved to: reporting/"
+	@echo "    *_synth.log     - Full Yosys synthesis log"
+	@echo "    *_synth_stat.txt- Cell/wire statistics"
+	@echo "    *_pnr.log       - Full nextpnr log"
+	@echo "    *_pnr_report.json - Detailed PnR report (JSON)"
+	@echo "    *_timing.txt    - Timing summary"
+	@echo "    *_utilization.txt - Resource usage"
+	@echo "    *_summary.txt   - Combined build summary"
 	@echo ""
 	@echo "Simulation:"
 	@echo "  make sim          - Run simulation"
@@ -91,6 +103,9 @@ help:
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
+$(REPORT_DIR):
+	@mkdir -p $(REPORT_DIR)
+
 # =============================================================================
 # Gateware build
 # =============================================================================
@@ -105,31 +120,100 @@ CFG  := $(BUILD_DIR)/$(DESIGN).config
 BIT  := $(BUILD_DIR)/$(DESIGN).bit
 SVF  := $(BUILD_DIR)/$(DESIGN).svf
 
+# Report files
+SYNTH_LOG    := $(REPORT_DIR)/$(DESIGN)_synth.log
+SYNTH_STAT   := $(REPORT_DIR)/$(DESIGN)_synth_stat.txt
+PNR_LOG      := $(REPORT_DIR)/$(DESIGN)_pnr.log
+PNR_REPORT   := $(REPORT_DIR)/$(DESIGN)_pnr_report.json
+TIMING_RPT   := $(REPORT_DIR)/$(DESIGN)_timing.txt
+UTIL_RPT     := $(REPORT_DIR)/$(DESIGN)_utilization.txt
+
 # Get top module name (assume it matches directory name + _top)
 TOP := $(DESIGN)_top
 
 synth: $(JSON)
 
-$(JSON): $(VERILOG_SRC) | $(BUILD_DIR)
+$(JSON): $(VERILOG_SRC) | $(BUILD_DIR) $(REPORT_DIR)
 	@echo "=== Synthesizing $(DESIGN) with Yosys ==="
-	$(YOSYS) -q -p "read_verilog $(VERILOG_SRC); synth_ecp5 -top $(TOP) -json $@"
+	@echo "Synthesis started at $$(date)" > $(SYNTH_LOG)
+	@echo "Design: $(DESIGN)" >> $(SYNTH_LOG)
+	@echo "Top module: $(TOP)" >> $(SYNTH_LOG)
+	@echo "Source files: $(VERILOG_SRC)" >> $(SYNTH_LOG)
+	@echo "" >> $(SYNTH_LOG)
+	$(YOSYS) -p "\
+		read_verilog $(VERILOG_SRC); \
+		synth_ecp5 -top $(TOP) -json $@; \
+		stat -top $(TOP)" 2>&1 | tee -a $(SYNTH_LOG)
+	@echo "" >> $(SYNTH_LOG)
+	@echo "Synthesis completed at $$(date)" >> $(SYNTH_LOG)
+	@# Extract stats to separate file
+	@grep -A 100 "Printing statistics" $(SYNTH_LOG) > $(SYNTH_STAT) 2>/dev/null || true
+	@echo ""
 	@echo "Synthesis complete: $@"
+	@echo "Reports: $(SYNTH_LOG), $(SYNTH_STAT)"
 
 pnr: $(CFG)
 
-$(CFG): $(JSON) $(LPF)
+$(CFG): $(JSON) $(LPF) | $(REPORT_DIR)
 	@echo "=== Place & Route with nextpnr ==="
+	@echo "Place & Route started at $$(date)" > $(PNR_LOG)
+	@echo "Design: $(DESIGN)" >> $(PNR_LOG)
+	@echo "Device: $(DEVICE), Package: $(PACKAGE), Speed: $(SPEED)" >> $(PNR_LOG)
+	@echo "Constraints: $(LPF)" >> $(PNR_LOG)
+	@echo "" >> $(PNR_LOG)
 	$(NEXTPNR) --$(DEVICE) --package $(PACKAGE) --speed $(SPEED) \
 		--lpf $(LPF) --json $(JSON) --textcfg $@ \
-		--timing-allow-fail
+		--report $(PNR_REPORT) \
+		--timing-allow-fail 2>&1 | tee -a $(PNR_LOG)
+	@echo "" >> $(PNR_LOG)
+	@echo "Place & Route completed at $$(date)" >> $(PNR_LOG)
+	@# Extract timing summary
+	@echo "=== Timing Summary ===" > $(TIMING_RPT)
+	@echo "Generated: $$(date)" >> $(TIMING_RPT)
+	@echo "" >> $(TIMING_RPT)
+	@grep -E "(Max frequency|Slack|Critical|constraint)" $(PNR_LOG) >> $(TIMING_RPT) 2>/dev/null || echo "No timing info found" >> $(TIMING_RPT)
+	@# Extract utilization
+	@echo "=== Resource Utilization ===" > $(UTIL_RPT)
+	@echo "Generated: $$(date)" >> $(UTIL_RPT)
+	@echo "Design: $(DESIGN)" >> $(UTIL_RPT)
+	@echo "" >> $(UTIL_RPT)
+	@grep -E "(TRELLIS_SLICE|TRELLIS_IO|DCCA|DP16KD|MULT18X18D|ALU54B|EHXPLLL|EXTREFB|DCUA|PCSCLKDIV|BRAM|LUT|FF|IO)" $(PNR_LOG) >> $(UTIL_RPT) 2>/dev/null || echo "No utilization info found" >> $(UTIL_RPT)
+	@echo ""
 	@echo "Place & route complete: $@"
+	@echo "Reports: $(PNR_LOG), $(PNR_REPORT), $(TIMING_RPT), $(UTIL_RPT)"
 
 bit: $(BIT)
 
-$(BIT): $(CFG)
+$(BIT): $(CFG) | $(REPORT_DIR)
 	@echo "=== Generating Bitstream ==="
 	$(ECPPACK) --input $< --bit $@ --svf $(SVF) --freq 62.0
 	@echo "Bitstream ready: $@"
+	@# Generate build summary
+	@echo "=== Build Summary for $(DESIGN) ===" > $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "Generated: $$(date)" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "Bitstream: $@" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "Size: $$(ls -lh $@ | awk '{print $$5}')" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "--- Synthesis Stats ---" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@cat $(SYNTH_STAT) >> $(REPORT_DIR)/$(DESIGN)_summary.txt 2>/dev/null || echo "(not available)" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "--- Utilization ---" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@cat $(UTIL_RPT) >> $(REPORT_DIR)/$(DESIGN)_summary.txt 2>/dev/null || echo "(not available)" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo "--- Timing ---" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@cat $(TIMING_RPT) >> $(REPORT_DIR)/$(DESIGN)_summary.txt 2>/dev/null || echo "(not available)" >> $(REPORT_DIR)/$(DESIGN)_summary.txt
+	@echo ""
+	@echo "Build summary: $(REPORT_DIR)/$(DESIGN)_summary.txt"
+
+report:
+	@echo "=== Build Reports for $(DESIGN) ==="
+	@echo ""
+	@if [ -f $(REPORT_DIR)/$(DESIGN)_summary.txt ]; then \
+		cat $(REPORT_DIR)/$(DESIGN)_summary.txt; \
+	else \
+		echo "No reports found. Run 'make DESIGN=$(DESIGN)' first."; \
+	fi
 
 # =============================================================================
 # Simulation
@@ -172,7 +256,6 @@ wave: sim
 # Usage: make unit DESIGN=logic_hamr_v1 MODULE=decimate_pack
 
 MODULE ?=
-UNIT_SRC := $(DESIGN_DIR)/$(MODULE).v
 UNIT_TB  := $(DESIGN_DIR)/$(MODULE)_tb.v
 UNIT_OUT := $(BUILD_DIR)/$(MODULE)_tb.vvp
 UNIT_VCD := $(BUILD_DIR)/$(MODULE)_tb.vcd
@@ -182,9 +265,9 @@ unit: $(UNIT_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(MODULE)_tb.vvp
 	@if [ -f $(UNIT_VCD) ]; then echo "VCD written to $(UNIT_VCD)"; fi
 
-$(UNIT_OUT): $(UNIT_SRC) $(UNIT_TB) | $(BUILD_DIR)
+$(UNIT_OUT): $(VERILOG_SRC) $(UNIT_TB) | $(BUILD_DIR)
 	@echo "=== Compiling Unit Testbench: $(MODULE) ==="
-	$(IVERILOG) -o $@ -s $(MODULE)_tb $(UNIT_SRC) $(UNIT_TB)
+	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(UNIT_TB)
 
 unit-wave: unit
 	@echo "=== Opening Unit Test Waveform ==="
@@ -279,3 +362,10 @@ list-dsk:
 clean:
 	@rm -rf $(BUILD_DIR)
 	@echo "Build directory cleaned"
+
+clean-reports:
+	@rm -rf $(REPORT_DIR)
+	@echo "Reports directory cleaned"
+
+clean-all: clean clean-reports
+	@echo "All build artifacts cleaned"

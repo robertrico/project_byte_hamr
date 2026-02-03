@@ -55,3 +55,8 @@ __pycache__/
 # Yosys/nextpnr intermediate files
 *.log
 *.rpt
+
+# Reporting
+/reporting/*.txt
+/reporting/*.json
+/reporting/*.log
