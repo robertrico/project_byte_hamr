@@ -1,0 +1,39 @@
+NMOS 6502 Phantom Reads, Odd Yellowstone Bugs
+
+October 23rd, 2022 | Category: Yellowstone | Author: Steve
+
+History repeats itself. I've been bitten by an obscure Yellowstone bug related to 6502 phantom reads, and it's exactly the same problem that I struggled with 13 years ago during the design of my BMOW 1 homebrew wire-wrapped CPU. In both cases, I designed some hardware where CPU reads from a specific address would have side-effects that changed the machine state. And in both cases, I later encountered baffling bugs where the CPU would perform unintentional reads from those special addresses, thanks to the CPU's implementation details, even though the program instructions never specified a read there. It's an especially sneaky bug when examining the source code listing reveals nothing, and you need to break the abstraction barrier and look at how the CPU actually implements each instruction.
+
+Back in 2009 the problem was BMOW 1's audio system, and this time it was the Yellowstone Apple II disk controller's Smartport hard disk I/O.
+
+$CFF8: A Special-Purpose Disk Read Register
+
+    LOOP:
+    LDA DISKREG
+    BPL LOOP
+    STA ($4B),Y
+    ...
+
+With a traditional Apple II disk controller, in order to read the data bitstream from the disk, the program must continuously poll a shift register and check if the MSB is 1. This checking and polling loop eats CPU time, creating an upper bound on the fastest bit rate that a 1 MHz Apple II can process reliably. Yellowstone takes a different approach. When the program reads from the special address $CFF8, the Yellowstone hardware halts the CPU by deasserting the 6502 RDY signal until the shift register is filled. When the CPU resumes and the program reaches the next instruction, it's guaranteed to have a good value with an MSB of 1, so checking the value isn't needed. This provides just enough time savings in the inner loop for a 1 MHz Apple II to handle the faster bit rate of 3.5 inch disks, which is twice as fast as 5.25 inch disks. Pretty neat!
+
+If the program code ever accidentally read from $CFF8 when it didn't intend to fetch disk data, that would create a big problem by halting the CPU and desynchronizing the disk bitstream. But accidental reads should be trivial to avoid – just don't use $CFF8 for any other purpose. If the code doesn't reference $CFF8, then $CFF8 won't be read… right? RIGHT? Wrong. It turns out that was a safe assumption for the 65C02, the second-generation version of the CPU that included various improvements and new instructions, and that's present in the enhanced Apple IIe and Apple IIc. But for the original NMOS 6502, as found in the Apple II+ and unenhanced Apple IIe, it's a different story.
+
+Total Replay, Yellowstone, and the Unenhanced IIe
+
+I first became aware of a possible problem after a few Yellowstone owners reported that Total Replay was freezing during startup, before ever reaching the main menu. Putting all the reports together, it emerged that everyone with this problem was running on an unenhanced Apple IIe system. For quite a while I assumed this was probably a Total Replay bug. Maybe it used one of the instructions only available on the 65C02, or relied on some ROM code only present in the enhanced IIe ROM.
+
+Recently with the help of Peter Ferrie, I began digging into the mystery in more detail. Peter shared that Total Replay was running without trouble on unenhanced IIe systems with other disk controllers, so this was apparently a Yellowstone-specific problem. Where could I begin troubleshooting? I don't own an unenhanced IIe, but I have an enhanced Apple IIe and some ROMs and a spare NMOS 6502, so I could make an unenhnaced IIe. I could even create a Frankenstein hybrid system with a 65C02 but the unenhanced ROMs, or a plain 6502 and the enhanced ROMs. My experiments found that the problem was caused by the NMOS 6502 CPU, not by any difference in the ROM. But why?
+
+STA (indirect),Y
+
+Deep in the Yellowstone firmware for Smartport hard disk reads, you'll find the instruction STA ($4B),Y. This instruction stores one byte from the disk into a user-supplied buffer, using a 16-bit buffer pointer stored at $4B-$4C plus an 8-bit offset from the Y register. For reasons of program efficiency, and using the Y register for two purposes at once, the code subtracts a fixed value from the $4B-$4C pointer and adds the same value to Y in order to compensate. For example if the buffer begins at $D000, then to store a byte at $D0F1, the code might use a Y value of $F9 and a $4B-$4C value of $CFF8. Queue the spooky foreboding music here.
+
+On the 65C02, STA (indirect),Y requires five clock cycles to execute: two cycles to fetch the opcode and operand, two cycles to read two bytes in the 16-bit pointer, and one cycle to perform the write to the calculated address including the Y offset. All good. But for the NMOS 6502 the same instruction requires six clock cycles. During the extra clock cycle, which occurs after reading the 16-bit pointer but before doing the write, the CPU performs a useless and supposedly-harmless read from the unadjusted pointer address: $CFF8. This is simply a side-effect of how the CPU works, an implementation detail footnote, because this older version of the 6502 can't read the pointer and apply the Y offset all in a single clock cycle. But it means that when Yellowstone reads a Smartport disk block into address $D000 using an NMOS 6502, it triggers a phantom read from $CFF8 and halts the CPU. That's what was happening to Total Replay on the unenhanced Apple IIe.
+
+Now What?
+
+Peter suggested it would be possible to modify Total Replay to avoid loading blocks directly to $D000. I hope to save him that effort, and fix the root problem in the Yellowstone firmware instead, because other software may have the same problem when running on the NMOS 6502. I haven't found another example yet, and standard software like DOS 3.3 and ProDOS appear to work OK. But there are probably other examples lurking out there somewhere.
+
+How can the Yellowstone hardware tell the difference between an intentional read of $CFF8 and a phantom read? It can't, not really. It just sees that $CFF8 appears on the address bus, the proper address decoding signals are asserted, and that's the end of the story.
+
+Fortunately Yellowstone is built around an FPGA, which creates the possibility for more complex address decoding behavior than would be possible with just a couple of discrete logic chips. My plan is to save information about what happened on the preceding bus cycles, and when $CFF8 appears on the address bus, use that extra information to help decide whether it was an intentional read. The details may be tricky but I think this approach should work. Meanwhile I'll have more respect for the unintended consequences of phantom reads, and hopefully avoid making the same mistake again 13 years from now. Check back in 2035.

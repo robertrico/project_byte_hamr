@@ -113,6 +113,7 @@ $(REPORT_DIR):
 # Find all Verilog source files for the design (exclude testbenches)
 DESIGN_DIR := $(GATEWARE_DIR)/$(DESIGN)
 VERILOG_SRC := $(filter-out %_tb.v,$(wildcard $(DESIGN_DIR)/*.v))
+MEM_FILES := $(wildcard $(DESIGN_DIR)/*.mem)
 
 # Output files
 JSON := $(BUILD_DIR)/$(DESIGN).json
@@ -133,17 +134,19 @@ TOP := $(DESIGN)_top
 
 synth: $(JSON)
 
-$(JSON): $(VERILOG_SRC) | $(BUILD_DIR) $(REPORT_DIR)
+$(JSON): $(VERILOG_SRC) $(MEM_FILES) | $(BUILD_DIR) $(REPORT_DIR)
 	@echo "=== Synthesizing $(DESIGN) with Yosys ==="
 	@echo "Synthesis started at $$(date)" > $(SYNTH_LOG)
 	@echo "Design: $(DESIGN)" >> $(SYNTH_LOG)
 	@echo "Top module: $(TOP)" >> $(SYNTH_LOG)
 	@echo "Source files: $(VERILOG_SRC)" >> $(SYNTH_LOG)
 	@echo "" >> $(SYNTH_LOG)
-	$(YOSYS) -p "\
-		read_verilog $(VERILOG_SRC); \
-		synth_ecp5 -top $(TOP) -json $@; \
-		stat -top $(TOP)" 2>&1 | tee -a $(SYNTH_LOG)
+	@# Copy any .mem files to build directory for synthesis
+	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
+	cd $(BUILD_DIR) && $(YOSYS) -p "\
+		read_verilog $(addprefix ../,$(VERILOG_SRC)); \
+		synth_ecp5 -top $(TOP) -json $(DESIGN).json; \
+		stat -top $(TOP)" 2>&1 | tee -a ../$(SYNTH_LOG)
 	@echo "" >> $(SYNTH_LOG)
 	@echo "Synthesis completed at $$(date)" >> $(SYNTH_LOG)
 	@# Extract stats to separate file
@@ -238,8 +241,10 @@ sim: $(SIM_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) | $(BUILD_DIR)
+$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(MEM_FILES) | $(BUILD_DIR)
 	@echo "=== Compiling Testbench ==="
+	@# Copy any .mem files to build directory for simulation
+	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
 	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MAIN_TB)
 
 wave: sim

@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "bmowdisk")(type "KiCad")(uri "$(KIPRJMOD)/bmowdisk.pretty")(options "")(descr ""))
+)
