@@ -118,15 +118,15 @@ module logic_hamr_top (
     output wire        GPIO1,   // Heartbeat
     output wire        GPIO2,   // Ready
     output wire        GPIO3,   // Armed
-    output wire        GPIO4,   // Captured
-    input  wire        GPIO5,   // PROBE[0]
-    input  wire        GPIO6,   // PROBE[1]
-    input  wire        GPIO7,   // PROBE[2]
-    input  wire        GPIO8,   // PROBE[3]
-    input  wire        GPIO9,   // PROBE[4]
-    input  wire        GPIO10,  // PROBE[5]
-    input  wire        GPIO11,  // PROBE[6]
-    input  wire        GPIO12   // PROBE[7]
+    input  wire        GPIO4,   // PROBE[0]
+    input  wire        GPIO5,   // PROBE[1]
+    input  wire        GPIO6,   // PROBE[2]
+    input  wire        GPIO7,   // PROBE[3]
+    input  wire        GPIO8,   // PROBE[4]
+    input  wire        GPIO9,   // PROBE[5]
+    input  wire        GPIO10,  // PROBE[6]
+    input  wire        GPIO11,  // (unused)
+    output wire        GPIO12   // Directly drives D[7:0] level shifter active-low output enable
 );
 
     // =========================================================================
@@ -134,7 +134,10 @@ module logic_hamr_top (
     // =========================================================================
 
     wire [7:0]  apple_data_in = {D7, D6, D5, D4, D3, D2, D1, D0};
-    wire [7:0] PROBE = {GPIO12, GPIO11, GPIO10, GPIO9, GPIO8, GPIO7, GPIO6, GPIO5};
+    wire [7:0] PROBE = {1'b0, GPIO10, GPIO9, GPIO8, GPIO7, GPIO6, GPIO5, GPIO4};
+
+    // Pass through nDEVICE_SELECT to level shifter OE (active-low)
+    assign GPIO12 = nDEVICE_SELECT;
 
     // =========================================================================
     // Clock and Reset
@@ -602,6 +605,5 @@ module logic_hamr_top (
 
     assign GPIO2 = ready;     // Display buffer ready for reading
     assign GPIO3 = armed;     // Capture engine armed, waiting for trigger
-    assign GPIO4 = captured;  // Capture complete
 
 endmodule
