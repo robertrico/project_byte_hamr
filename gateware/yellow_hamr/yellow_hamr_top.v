@@ -29,7 +29,7 @@
 //   GPIO8:    _enbl1   - Drive 1 enable (active LOW)
 //   GPIO9:    _wrreq   - Write request (active LOW)
 //   GPIO10:   _enbl2   - Drive 2 enable (active LOW)
-//   GPIO11:   R_nW     - Read/Write direction (useful for debug)
+//   GPIO11:   rom_expansion_active - Expansion ROM active (debug)
 //   GPIO12:   Level shifter OE (active-low, for Apple II data bus)
 // =============================================================================
 
@@ -83,10 +83,10 @@ module yellow_hamr_top (
     input wire        GPIO6,            // rddata
     input wire        GPIO7,            // sense
     output wire       GPIO8,            // _enbl1
-    // Debug/control outputs
-    output wire       GPIO9,            // Debug: nDEVICE_SELECT
-    output wire       GPIO10,           // Debug: nI_O_SELECT
-    output wire       GPIO11,           // Debug: R_nW
+    // Additional outputs
+    output wire       GPIO9,            // _wrreq
+    output wire       GPIO10,           // _enbl2
+    output wire       GPIO11,           // rom_expansion_active (debug)
     output wire       GPIO12            // Level shifter OE (directly controls D[7:0] buffer, active-low)
 );
 
@@ -105,6 +105,11 @@ module yellow_hamr_top (
     wire       _enbl1;
     wire       _enbl2;
     wire       _wrreq;
+
+    // 2-stage synchronizers for ESP32 signals (filters metastability from async IWM latches)
+    reg        _enbl1_s1, _enbl1_s2;
+    reg        _enbl2_s1, _enbl2_s2;
+    reg        _wrreq_s1, _wrreq_s2;
 
     // ROM signals
     wire [7:0] rom_data;
@@ -127,7 +132,7 @@ module yellow_hamr_top (
     assign GPIO3  = phase[2];
     assign GPIO4  = phase[3];
     assign GPIO5  = wrdata;
-    assign GPIO8  = _enbl1;
+    assign GPIO8  = _enbl1_s2;  // 2-stage sync for clean ESP32 signaling
 
     // Input mapping from GPIO
     assign rddata = GPIO6;
@@ -137,9 +142,9 @@ module yellow_hamr_top (
     // Additional IWM outputs for FujiNet compatibility
     // =========================================================================
 
-    assign GPIO9  = _wrreq;            // Write request (active low)
-    assign GPIO10 = _enbl2;            // Drive 2 enable (active low)
-    assign GPIO11 = R_nW;              // Read/Write direction (useful for debug)
+    assign GPIO9  = _wrreq_s2;         // Write request (active low, 2-stage sync)
+    assign GPIO10 = _enbl2_s2;         // Drive 2 enable (active low, 2-stage sync)
+    assign GPIO11 = rom_expansion_active;  // Expansion ROM active (debug)
 
     // =========================================================================
     // Level Shifter OE Control (active-low)
@@ -153,8 +158,19 @@ module yellow_hamr_top (
     assign GPIO12 = ~lvl_shift_oe;     // Active-low to level shifter
 
     // Heartbeat counter (no reset needed - just free-runs)
+    // 2-stage synchronizer for ESP32 signals (IWM uses async latches, need proper CDC)
     always @(posedge CLK_25MHz) begin
         heartbeat_cnt <= heartbeat_cnt + 1'b1;
+
+        // Stage 1: capture (may be metastable)
+        _enbl1_s1 <= _enbl1;
+        _enbl2_s1 <= _enbl2;
+        _wrreq_s1 <= _wrreq;
+
+        // Stage 2: resolve metastability (~80ns total delay)
+        _enbl1_s2 <= _enbl1_s1;
+        _enbl2_s2 <= _enbl2_s1;
+        _wrreq_s2 <= _wrreq_s1;
     end
 
     // nRES: Release reset line (open-drain output, 1 = hi-Z = released)

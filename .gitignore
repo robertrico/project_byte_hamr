@@ -47,6 +47,12 @@ build/
 *.bit
 *.svf
 
+# ESP-IDF / ESP32 firmware
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
 # Python
 __pycache__/
 *.pyc

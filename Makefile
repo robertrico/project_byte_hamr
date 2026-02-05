@@ -38,7 +38,8 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave unit unit-wave assemble extract-dsk create-dsk list-dsk report
+        sim wave unit unit-wave assemble extract-dsk create-dsk list-dsk report \
+        esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
 # Default target
@@ -91,6 +92,13 @@ help:
 	@echo "  make extract-dsk DSK=x.dsk  - Extract files (FORCE=1 to overwrite)"
 	@echo "  make create-dsk DSK=NAME     - Create disk from software/NAME/"
 	@echo "  make list-dsk                - List disks in ADTPro folder"
+	@echo ""
+	@echo "ESP32 Firmware (Yellow Hamr):"
+	@echo "  make esp-build              - Build firmware"
+	@echo "  make esp-flash              - Flash to device"
+	@echo "  make esp-monitor            - Serial monitor"
+	@echo "  make esp-all                - Build + flash + monitor"
+	@echo "  make esp-help               - Full ESP32 help"
 	@echo ""
 	@echo "Available designs:"
 	@for d in $(GATEWARE_DIR)/*/; do echo "  $$(basename $$d)"; done
@@ -359,6 +367,74 @@ endif
 
 list-dsk:
 	@for f in $(ADTPRO_DISKS)/*.dsk; do [ -f "$$f" ] && basename "$$f"; done 2>/dev/null || echo "No .dsk files found"
+
+# =============================================================================
+# ESP32 Firmware (Yellow Hamr companion)
+# =============================================================================
+# Requires: source ~/esp/esp-idf/export.sh (once per terminal session)
+# =============================================================================
+
+ESP_FW_DIR   := gateware/yellow_hamr/firmware
+ESP_PROJECT  ?= phase1_signal_monitor
+ESP_PORT     ?= $(shell ls /dev/cu.usbserial-* 2>/dev/null | head -1)
+IDF_PATH     ?= $(HOME)/esp/esp-idf
+
+.PHONY: esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help esp-check
+
+# Check if IDF is sourced
+esp-check:
+	@command -v idf.py >/dev/null 2>&1 || { \
+		echo ""; \
+		echo "ERROR: ESP-IDF not sourced. Run first:"; \
+		echo "  source $(IDF_PATH)/export.sh"; \
+		echo ""; \
+		exit 1; \
+	}
+
+esp-help:
+	@echo "=== ESP32 Firmware Targets ==="
+	@echo ""
+	@echo "First, source ESP-IDF (once per terminal):"
+	@echo "  source $(IDF_PATH)/export.sh"
+	@echo ""
+	@echo "Then:"
+	@echo "  make esp-build              - Build firmware"
+	@echo "  make esp-flash              - Flash to device"
+	@echo "  make esp-monitor            - Serial monitor"
+	@echo "  make esp-all                - Build + flash + monitor"
+	@echo "  make esp-clean              - Clean build"
+	@echo "  make esp-menuconfig         - SDK configuration"
+	@echo ""
+	@echo "Options:"
+	@echo "  ESP_PROJECT=xxx   - Firmware project (default: $(ESP_PROJECT))"
+	@echo "  ESP_PORT=xxx      - Serial port (default: auto-detect)"
+	@echo ""
+	@echo "Available firmware projects:"
+	@for d in $(ESP_FW_DIR)/*/; do echo "  $$(basename $$d)"; done
+	@echo ""
+
+esp-build: esp-check
+	@echo "=== Building ESP32 Firmware: $(ESP_PROJECT) ==="
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py build
+
+esp-flash: esp-check
+	@echo "=== Flashing ESP32: $(ESP_PROJECT) ==="
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py -p $(ESP_PORT) flash
+
+esp-monitor: esp-check
+	@echo "=== ESP32 Serial Monitor ==="
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py -p $(ESP_PORT) monitor
+
+esp-all: esp-build
+	@echo "=== Flash + Monitor ==="
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py -p $(ESP_PORT) flash monitor
+
+esp-clean:
+	@echo "=== Cleaning ESP32 build: $(ESP_PROJECT) ==="
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && rm -rf build sdkconfig
+
+esp-menuconfig: esp-check
+	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py menuconfig
 
 # =============================================================================
 # Cleanup

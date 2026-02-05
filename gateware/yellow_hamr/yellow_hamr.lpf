@@ -147,11 +147,11 @@ LOCATE COMP "GPIO8" SITE "D1";
 IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
 
 // =============================================================================
-// GPIO Header - Debug/Control (GPIO9-12)
+// GPIO Header - Additional Outputs (GPIO9-12)
 // =============================================================================
-// GPIO9:  nDEVICE_SELECT passthrough (scope trigger for IWM access)
-// GPIO10: nI_O_SELECT passthrough (scope trigger for ROM access)
-// GPIO11: R_nW passthrough (read/write direction)
+// GPIO9:  _wrreq (write request, active low)
+// GPIO10: _enbl2 (drive 2 enable, active low)
+// GPIO11: rom_expansion_active (debug)
 // GPIO12: Level shifter OE (active-low, controls D[7:0] buffer direction)
 LOCATE COMP "GPIO9" SITE "C1";
 IOBUF PORT "GPIO9" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=NONE;
