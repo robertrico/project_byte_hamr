@@ -8,7 +8,7 @@
  *   YH2  (phase[1]) → GPIO27
  *   YH3  (phase[2]) → GPIO26
  *   YH4  (phase[3]) → GPIO4
- *   YH5  (wrdata)   → GPIO2   (onboard LED will flicker)
+ *   YH5  (wrdata)   → GPIO23
  *   YH6  (rddata)   ← GPIO21
  *   YH7  (sense)    ← GPIO22
  *   YH8  (_enbl1)   → GPIO35
@@ -32,7 +32,7 @@ static const char *TAG = "signal_monitor";
 #define PIN_PHI1    GPIO_NUM_27  // YH GPIO2 - phase[1]
 #define PIN_PHI2    GPIO_NUM_26  // YH GPIO3 - phase[2]
 #define PIN_PHI3    GPIO_NUM_4   // YH GPIO4 - phase[3]
-#define PIN_WRDATA  GPIO_NUM_2   // YH GPIO5 - wrdata (also onboard LED)
+#define PIN_WRDATA  GPIO_NUM_23  // YH GPIO5 - wrdata
 #define PIN_RDDATA  GPIO_NUM_21  // YH GPIO6 - rddata (output to Yellow Hamr)
 #define PIN_ACK     GPIO_NUM_22  // YH GPIO7 - sense/ACK (output to Yellow Hamr)
 #define PIN_ENBL1   GPIO_NUM_35  // YH GPIO8 - _enbl1 (input-only pin)
