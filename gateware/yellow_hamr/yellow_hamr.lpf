@@ -5,7 +5,10 @@
 // =============================================================================
 // Clock Constraints
 // =============================================================================
-FREQUENCY PORT "CLK_25MHz" 25 MHz;
+// CLK_25MHz is deliberately unused — single clock domain design using sig_7M
+// only, matching Yellowstone's no-oscillator architecture. No FREQUENCY
+// constraint for CLK_25MHz prevents nextpnr from creating a second clock
+// domain and analyzing false cross-domain timing violations.
 FREQUENCY PORT "sig_7M" 7.16 MHz;
 
 // =============================================================================
@@ -140,9 +143,9 @@ IOBUF PORT "GPIO4" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
 LOCATE COMP "GPIO5" SITE "F2";
 IOBUF PORT "GPIO5" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
 LOCATE COMP "GPIO6" SITE "E2";
-IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 PULLMODE=DOWN;
+IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 PULLMODE=NONE;  // rddata input from ESP32 - no pull to avoid fighting
 LOCATE COMP "GPIO7" SITE "E1";
-IOBUF PORT "GPIO7" IO_TYPE=LVCMOS33 PULLMODE=DOWN;
+IOBUF PORT "GPIO7" IO_TYPE=LVCMOS33 PULLMODE=NONE;  // sense input from ESP32 - no pull to avoid fighting
 LOCATE COMP "GPIO8" SITE "D1";
 IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
 
@@ -151,7 +154,7 @@ IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
 // =============================================================================
 // GPIO9:  _wrreq (write request, active low)
 // GPIO10: _enbl2 (drive 2 enable, active low)
-// GPIO11: rom_expansion_active (debug)
+// GPIO11: Q7 debug (1 = IWM in write mode)
 // GPIO12: Level shifter OE (active-low, controls D[7:0] buffer direction)
 LOCATE COMP "GPIO9" SITE "C1";
 IOBUF PORT "GPIO9" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=NONE;

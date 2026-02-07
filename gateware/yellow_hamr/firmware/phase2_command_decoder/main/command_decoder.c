@@ -455,11 +455,20 @@ void app_main(void)
                        gpio_get_level(PIN_ACK));
 
                 printf("[SP] Command complete\n");
+
+                // Wait for drive to be disabled, or timeout after 3s
+                // (Liron may leave drive enabled after "No Device Connected")
+                int64_t wait_start = esp_timer_get_time();
+                while (drive_enabled() && (esp_timer_get_time() - wait_start) < 3000000) {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+                command_active = false;
+                printf("[SP] Ready for next command\n");
+                vTaskDelay(pdMS_TO_TICKS(500));  // Debounce before re-arming
             }
         } else {
             if (command_active && !enabled) {
                 command_active = false;
-                // Small delay before looking for next command
                 vTaskDelay(pdMS_TO_TICKS(100));
             }
         }

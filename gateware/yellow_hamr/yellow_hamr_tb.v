@@ -10,7 +10,7 @@
 //   T3: ROM read           - Read $C400 -> first ROM byte
 //   T4: Expansion ROM      - Access $C400, then $C800 -> ROM[$100]
 //   T5: Expansion clear    - Access $CFFF -> clears expansion flag
-//   T6: Serial write       - Set Q7=1, write data -> wrdata toggles
+//   T6: Drive enable       - Motor on -> _enbl1/_enbl2
 //   T7: Serial read        - Pulse rddata -> data appears in buffer
 // =============================================================================
 
@@ -34,14 +34,23 @@ module yellow_hamr_tb;
 
     // Apple II bus
     reg  [11:0] addr;
-    wire [7:0]  data;
     reg  [7:0]  data_out_reg;
     reg         data_drive;
     reg         R_nW;
     reg         nDEVICE_SELECT;
     reg         nI_O_SELECT;
     reg         nI_O_STROBE;
-    reg         nRES;
+    wire        nRES;
+
+    // Individual data bus lines (matching top module)
+    wire        D0, D1, D2, D3, D4, D5, D6, D7;
+    wire [7:0]  data_read;
+
+    // Unused bus signals
+    reg         PHI0, PHI1, uSync, RDY;
+    wire        nIRQ, nNMI, nDMA, nINH;
+    wire        DMA_IN, INT_IN;
+    reg         DMA_OUT, INT_OUT;
 
     // GPIO (drive interface)
     wire        gpio1_phase0;
@@ -52,10 +61,10 @@ module yellow_hamr_tb;
     reg         gpio6_rddata;
     reg         gpio7_sense;
     wire        gpio8_enbl1;
-    wire        gpio9_enbl2;
-    wire        gpio10_wrreq;
-    wire        gpio11_en35;
-    wire        gpio12_spare;
+    wire        gpio9_wrreq;
+    wire        gpio10_enbl2;
+    wire        gpio11_q7;
+    wire        gpio12_lvlshift;
 
     // Test control
     reg  [7:0]  read_data;
@@ -63,9 +72,19 @@ module yellow_hamr_tb;
     integer     errors;
 
     // =========================================================================
-    // Data Bus Tristate Control
+    // Data Bus Tristate Control (individual pins)
     // =========================================================================
-    assign data = data_drive ? data_out_reg : 8'bZZZZZZZZ;
+    assign D0 = data_drive ? data_out_reg[0] : 1'bZ;
+    assign D1 = data_drive ? data_out_reg[1] : 1'bZ;
+    assign D2 = data_drive ? data_out_reg[2] : 1'bZ;
+    assign D3 = data_drive ? data_out_reg[3] : 1'bZ;
+    assign D4 = data_drive ? data_out_reg[4] : 1'bZ;
+    assign D5 = data_drive ? data_out_reg[5] : 1'bZ;
+    assign D6 = data_drive ? data_out_reg[6] : 1'bZ;
+    assign D7 = data_drive ? data_out_reg[7] : 1'bZ;
+
+    // Read data bus
+    assign data_read = {D7, D6, D5, D4, D3, D2, D1, D0};
 
     // =========================================================================
     // DUT Instantiation
@@ -73,7 +92,14 @@ module yellow_hamr_tb;
     yellow_hamr_top dut (
         .CLK_25MHz      (clk_25),
         .addr           (addr),
-        .data           (data),
+        .D0             (D0),
+        .D1             (D1),
+        .D2             (D2),
+        .D3             (D3),
+        .D4             (D4),
+        .D5             (D5),
+        .D6             (D6),
+        .D7             (D7),
         .sig_7M         (sig_7M),
         .Q3             (Q3),
         .R_nW           (R_nW),
@@ -81,6 +107,18 @@ module yellow_hamr_tb;
         .nI_O_SELECT    (nI_O_SELECT),
         .nI_O_STROBE    (nI_O_STROBE),
         .nRES           (nRES),
+        .RDY            (RDY),
+        .nIRQ           (nIRQ),
+        .nNMI           (nNMI),
+        .nDMA           (nDMA),
+        .nINH           (nINH),
+        .DMA_OUT        (DMA_OUT),
+        .DMA_IN         (DMA_IN),
+        .INT_OUT        (INT_OUT),
+        .INT_IN         (INT_IN),
+        .PHI0           (PHI0),
+        .PHI1           (PHI1),
+        .uSync          (uSync),
         .GPIO1          (gpio1_phase0),
         .GPIO2          (gpio2_phase1),
         .GPIO3          (gpio3_phase2),
@@ -89,10 +127,10 @@ module yellow_hamr_tb;
         .GPIO6          (gpio6_rddata),
         .GPIO7          (gpio7_sense),
         .GPIO8          (gpio8_enbl1),
-        .GPIO9          (gpio9_enbl2),
-        .GPIO10         (gpio10_wrreq),
-        .GPIO11         (gpio11_en35),
-        .GPIO12         (gpio12_spare)
+        .GPIO9          (gpio9_wrreq),
+        .GPIO10         (gpio10_enbl2),
+        .GPIO11         (gpio11_q7),
+        .GPIO12         (gpio12_lvlshift)
     );
 
     // =========================================================================
@@ -121,20 +159,22 @@ module yellow_hamr_tb;
         nDEVICE_SELECT = 1;
         nI_O_SELECT    = 1;
         nI_O_STROBE    = 1;
-        nRES           = 1;
         gpio6_rddata   = 1;  // Idle high
         gpio7_sense    = 0;
+        PHI0           = 0;
+        PHI1           = 0;
+        uSync          = 0;
+        RDY            = 1;
+        DMA_OUT        = 1;
+        INT_OUT        = 1;
         test_num       = 0;
         errors         = 0;
     end
     endtask
 
-    // System reset
+    // System reset - nRES is driven by DUT (always 1), so we just wait
     task reset;
     begin
-        nRES = 0;
-        repeat(10) @(posedge sig_7M);
-        nRES = 1;
         repeat(10) @(posedge sig_7M);
     end
     endtask
@@ -166,7 +206,7 @@ module yellow_hamr_tb;
         @(posedge sig_7M);
         nDEVICE_SELECT = 0;
         repeat(2) @(posedge sig_7M);
-        result = data;
+        result = data_read;
         nDEVICE_SELECT = 1;
         repeat(2) @(posedge sig_7M);
     end
@@ -206,7 +246,7 @@ module yellow_hamr_tb;
         else
             nI_O_SELECT = 0;
         repeat(3) @(posedge sig_7M);  // Wait for ROM read latency
-        result = data;
+        result = data_read;
         nI_O_STROBE = 1;
         nI_O_SELECT = 1;
         repeat(2) @(posedge sig_7M);
@@ -356,10 +396,10 @@ module yellow_hamr_tb;
         #100;
 
         // With driveSelect=0, _enbl1 should be low
-        if (gpio8_enbl1 == 1'b0 && gpio9_enbl2 == 1'b1) begin
+        if (gpio8_enbl1 == 1'b0 && gpio10_enbl2 == 1'b1) begin
             $display("    PASS: _enbl1=0, _enbl2=1 (drive 1 selected)");
         end else begin
-            $display("    FAIL: _enbl1=%b, _enbl2=%b", gpio8_enbl1, gpio9_enbl2);
+            $display("    FAIL: _enbl1=%b, _enbl2=%b", gpio8_enbl1, gpio10_enbl2);
             errors = errors + 1;
         end
 
@@ -367,10 +407,10 @@ module yellow_hamr_tb;
         iwm_write(4'b1011);
         #100;
 
-        if (gpio8_enbl1 == 1'b1 && gpio9_enbl2 == 1'b0) begin
+        if (gpio8_enbl1 == 1'b1 && gpio10_enbl2 == 1'b0) begin
             $display("    PASS: _enbl1=1, _enbl2=0 (drive 2 selected)");
         end else begin
-            $display("    FAIL: _enbl1=%b, _enbl2=%b", gpio8_enbl1, gpio9_enbl2);
+            $display("    FAIL: _enbl1=%b, _enbl2=%b", gpio8_enbl1, gpio10_enbl2);
             errors = errors + 1;
         end
 

@@ -56,7 +56,10 @@ module iwm (
     output wire       _enbl1,       // Drive 1 enable (active low)
     output wire       _enbl2,       // Drive 2 enable (active low)
     input wire        sense,        // Write protect / ACK from drive
-    input wire        rddata        // Serial read data (falling edge = 1 bit)
+    input wire        rddata,       // Serial read data (falling edge = 1 bit)
+
+    // Debug outputs
+    output wire       dbg_q7        // Q7 state for debugging
 );
 
     // Internal state registers
@@ -116,6 +119,9 @@ module iwm (
 
     // Write request - active when Q7=1, no underrun, and a drive is enabled
     assign _wrreq = ~(q7 & _underrun & (~_enbl1 | ~_enbl2));
+
+    // Debug output
+    assign dbg_q7 = q7;
 
     // =========================================================================
     // Read Registers - Selected by Q7:Q6
