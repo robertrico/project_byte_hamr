@@ -122,6 +122,8 @@ module yellow_hamr_top (
     // IWM signals
     wire [7:0] iwm_data_out;
     wire       iwm_q7;
+    wire       iwm_dbg_buf7;
+    wire       iwm_dbg_latch_sync;
 
     // Data bus output mux
     wire [7:0] data_out_mux;
@@ -139,7 +141,7 @@ module yellow_hamr_top (
     assign GPIO4  = phase[3];
     assign GPIO5  = wrdata;
     assign GPIO9  = _wrreq;
-    assign GPIO11 = nDEVICE_SELECT;    // DEBUG: nDEVICE_SELECT for logic analyzer
+    assign GPIO11 = iwm_dbg_buf7;      // DEBUG: buffer[7] data-ready flag
 
     // Drive enable lines: pass through directly to FujiNet.
     // FujiNet's own service loop checks SmartPort phases (ph3 & ph1) before
@@ -149,8 +151,53 @@ module yellow_hamr_top (
     assign GPIO10 = _enbl2;
 
     // Input mapping from GPIO
-    assign rddata = GPIO6;
-    assign sense  = GPIO7;
+    // FujiNet drives rddata as idle-LOW / pulse-HIGH (SPI mode 0, no inversion).
+    // The IWM expects idle-HIGH / pulse-LOW (falling-edge = '1' bit), matching
+    // original Apple hardware where an inverting amplifier sits between the
+    // drive head and the IWM chip. Invert here to restore correct polarity.
+    assign rddata = ~GPIO6;
+
+    // =========================================================================
+    // Sense/ACK Pulse Stretcher
+    // =========================================================================
+    // The Liron ROM's ACK poll at $C943 runs only 10 iterations (~114µs).
+    // FujiNet's ISR decodes the SPI command packet before asserting ACK,
+    // which can take ~1100µs. The poll starts ~1130µs after REQ, so the
+    // FujiNet ACK and the ROM poll window overlap by only ~18µs. Jitter in
+    // FujiNet's SPI decode can push ACK past the last poll read.
+    //
+    // Fix: when GPIO7 (sense/ACK) goes LOW, hold sense LOW for at least
+    // 1400 fclk cycles (~200µs at 7MHz). This guarantees the ROM catches
+    // ACK even if FujiNet is a few µs late. The 200µs stretch is harmless:
+    // the ROM exits the poll on the first LOW read and proceeds to cleanup
+    // at $C949 (~6µs), then enters the receive handler at $C960, which
+    // doesn't poll sense until $C97D (another ~30µs of setup). FujiNet's
+    // service loop takes milliseconds to reach iwm_ack_set(), so the
+    // stretch has long expired before sense needs to go HIGH again.
+    reg [10:0] sense_stretch_ctr = 11'd0;
+    reg        gpio7_prev = 1'b1;
+    wire       sense_stretched;
+
+    always @(posedge sig_7M or negedge por_n) begin
+        if (!por_n) begin
+            sense_stretch_ctr <= 0;
+            gpio7_prev        <= 1'b1;
+        end
+        else begin
+            gpio7_prev <= GPIO7;
+            if (gpio7_prev & ~GPIO7) begin
+                // Falling edge on GPIO7 — start stretch
+                sense_stretch_ctr <= 11'd1400;
+            end
+            else if (sense_stretch_ctr != 0) begin
+                sense_stretch_ctr <= sense_stretch_ctr - 1'b1;
+            end
+        end
+    end
+
+    // Sense is LOW if GPIO7 is LOW OR stretch counter is active
+    assign sense_stretched = (GPIO7 == 1'b0) || (sense_stretch_ctr != 0) ? 1'b0 : 1'b1;
+    assign sense = sense_stretched;
 
     // =========================================================================
     // Level Shifter OE Control (active-low)
@@ -158,7 +205,11 @@ module yellow_hamr_top (
     // Matches Yellowstone: _en245 = ~(~_devsel || ~_romoe)
     // Enable when reading AND (IWM selected OR ROM outputting)
 
-    wire lvl_shift_oe = R_nW && (!nDEVICE_SELECT || rom_oe);
+    // Level shifter must be enabled for BOTH reads and writes when IWM or
+    // ROM is selected. R_nW controls the '245 DIR pin (direction), not OE.
+    // Previously gated on R_nW, which disabled the shifter during CPU writes
+    // — the FPGA saw floating $FF on data_in, corrupting every IWM buffer write.
+    wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
     assign GPIO12 = ~lvl_shift_oe;
 
     // =========================================================================
@@ -247,7 +298,9 @@ module yellow_hamr_top (
         ._enbl2         (_enbl2),
         .sense          (sense),
         .rddata         (rddata),
-        .q7_out         (iwm_q7)
+        .q7_out         (iwm_q7),
+        .dbg_buf7       (iwm_dbg_buf7),
+        .dbg_latch_sync (iwm_dbg_latch_sync)
     );
 
     // =========================================================================

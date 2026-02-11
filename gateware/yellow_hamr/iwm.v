@@ -19,7 +19,11 @@ module iwm (
 	input wire        rddata,         // Serial data input (falling edge = 1 bit)
 
 	// Q7 output for ESP32 command decoding
-	output wire       q7_out
+	output wire       q7_out,
+
+	// Debug outputs for logic analyzer
+	output wire       dbg_buf7,       // buffer[7] = data ready flag
+	output wire       dbg_latch_sync  // latchSynced (1 = synced on $FF)
 );
 
 	// =========================================================================
@@ -428,5 +432,9 @@ module iwm (
 			end
 		end
 	end
+
+	// Debug signal assignments
+	assign dbg_buf7       = buffer[7];
+	assign dbg_latch_sync = latchSynced;
 
 endmodule
