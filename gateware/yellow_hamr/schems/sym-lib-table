@@ -1,4 +1,0 @@
-(sym_lib_table
-  (version 0)
-  (lib (name "bmowdisk-eagle-import")(type "KiCad")(uri "${KIPRJMOD}/bmowdisk-eagle-import.kicad_sym")(options "")(descr ""))
-)

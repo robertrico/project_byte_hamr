@@ -121,7 +121,7 @@ module yellow_hamr_top (
 
     // IWM signals
     wire [7:0] iwm_data_out;
-    wire       iwm_dbg_q7;
+    wire       iwm_q7;
 
     // Data bus output mux
     wire [7:0] data_out_mux;
@@ -138,10 +138,15 @@ module yellow_hamr_top (
     assign GPIO3  = phase[2];
     assign GPIO4  = phase[3];
     assign GPIO5  = wrdata;
-    assign GPIO8  = _enbl1;
     assign GPIO9  = _wrreq;
+    assign GPIO11 = nDEVICE_SELECT;    // DEBUG: nDEVICE_SELECT for logic analyzer
+
+    // Drive enable lines: pass through directly to FujiNet.
+    // FujiNet's own service loop checks SmartPort phases (ph3 & ph1) before
+    // the Disk II motor state machine, so it won't misinterpret enables as
+    // Disk II activity when SmartPort phases are active.
+    assign GPIO8  = _enbl1;
     assign GPIO10 = _enbl2;
-    assign GPIO11 = iwm_dbg_q7;       // Q7 direct to ESP32
 
     // Input mapping from GPIO
     assign rddata = GPIO6;
@@ -157,11 +162,21 @@ module yellow_hamr_top (
     assign GPIO12 = ~lvl_shift_oe;
 
     // =========================================================================
-    // Control Signal Defaults
+    // Power-On Reset
     // =========================================================================
+    // Byte Hamr nRES cannot be read (hardware limitation). POR only.
+    // Holds reset low for 15 fclk cycles (~2 us) after FPGA configuration.
+    // ECP5 initializes registers to their declared values on configuration.
 
-    // nRES: Release reset line (open-drain, 1 = hi-Z = released)
     assign nRES = 1'b1;
+
+    reg [3:0] por_counter = 4'd0;
+    wire      por_n = &por_counter;   // HIGH (released) when counter saturates
+
+    always @(posedge sig_7M) begin
+        if (!por_n)
+            por_counter <= por_counter + 4'd1;
+    end
 
     // Tri-state control signals (match Logic Hamr)
     assign nIRQ = 1'bZ;
@@ -182,10 +197,13 @@ module yellow_hamr_top (
     //                 8'bZZZZZZZZ;
     //
     // ROM has priority, then IWM. Bus is hi-Z when not being read.
+    // NOTE: Yellowstone gated IWM reads on addr[0]==0, which blocked
+    // status register reads ($C0CD, Q6=1) needed for sense/ACK.
+    // The IWM data_out mux returns valid data for all Q7/Q6 states.
 
     assign data_out_mux = rom_oe ? rom_data : iwm_data_out;
 
-    wire data_oe = R_nW && (rom_oe || (!nDEVICE_SELECT && !addr[0]));
+    wire data_oe = R_nW && (rom_oe || !nDEVICE_SELECT);
 
     assign D0 = data_oe ? data_out_mux[0] : 1'bZ;
     assign D1 = data_oe ? data_out_mux[1] : 1'bZ;
@@ -205,7 +223,7 @@ module yellow_hamr_top (
         .clk                 (sig_7M),
         .nI_O_STROBE         (nI_O_STROBE),
         .nI_O_SELECT         (nI_O_SELECT),
-        .nRES                (nRES),
+        .nRES                (por_n),
         .rom_oe              (rom_oe),
         .rom_expansion_active(rom_expansion_active)
     );
@@ -219,7 +237,7 @@ module yellow_hamr_top (
         .nDEVICE_SELECT (nDEVICE_SELECT),
         .fclk           (sig_7M),
         .Q3             (Q3),
-        .nRES           (nRES),
+        .nRES           (por_n),
         .data_in        ({D7, D6, D5, D4, D3, D2, D1, D0}),
         .data_out       (iwm_data_out),
         .wrdata         (wrdata),
@@ -229,7 +247,7 @@ module yellow_hamr_top (
         ._enbl2         (_enbl2),
         .sense          (sense),
         .rddata         (rddata),
-        .dbg_q7         (iwm_dbg_q7)
+        .q7_out         (iwm_q7)
     );
 
     // =========================================================================
