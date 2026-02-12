@@ -129,16 +129,57 @@ module yellow_hamr_top (
     wire [7:0] data_out_mux;
 
     // =========================================================================
-    // GPIO Assignments - ALL driven directly from IWM (no synchronizers)
+    // GPIO Phase Output with Bus Reset Debounce
     // =========================================================================
-    // Matches Yellowstone exactly: combinatorial assigns straight to pins.
-    // All signals are coherent (same IWM state machine), and the ESP32
-    // samples at microsecond timescales — no CDC needed.
+    // Phase outputs to FujiNet GPIO, with debounce on the bus reset pattern.
+    //
+    // Problem: During Apple II boot scan, the firmware reads $C0C0-$C0CF
+    // (IWM soft-switches) for each slot. These accesses toggle phase registers,
+    // causing transient phases = 0101 (bus reset pattern) lasting only
+    // microseconds. FujiNet's service loop sees this as a real bus reset and
+    // clears all device addresses (_devnum = 0). When the ROM later sends
+    // STATUS dest=0 (bus-level, handled internally by the ROM), FujiNet
+    // matches it to an uninitialized device and tries to send a response
+    // that nobody is waiting for — blocking the bus for 30ms.
+    //
+    // Fix: Debounce the 0101 pattern. Hold previous phase values on GPIO
+    // for 3500 fclk cycles (~500µs) when phases = 0101. Real bus resets
+    // persist for ~80ms and will propagate after the debounce. Transient
+    // boot-scan glitches clear within microseconds and are filtered out.
+    // Non-reset phase patterns (0000, 1010, 1011, etc.) pass through
+    // immediately with no delay.
 
-    assign GPIO1  = phase[0];
-    assign GPIO2  = phase[1];
-    assign GPIO3  = phase[2];
-    assign GPIO4  = phase[3];
+    reg [3:0]  phase_gpio = 4'b0000;
+    reg [11:0] reset_debounce_ctr = 12'd0;
+
+    always @(posedge sig_7M or negedge por_n) begin
+        if (!por_n) begin
+            phase_gpio         <= 4'b0000;
+            reset_debounce_ctr <= 12'd0;
+        end
+        else begin
+            if (phase == 4'b0101) begin
+                // Bus reset pattern detected — start/continue debounce
+                if (reset_debounce_ctr != 12'd3500) begin
+                    reset_debounce_ctr <= reset_debounce_ctr + 1'b1;
+                end
+                else begin
+                    // Debounce expired — real bus reset, propagate
+                    phase_gpio <= phase;
+                end
+            end
+            else begin
+                // Non-reset pattern — pass through immediately, reset counter
+                reset_debounce_ctr <= 12'd0;
+                phase_gpio         <= phase;
+            end
+        end
+    end
+
+    assign GPIO1  = phase_gpio[0];
+    assign GPIO2  = phase_gpio[1];
+    assign GPIO3  = phase_gpio[2];
+    assign GPIO4  = phase_gpio[3];
     assign GPIO5  = wrdata;
     assign GPIO9  = _wrreq;
     assign GPIO11 = iwm_dbg_buf7;      // DEBUG: buffer[7] data-ready flag

@@ -178,8 +178,21 @@ module iwm (
 
 	// Suppress _enbl2 when SmartPort enable is active but REQ not yet set
 	wire sp_enable_no_req = phase[3] & phase[1] & ~phase[0];
-	assign _enbl1 = ~(enbl1_motor | enbl1_timer);
-	assign _enbl2 = sp_enable_no_req ? 1'b1 : ~(enbl2_motor | enbl2_timer);
+
+	// Suppress both enables when in SmartPort mode with idle phases.
+	// Between commands, the Liron ROM clears phases to 0000 but leaves
+	// motorOn=1 (the $C949 cleanup never turns off the motor). ProDOS's
+	// block driver dispatcher also clears phases before the next command.
+	// This creates a ~130µs window where _enbl2 is LOW with no SmartPort
+	// phases — FujiNet mistakes this for Disk II activity and enters a 1ms
+	// delay path, desynchronizing the SmartPort handshake. Suppress enables
+	// during this idle window. modeLatch (modeReg[0]) is always 1 for
+	// SmartPort (Liron writes $07), always 0 for Disk II — cleanest
+	// discriminator that won't affect Disk II operation.
+	wire sp_mode_idle = modeLatch & (phase == 4'b0000);
+
+	assign _enbl1 = sp_mode_idle ? 1'b1 : ~(enbl1_motor | enbl1_timer);
+	assign _enbl2 = (sp_enable_no_req | sp_mode_idle) ? 1'b1 : ~(enbl2_motor | enbl2_timer);
 
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
