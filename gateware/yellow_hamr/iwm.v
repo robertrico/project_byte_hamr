@@ -67,10 +67,12 @@ module iwm (
 
 	always @(*) begin
 		case ({modeFast, mode8MHz})
-			2'b00: begin oneThreshold = 14; zeroThreshold = 42; writeBitCell = 28; end
-			2'b01: begin oneThreshold = 16; zeroThreshold = 48; writeBitCell = 32; end
-			2'b10: begin oneThreshold =  7; zeroThreshold = 21; writeBitCell = 14; end
-			2'b11: begin oneThreshold =  8; zeroThreshold = 24; writeBitCell = 16; end
+			// writeBitCell is period-1 because the timer counts 0..N inclusive
+			// (N+1 fclk cycles). Spec says 28 FCLK for slow/7M = 4.0µs bit cell.
+			2'b00: begin oneThreshold = 14; zeroThreshold = 42; writeBitCell = 27; end
+			2'b01: begin oneThreshold = 16; zeroThreshold = 48; writeBitCell = 31; end
+			2'b10: begin oneThreshold =  7; zeroThreshold = 21; writeBitCell = 13; end
+			2'b11: begin oneThreshold =  8; zeroThreshold = 24; writeBitCell = 15; end
 		endcase
 	end
 
