@@ -180,9 +180,10 @@ module yellow_hamr_top (
     assign GPIO2  = phase_gpio[1];
     assign GPIO3  = phase_gpio[2];
     assign GPIO4  = phase_gpio[3];
+
     assign GPIO5  = wrdata;
     assign GPIO9  = _wrreq;
-    assign GPIO11 = iwm_dbg_buf7;      // DEBUG: buffer[7] data-ready flag
+    assign GPIO11 = iwm_dbg_buf7;      // DEBUG: _underrun (LOW = serializer starved)
 
     // Drive enable lines: pass through directly to FujiNet.
     // FujiNet's own service loop checks SmartPort phases (ph3 & ph1) before

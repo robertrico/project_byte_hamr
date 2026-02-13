@@ -154,7 +154,7 @@ IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=UP;  // _enbl
 // =============================================================================
 // GPIO9:  _wrreq (write request, active low)
 // GPIO10: _enbl2 (drive 2 enable, active low)
-// GPIO11: Q7 debug (1 = IWM in write mode)
+// GPIO11: _underrun debug (LOW = write serializer starved)
 // GPIO12: Level shifter OE (active-low, controls D[7:0] buffer direction)
 LOCATE COMP "GPIO9" SITE "C1";
 IOBUF PORT "GPIO9" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=UP;  // _wrreq active-low - pull HIGH for idle during FPGA config

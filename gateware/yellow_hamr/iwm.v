@@ -39,6 +39,20 @@ module iwm (
 	reg       _underrun;
 	reg       writeBufferEmpty;
 
+	// Drain delay: after underrun fires, keep the handshake register's
+	// bit 6 showing "no underrun" for DRAIN_DELAY fclk cycles. This
+	// extends the Liron ROM's drain wait at $C92C, pushing the ACK
+	// poll start later and giving FujiNet more time to decode the
+	// command packet and assert ACK. Without this, the ROM's ~120µs
+	// ACK poll window starts immediately after the last byte serializes
+	// out (~840µs), but FujiNet's SPI capture alone takes ~928µs.
+	//
+	// 1430 cycles @ 7.16MHz ≈ 200µs extra drain time.
+	localparam DRAIN_DELAY = 11'd1430;
+	reg [10:0] drain_delay_ctr;
+	reg        _underrun_prev;
+	wire       _underrun_delayed = (drain_delay_ctr != 0) ? 1'b1 : _underrun;
+
 	// Mode register bit aliases (spec p8)
 	wire modeLatch   = modeReg[0]; // 1 = latch mode
 	wire modeAsync   = modeReg[1]; // 1 = asynchronous handshake
@@ -79,10 +93,13 @@ module iwm (
 	// =========================================================================
 	// State pseudo-register (spec p7)
 	// Bits are individually addressed by A3-A1, data on A0.
-	// Level detection: re-latch on every fclk while nDEVICE_SELECT is LOW.
-	// This is idempotent (same bus cycle = same addr/value) and ensures
-	// Q7/Q6 are available to the write register path within the same
-	// nDEVICE_SELECT LOW window. ~3-4 fclk edges occur per bus cycle.
+	//
+	// HYBRID DETECTION: Level-detect for phases/motor/drive (safe, need to
+	// respond to rapid consecutive accesses where nDEVICE_SELECT stays LOW).
+	// Edge-detect (falling nDEVICE_SELECT) for Q6 and Q7 only — these are
+	// the dangerous bits where address bus glitches during level-detect can
+	// cause $C08E (Q7=0) to be misread as $C08F (Q7=1), activating the
+	// write serializer during response receive and corrupting rddata.
 	// =========================================================================
 
 	// SmartPort bus reset detect: phases = 0101 (ph0+ph2 ON, ph1+ph3 OFF)
@@ -91,15 +108,20 @@ module iwm (
 	// cleanup at $C949 never turns off motorOn (leaving _enbl2 stuck LOW).
 	wire busReset = (phase == 4'b0101);
 
+	reg nDEVICE_SELECT_prev;
+
 	always @(posedge fclk or negedge nRES) begin
 		if (~nRES) begin
-			phase            <= 4'b0000;
-			motorOn          <= 1'b0;
-			driveSelect      <= 1'b0;
-			q6               <= 1'b0;
-			q7               <= 1'b0;
+			phase                <= 4'b0000;
+			motorOn              <= 1'b0;
+			driveSelect          <= 1'b0;
+			q6                   <= 1'b0;
+			q7                   <= 1'b0;
+			nDEVICE_SELECT_prev  <= 1'b1;
 		end
 		else begin
+			nDEVICE_SELECT_prev <= nDEVICE_SELECT;
+
 			if (busReset) begin
 				// SmartPort bus reset — scrub non-phase state
 				motorOn     <= 1'b0;
@@ -109,6 +131,9 @@ module iwm (
 			end
 
 			if (~nDEVICE_SELECT) begin
+				// Level-detect: phases, motor, drive — safe to re-latch
+				// every fclk. These bits are set by distinct ROM accesses
+				// where the target addr is unambiguous (different addr[3:1]).
 				case (addr[3:1])
 					3'h0: phase[0]    <= addr[0];
 					3'h1: phase[1]    <= addr[0];
@@ -116,8 +141,20 @@ module iwm (
 					3'h3: phase[3]    <= addr[0];
 					3'h4: motorOn     <= addr[0];
 					3'h5: driveSelect <= addr[0];
-					3'h6: q6          <= addr[0];
-					3'h7: q7          <= addr[0];
+					default: ; // Q6/Q7 handled below by edge-detect
+				endcase
+			end
+
+			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
+				// Edge-detect: Q6 and Q7 only. These are vulnerable to
+				// address bus glitches because $C08C/$C08D (Q6) and
+				// $C08E/$C08F (Q7) differ only in addr[0]. During level-
+				// detect, addr[0] transitioning between bus cycles can
+				// cause Q7=1 to be latched when Q7=0 was intended.
+				case (addr[3:1])
+					3'h6: q6 <= addr[0];
+					3'h7: q7 <= addr[0];
+					default: ; // phases/motor/drive handled above
 				endcase
 			end
 		end
@@ -178,23 +215,20 @@ module iwm (
 	wire enbl1_timer = timerActive & ~timerDriveSel;
 	wire enbl2_timer = timerActive &  timerDriveSel;
 
-	// Suppress _enbl2 when SmartPort enable is active but REQ not yet set
-	wire sp_enable_no_req = phase[3] & phase[1] & ~phase[0];
+	// SmartPort enable gating: when modeLatch=1 (SmartPort mode), only
+	// allow enables through when phases = 1011 (REQ, command ready).
+	// All other phase patterns suppress enables. This covers:
+	//   - Boot scan glitches (motorOn toggled before ROM sets SP phases)
+	//   - Inter-command idle (phases=0000 with motorOn=1)
+	//   - SP attention (phases=1010) before REQ — FujiNet doesn't need
+	//     _enbl2 yet and would enter Disk II mode if it saw it
+	//   - Any transient phase pattern during ROM command dispatch
+	// modeLatch is always 0 for Disk II, so this cannot affect Disk II.
+	wire sp_req_active = (phase == 4'b1011);
+	wire sp_suppress = modeLatch & ~sp_req_active;
 
-	// Suppress both enables when in SmartPort mode with idle phases.
-	// Between commands, the Liron ROM clears phases to 0000 but leaves
-	// motorOn=1 (the $C949 cleanup never turns off the motor). ProDOS's
-	// block driver dispatcher also clears phases before the next command.
-	// This creates a ~130µs window where _enbl2 is LOW with no SmartPort
-	// phases — FujiNet mistakes this for Disk II activity and enters a 1ms
-	// delay path, desynchronizing the SmartPort handshake. Suppress enables
-	// during this idle window. modeLatch (modeReg[0]) is always 1 for
-	// SmartPort (Liron writes $07), always 0 for Disk II — cleanest
-	// discriminator that won't affect Disk II operation.
-	wire sp_mode_idle = modeLatch & (phase == 4'b0000);
-
-	assign _enbl1 = sp_mode_idle ? 1'b1 : ~(enbl1_motor | enbl1_timer);
-	assign _enbl2 = (sp_enable_no_req | sp_mode_idle) ? 1'b1 : ~(enbl2_motor | enbl2_timer);
+	assign _enbl1 = sp_suppress ? 1'b1 : ~(enbl1_motor | enbl1_timer);
+	assign _enbl2 = sp_suppress ? 1'b1 : ~(enbl2_motor | enbl2_timer);
 
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
@@ -218,7 +252,7 @@ module iwm (
 		case ({q7, q6})
 			2'b00:   data_out = buffer;
 			2'b01:   data_out = {sense, 1'b0, enableActive, modeReg[4:0]};
-			2'b10:   data_out = {writeBufferEmpty, _underrun, 6'b000000};
+			2'b10:   data_out = {writeBufferEmpty, _underrun_delayed, 6'b000000};
 			2'b11:   data_out = 8'hFF;
 		endcase
 	end
@@ -284,6 +318,8 @@ module iwm (
 			clearBufferTimer <= 4'd0;
 			wrdata           <= 1'b0;
 			latchSynced      <= 1'b0;
+			drain_delay_ctr  <= 11'd0;
+			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
 		end
 		else begin
@@ -425,8 +461,30 @@ module iwm (
 						wrdata <= ~wrdata;
 				end
 			end
-			else
+			else begin
 				_underrun <= 1;
+				wrdata    <= 1'b0; // Known idle state — prevents stale level
+				                   // from corrupting FujiNet's static prev_level
+				                   // at the start of the next command packet.
+			end
+
+			// =============================================================
+			// DRAIN DELAY COUNTER
+			// After the real underrun fires, keep _underrun_delayed HIGH
+			// for DRAIN_DELAY fclk cycles. This extends the ROM's drain
+			// wait ($C92C) giving FujiNet more time to decode and ACK.
+			// =============================================================
+			_underrun_prev <= _underrun;
+			if (q7 == 1'b0) begin
+				drain_delay_ctr <= 11'd0;  // Q7 off → reset
+			end
+			else if (_underrun_prev == 1'b1 && _underrun == 1'b0) begin
+				// Falling edge of _underrun — start delay
+				drain_delay_ctr <= DRAIN_DELAY;
+			end
+			else if (drain_delay_ctr != 11'd0) begin
+				drain_delay_ctr <= drain_delay_ctr - 1'b1;
+			end
 
 			// =============================================================
 			// WRITE REGISTERS (spec p4/p7)
@@ -449,7 +507,11 @@ module iwm (
 	end
 
 	// Debug signal assignments
-	assign dbg_buf7       = buffer[7];
+	// dbg_buf7: _underrun indicator (active-LOW = serializer starved).
+	// If this goes LOW during a command, the FPGA ran out of data.
+	// If it stays HIGH, the FPGA output is correct and the problem is
+	// downstream (wire/ESP32).
+	assign dbg_buf7       = _underrun;
 	assign dbg_latch_sync = latchSynced;
 
 endmodule
