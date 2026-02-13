@@ -39,6 +39,32 @@ module iwm (
 	reg       _underrun;
 	reg       writeBufferEmpty;
 
+	// Q7 stability filter with hysteresis: Prevents address bus glitches
+	// from spuriously activating the write serializer during receive.
+	//
+	// RISING FILTER: When Q7 first goes 0→1 (from idle/read mode), require
+	// it to stay HIGH for Q7_RISE_THRESH fclk cycles before q7_stable goes
+	// HIGH. Glitches last 1-2 cycles and are filtered out.
+	//
+	// HYSTERESIS: Once q7_stable is HIGH, it stays HIGH even when Q7
+	// briefly dips to 0. This is essential because the ROM's write loop
+	// reads the handshake register at $C08E (Q7=0) between every data
+	// write at $C08F (Q7=1), causing Q7 to oscillate rapidly. Without
+	// hysteresis, q7_stable would never stay HIGH and the serializer
+	// would never run.
+	//
+	// FALLING FILTER: q7_stable only goes LOW after Q7 has been
+	// continuously LOW for Q7_FALL_THRESH fclk cycles. The ROM's
+	// handshake read ($C08E) takes ~2µs before the next $C08F write,
+	// so a 32-cycle (~4.5µs) falling threshold filters the handshake
+	// dips while still responding to real Q7 clears (which last until
+	// the next command, hundreds of µs).
+	localparam Q7_RISE_THRESH = 4'd8;    // ~1.1µs to confirm Q7 rising
+	localparam Q7_FALL_THRESH = 6'd32;   // ~4.5µs to confirm Q7 falling
+	reg [3:0]  q7_rise_ctr;
+	reg [5:0]  q7_fall_ctr;
+	reg        q7_stable;         // HIGH only after confirmed write mode
+
 	// Drain delay: after underrun fires, keep the handshake register's
 	// bit 6 showing "no underrun" for DRAIN_DELAY fclk cycles. This
 	// extends the Liron ROM's drain wait at $C92C, pushing the ACK
@@ -94,12 +120,19 @@ module iwm (
 	// State pseudo-register (spec p7)
 	// Bits are individually addressed by A3-A1, data on A0.
 	//
-	// HYBRID DETECTION: Level-detect for phases/motor/drive (safe, need to
-	// respond to rapid consecutive accesses where nDEVICE_SELECT stays LOW).
+	// HYBRID DETECTION + STABILITY FILTER:
+	// Level-detect for phases/motor/drive (safe, need to respond to rapid
+	// consecutive accesses where nDEVICE_SELECT stays LOW).
 	// Edge-detect (falling nDEVICE_SELECT) for Q6 and Q7 only — these are
 	// the dangerous bits where address bus glitches during level-detect can
-	// cause $C08E (Q7=0) to be misread as $C08F (Q7=1), activating the
-	// write serializer during response receive and corrupting rddata.
+	// cause $C08E (Q7=0) to be misread as $C08F (Q7=1).
+	//
+	// Even with edge-detect, nDEVICE_SELECT decoder ringing can still
+	// create false falling edges. A downstream Q7 STABILITY FILTER
+	// (q7_stable) requires Q7 to be continuously HIGH for 8 fclk cycles
+	// before the write serializer, _wrreq, and latchSynced are affected.
+	// This prevents transient Q7 glitches from activating wrdata during
+	// response receive and corrupting rddata.
 	// =========================================================================
 
 	// SmartPort bus reset detect: phases = 0101 (ph0+ph2 ON, ph1+ph3 OFF)
@@ -233,8 +266,9 @@ module iwm (
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
 
-	// Write request: Q7 and no underrun and a drive is enabled (spec p6)
-	assign _wrreq = ~(q7 & _underrun & (~_enbl1 | ~_enbl2));
+	// Write request: q7_stable (not raw q7) so glitches don't pull
+	// _wrreq LOW and trigger FujiNet's wrdata sampling during receive.
+	assign _wrreq = ~(q7_stable & _underrun & (~_enbl1 | ~_enbl2));
 
 	assign q7_out = q7;
 
@@ -321,6 +355,9 @@ module iwm (
 			drain_delay_ctr  <= 11'd0;
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
+			q7_rise_ctr      <= 4'd0;
+			q7_fall_ctr      <= 6'd0;
+			q7_stable        <= 1'b0;
 		end
 		else begin
 
@@ -343,12 +380,15 @@ module iwm (
 			end
 
 			// =============================================================
-			// READ FROM DISK — shift register runs in all read modes (Q7=0)
+			// READ FROM DISK — shift register runs when q7_stable=0.
+			// Uses q7_stable (not raw q7) so a transient Q7 glitch
+			// doesn't stop the shift register mid-byte or clear
+			// latchSynced during response receive.
 			// Q6 must NOT gate this: the real IWM shift register runs
 			// continuously, and SmartPort data arrives while Q6=1 (status
 			// read mode) during the ACK/REQ handshake.
 			// =============================================================
-			if (q7 == 0) begin
+			if (q7_stable == 0) begin
 				if (rddataSync[1] & ~rddataSync[0]) begin
 					// Falling edge on rddata
 					if (bitTimer >= oneThreshold) begin
@@ -404,23 +444,54 @@ module iwm (
 				end
 			end
 			else begin
-				// Q7=1 (write mode) — reset latch sync so next read
-				// re-syncs from the leading $FF.
+				// q7_stable=1 (write mode) — reset latch sync so next
+				// read re-syncs from the leading $FF.
 				latchSynced <= 1'b0;
+			end
+
+			// =============================================================
+			// Q7 STABILITY FILTER WITH HYSTERESIS
+			// Rising: q7_stable goes HIGH after Q7 is continuously
+			// HIGH for Q7_RISE_THRESH cycles (filters glitches).
+			// Falling: q7_stable goes LOW after Q7 is continuously
+			// LOW for Q7_FALL_THRESH cycles (rides through handshake
+			// register reads where Q7 briefly dips to 0).
+			// =============================================================
+			if (q7) begin
+				// Q7 is HIGH — count toward rising threshold, reset falling counter
+				q7_fall_ctr <= 6'd0;
+				if (!q7_stable) begin
+					if (q7_rise_ctr < Q7_RISE_THRESH)
+						q7_rise_ctr <= q7_rise_ctr + 1'b1;
+					else
+						q7_stable <= 1'b1;
+				end
+			end
+			else begin
+				// Q7 is LOW — count toward falling threshold, reset rising counter
+				q7_rise_ctr <= 4'd0;
+				if (q7_stable) begin
+					if (q7_fall_ctr < Q7_FALL_THRESH)
+						q7_fall_ctr <= q7_fall_ctr + 1'b1;
+					else
+						q7_stable <= 1'b0;
+				end
 			end
 
 			// =============================================================
 			// WRITE TO DISK (spec p2)
 			// Uses separate writeShifter/writeBitTimer/writeBitCounter
 			// to avoid read-path state corrupting write output.
-			// On Q7 0→1 transition, write state is initialized so the
-			// first byte loads immediately with no garbage on wrdata.
+			// On q7_stable 0→1 transition, write state is initialized
+			// so the first byte loads immediately with no garbage on
+			// wrdata. The stability filter ensures Q7 glitches never
+			// reach the serializer.
 			// =============================================================
-			q7_prev <= q7;
+			q7_prev <= q7_stable;
 
-			if (q7 == 1'b1) begin
+			if (q7_stable) begin
 				if (~q7_prev) begin
-					// Q7 just went high — initialize write state.
+					// q7_stable just went high — initialize write state.
 					// Load writeShifter with $FF (all-ones) so wrdata
 					// starts toggling immediately as sync preamble.
 					// Counter=7 so the first byte-boundary loads from
@@ -475,7 +546,7 @@ module iwm (
 			// wait ($C92C) giving FujiNet more time to decode and ACK.
 			// =============================================================
 			_underrun_prev <= _underrun;
-			if (q7 == 1'b0) begin
+			if (q7_stable == 1'b0) begin
 				drain_delay_ctr <= 11'd0;  // Q7 off → reset
 			end
 			else if (_underrun_prev == 1'b1 && _underrun == 1'b0) begin
