@@ -27,18 +27,18 @@
 //   $C400-$C4FF  nI_O_SELECT     Boot ROM ($000-$0FF)
 //   $C800-$CFFF  nI_O_STROBE     Boot ROM ($100-$7FF) when expansion active
 //
-// GPIO Header Pinout (directly compatible with FujiNet):
-//   GPIO1:    phase[0] - SmartPort command bit 0
-//   GPIO2:    phase[1] - SmartPort command bit 1
-//   GPIO3:    phase[2] - SmartPort command bit 2
-//   GPIO4:    phase[3] - SmartPort command bit 3
-//   GPIO5:    wrdata   - Serial write data (to device)
-//   GPIO6:    rddata   - Serial read data (from device) [INPUT]
-//   GPIO7:    sense    - Write-protect / ACK (from device) [INPUT]
-//   GPIO8:    _enbl1   - Drive 1 enable (active LOW)
-//   GPIO9:    _wrreq   - Write request (active LOW)
-//   GPIO10:   _enbl2   - Drive 2 enable (active LOW)
-//   GPIO11:   Q6       - IWM Q6 state (for ESP32 command decoding)
+// GPIO Header Pinout (FujiNet Rev0-compatible, with FPGA tri-state buffer):
+//   GPIO1:    _enbl1    - Drive 1 enable (active LOW)         → ESP32 IO36
+//   GPIO2:    phase[2]  - SmartPort command bit 2             → ESP32 IO34
+//   GPIO3:    phase[3]  - SmartPort command bit 3             → ESP32 IO35
+//   GPIO4:    phase[0]  - SmartPort command bit 0             → ESP32 IO32
+//   GPIO5:    phase[1]  - SmartPort command bit 1             → ESP32 IO33
+//   GPIO6:    rd_buf_en - Tri-state buffer enable (from ESP32) [INPUT] ← ESP32 IO25
+//   GPIO7:    _wreq     - Write request (active LOW)          → ESP32 IO26
+//   GPIO8:    sense     - Write-protect / ACK (from ESP32)    [INPUT] ← ESP32 IO27
+//   GPIO9:    rddata    - Serial read data (from ESP32)       [INPUT] ← ESP32 IO14
+//   GPIO10:   wrdata    - Serial write data (to ESP32)        → ESP32 IO22
+//   GPIO11:   _enbl2    - Drive 2 enable (active LOW)         → ESP32 IO21
 //   GPIO12:   Level shifter OE (active-low, for Apple II data bus)
 // =============================================================================
 
@@ -85,19 +85,18 @@ module yellow_hamr_top (
     input  wire        PHI1,            // Phase 1 clock
     input  wire        uSync,           // Microsecond sync
 
-    // Drive interface (directly via GPIO header)
-    output wire       GPIO1,            // phase[0]
-    output wire       GPIO2,            // phase[1]
-    output wire       GPIO3,            // phase[2]
-    output wire       GPIO4,            // phase[3]
-    output wire       GPIO5,            // wrdata
-    input wire        GPIO6,            // rddata
-    input wire        GPIO7,            // sense
-    output wire       GPIO8,            // _enbl1
-    // Additional outputs
-    output wire       GPIO9,            // _wrreq
-    output wire       GPIO10,           // _enbl2
-    output wire       GPIO11,           // Q6 (IWM Q6 state)
+    // ESP32 FujiNet interface (via GPIO header)
+    output wire       GPIO1,            // _enbl1    → ESP32 IO36
+    output wire       GPIO2,            // phase[2]  → ESP32 IO34
+    output wire       GPIO3,            // phase[3]  → ESP32 IO35
+    output wire       GPIO4,            // phase[0]  → ESP32 IO32
+    output wire       GPIO5,            // phase[1]  → ESP32 IO33
+    input wire        GPIO6,            // rd_buf_en ← ESP32 IO25 (tri-state gate)
+    output wire       GPIO7,            // _wreq     → ESP32 IO26
+    input wire        GPIO8,            // sense/ACK ← ESP32 IO27
+    input wire        GPIO9,            // rddata    ← ESP32 IO14
+    output wire       GPIO10,           // wrdata    → ESP32 IO22
+    output wire       GPIO11,           // _enbl2    → ESP32 IO21
     output wire       GPIO12            // Level shifter OE (active-low)
 );
 
@@ -114,6 +113,9 @@ module yellow_hamr_top (
     wire       _enbl2;
     wire       _wrreq;
 
+    // Tri-state buffer control from ESP32 (active LOW = enable rddata output)
+    wire       rd_buf_en;
+
     // ROM signals
     wire [7:0] rom_data;
     wire       rom_oe;
@@ -129,9 +131,10 @@ module yellow_hamr_top (
     wire [7:0] data_out_mux;
 
     // =========================================================================
-    // GPIO Phase Output
+    // GPIO Output Assignments (FPGA → ESP32)
     // =========================================================================
 
+    // Phase outputs - registered to avoid combinatorial glitches on ESP32 inputs
     reg [3:0]  phase_gpio = 4'b0000;
 
     always @(posedge sig_7M or negedge por_n) begin
@@ -141,30 +144,35 @@ module yellow_hamr_top (
             phase_gpio <= phase;
     end
 
-    assign GPIO1  = phase_gpio[0];
-    assign GPIO2  = phase_gpio[1];
-    assign GPIO3  = phase_gpio[2];
-    assign GPIO4  = phase_gpio[3];
+    assign GPIO4  = phase_gpio[0];     // phase[0] → ESP32 IO32 (SP_PHI0/SP_REQ)
+    assign GPIO5  = phase_gpio[1];     // phase[1] → ESP32 IO33 (SP_PHI1)
+    assign GPIO2  = phase_gpio[2];     // phase[2] → ESP32 IO34 (SP_PHI2)
+    assign GPIO3  = phase_gpio[3];     // phase[3] → ESP32 IO35 (SP_PHI3)
 
-    assign GPIO5  = wrdata;
-    assign GPIO9  = _wrreq;
-    assign GPIO11 = nDEVICE_SELECT;
+    assign GPIO1  = _enbl1;            // _enbl1   → ESP32 IO36 (SP_DRIVE1)
+    assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
+    assign GPIO7  = _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
+    assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
 
-    // Drive enable lines: pass through directly to FujiNet.
-    // FujiNet's own service loop checks SmartPort phases (ph3 & ph1) before
-    // the Disk II motor state machine, so it won't misinterpret enables as
-    // Disk II activity when SmartPort phases are active.
-    assign GPIO8  = _enbl1;
-    assign GPIO10 = _enbl2;
+    // =========================================================================
+    // GPIO Input Assignments (ESP32 → FPGA)
+    // =========================================================================
 
-    // Input mapping from GPIO
+    // Tri-state buffer control from ESP32 (active LOW = enable rddata to IWM).
+    // Replaces the external 74LVC125 buffer on real FujiNet hardware.
+    // When rd_buf_en is HIGH (disabled), rddata is forced to idle-HIGH
+    // (IWM idle state), preventing bus contention when ESP32 is reconfiguring
+    // its GPIO direction.
+    assign rd_buf_en = GPIO6;          // rd_buf_en ← ESP32 IO25 (SP_RD_BUFFER)
+
     // FujiNet drives rddata as idle-LOW / pulse-HIGH (SPI mode 0, no inversion).
     // The IWM expects idle-HIGH / pulse-LOW (falling-edge = '1' bit), matching
     // original Apple hardware where an inverting amplifier sits between the
     // drive head and the IWM chip. Invert here to restore correct polarity.
-    assign rddata = ~GPIO6;
+    // When rd_buf_en is HIGH (buffer disabled), force rddata HIGH (IWM idle).
+    assign rddata = rd_buf_en ? 1'b1 : ~GPIO9;  // rddata ← ESP32 IO14 (SP_RDDATA)
 
-    assign sense = GPIO7;
+    assign sense = GPIO8;              // sense/ACK ← ESP32 IO27 (SP_WRPROT/SP_ACK)
 
     // =========================================================================
     // Level Shifter OE Control (active-low)
