@@ -38,7 +38,7 @@
 //   GPIO8:    _enbl1   - Drive 1 enable (active LOW)
 //   GPIO9:    _wrreq   - Write request (active LOW)
 //   GPIO10:   _enbl2   - Drive 2 enable (active LOW)
-//   GPIO11:   Q7       - IWM write mode flag (for ESP32 command decoding)
+//   GPIO11:   Q6       - IWM Q6 state (for ESP32 command decoding)
 //   GPIO12:   Level shifter OE (active-low, for Apple II data bus)
 // =============================================================================
 
@@ -97,7 +97,7 @@ module yellow_hamr_top (
     // Additional outputs
     output wire       GPIO9,            // _wrreq
     output wire       GPIO10,           // _enbl2
-    output wire       GPIO11,           // Q7 (IWM write mode flag)
+    output wire       GPIO11,           // Q6 (IWM Q6 state)
     output wire       GPIO12            // Level shifter OE (active-low)
 );
 
@@ -129,51 +129,16 @@ module yellow_hamr_top (
     wire [7:0] data_out_mux;
 
     // =========================================================================
-    // GPIO Phase Output with Bus Reset Debounce
+    // GPIO Phase Output
     // =========================================================================
-    // Phase outputs to FujiNet GPIO, with debounce on the bus reset pattern.
-    //
-    // Problem: During Apple II boot scan, the firmware reads $C0C0-$C0CF
-    // (IWM soft-switches) for each slot. These accesses toggle phase registers,
-    // causing transient phases = 0101 (bus reset pattern) lasting only
-    // microseconds. FujiNet's service loop sees this as a real bus reset and
-    // clears all device addresses (_devnum = 0). When the ROM later sends
-    // STATUS dest=0 (bus-level, handled internally by the ROM), FujiNet
-    // matches it to an uninitialized device and tries to send a response
-    // that nobody is waiting for — blocking the bus for 30ms.
-    //
-    // Fix: Debounce the 0101 pattern. Hold previous phase values on GPIO
-    // for 3500 fclk cycles (~500µs) when phases = 0101. Real bus resets
-    // persist for ~80ms and will propagate after the debounce. Transient
-    // boot-scan glitches clear within microseconds and are filtered out.
-    // Non-reset phase patterns (0000, 1010, 1011, etc.) pass through
-    // immediately with no delay.
 
     reg [3:0]  phase_gpio = 4'b0000;
-    reg [11:0] reset_debounce_ctr = 12'd0;
 
     always @(posedge sig_7M or negedge por_n) begin
-        if (!por_n) begin
-            phase_gpio         <= 4'b0000;
-            reset_debounce_ctr <= 12'd0;
-        end
-        else begin
-            if (phase == 4'b0101) begin
-                // Bus reset pattern detected — start/continue debounce
-                if (reset_debounce_ctr != 12'd3500) begin
-                    reset_debounce_ctr <= reset_debounce_ctr + 1'b1;
-                end
-                else begin
-                    // Debounce expired — real bus reset, propagate
-                    phase_gpio <= phase;
-                end
-            end
-            else begin
-                // Non-reset pattern — pass through immediately, reset counter
-                reset_debounce_ctr <= 12'd0;
-                phase_gpio         <= phase;
-            end
-        end
+        if (!por_n)
+            phase_gpio <= 4'b0000;
+        else
+            phase_gpio <= phase;
     end
 
     assign GPIO1  = phase_gpio[0];
@@ -183,7 +148,7 @@ module yellow_hamr_top (
 
     assign GPIO5  = wrdata;
     assign GPIO9  = _wrreq;
-    assign GPIO11 = Q3;                // DEBUG: verify Q3 is toggling
+    assign GPIO11 = nDEVICE_SELECT;
 
     // Drive enable lines: pass through directly to FujiNet.
     // FujiNet's own service loop checks SmartPort phases (ph3 & ph1) before
@@ -199,58 +164,13 @@ module yellow_hamr_top (
     // drive head and the IWM chip. Invert here to restore correct polarity.
     assign rddata = ~GPIO6;
 
-    // =========================================================================
-    // Sense/ACK Pulse Stretcher
-    // =========================================================================
-    // The Liron ROM's ACK poll at $C943 runs only 10 iterations (~114µs).
-    // FujiNet's ISR decodes the SPI command packet before asserting ACK,
-    // which can take ~1100µs. The poll starts ~1130µs after REQ, so the
-    // FujiNet ACK and the ROM poll window overlap by only ~18µs. Jitter in
-    // FujiNet's SPI decode can push ACK past the last poll read.
-    //
-    // Fix: when GPIO7 (sense/ACK) goes LOW, hold sense LOW for at least
-    // 1400 fclk cycles (~200µs at 7MHz). This guarantees the ROM catches
-    // ACK even if FujiNet is a few µs late. The 200µs stretch is harmless:
-    // the ROM exits the poll on the first LOW read and proceeds to cleanup
-    // at $C949 (~6µs), then enters the receive handler at $C960, which
-    // doesn't poll sense until $C97D (another ~30µs of setup). FujiNet's
-    // service loop takes milliseconds to reach iwm_ack_set(), so the
-    // stretch has long expired before sense needs to go HIGH again.
-    reg [10:0] sense_stretch_ctr = 11'd0;
-    reg        gpio7_prev = 1'b1;
-    wire       sense_stretched;
-
-    always @(posedge sig_7M or negedge por_n) begin
-        if (!por_n) begin
-            sense_stretch_ctr <= 0;
-            gpio7_prev        <= 1'b1;
-        end
-        else begin
-            gpio7_prev <= GPIO7;
-            if (gpio7_prev & ~GPIO7) begin
-                // Falling edge on GPIO7 — start stretch
-                sense_stretch_ctr <= 11'd1400;
-            end
-            else if (sense_stretch_ctr != 0) begin
-                sense_stretch_ctr <= sense_stretch_ctr - 1'b1;
-            end
-        end
-    end
-
-    // Sense is LOW if GPIO7 is LOW OR stretch counter is active
-    assign sense_stretched = (GPIO7 == 1'b0) || (sense_stretch_ctr != 0) ? 1'b0 : 1'b1;
-    assign sense = sense_stretched;
+    assign sense = GPIO7;
 
     // =========================================================================
     // Level Shifter OE Control (active-low)
     // =========================================================================
-    // Matches Yellowstone: _en245 = ~(~_devsel || ~_romoe)
-    // Enable when reading AND (IWM selected OR ROM outputting)
-
-    // Level shifter must be enabled for BOTH reads and writes when IWM or
-    // ROM is selected. R_nW controls the '245 DIR pin (direction), not OE.
-    // Previously gated on R_nW, which disabled the shifter during CPU writes
-    // — the FPGA saw floating $FF on data_in, corrupting every IWM buffer write.
+    // Enable for both reads and writes when IWM or ROM is selected.
+    // R_nW controls the '245 DIR pin (direction), not OE.
     wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
     assign GPIO12 = ~lvl_shift_oe;
 
@@ -282,17 +202,9 @@ module yellow_hamr_top (
     assign INT_IN = INT_OUT;
 
     // =========================================================================
-    // Data Bus Control - Purely combinatorial (matches Yellowstone top.v)
+    // Data Bus Control
     // =========================================================================
-    // Yellowstone:
-    //   assign data = (rw && !_romoe)  ? romOutput :
-    //                 (rw && !_devsel && !addr[0]) ? iwmDataOut :
-    //                 8'bZZZZZZZZ;
-    //
     // ROM has priority, then IWM. Bus is hi-Z when not being read.
-    // NOTE: Yellowstone gated IWM reads on addr[0]==0, which blocked
-    // status register reads ($C0CD, Q6=1) needed for sense/ACK.
-    // The IWM data_out mux returns valid data for all Q7/Q6 states.
 
     assign data_out_mux = rom_oe ? rom_data : iwm_data_out;
 

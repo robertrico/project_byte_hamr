@@ -60,9 +60,13 @@ module iwm (
 	// dips while still responding to real Q7 clears (which last until
 	// the next command, hundreds of µs).
 	localparam Q7_RISE_THRESH = 4'd8;    // ~1.1µs to confirm Q7 rising
-	localparam Q7_FALL_THRESH = 6'd32;   // ~4.5µs to confirm Q7 falling
+	localparam Q7_FALL_THRESH = 7'd100;  // ~14µs to confirm Q7 falling
+	                                      // Must ride through the ROM's ASL $C08C,X
+	                                      // handshake poll (~6µs RMW instruction)
+	                                      // where address bus ringing can glitch Q7.
+	                                      // Real Q7 clears last hundreds of µs.
 	reg [3:0]  q7_rise_ctr;
-	reg [5:0]  q7_fall_ctr;
+	reg [6:0]  q7_fall_ctr;
 	reg        q7_stable;         // HIGH only after confirmed write mode
 
 	// Drain delay: after underrun fires, keep the handshake register's
@@ -143,25 +147,25 @@ module iwm (
 			nDEVICE_SELECT_prev <= nDEVICE_SELECT;
 
 			if (~nDEVICE_SELECT) begin
-				// Level-detect: phases, motor, drive — safe to re-latch
-				// every fclk. These bits are set by distinct ROM accesses
-				// where the target addr is unambiguous (different addr[3:1]).
+				// Level-detect: phases only. These are set by distinct
+				// ROM accesses where the target addr is unambiguous.
 				case (addr[3:1])
 					3'h0: phase[0]    <= addr[0];
 					3'h1: phase[1]    <= addr[0];
 					3'h2: phase[2]    <= addr[0];
 					3'h3: phase[3]    <= addr[0];
-					3'h4: motorOn     <= addr[0];
-					3'h5: driveSelect <= addr[0];
-					default: ; // Q6/Q7 handled below by edge-detect
+					default: ; // motor, drive, Q6, Q7 use edge-detect
 				endcase
 			end
 
-			// Edge-detect: Q6 and Q7 only. These are vulnerable to
-			// address bus glitches because $C08C/$C08D (Q6) and
-			// $C08E/$C08F (Q7) differ only in addr[0].
+			// Edge-detect: motor, drive, Q6, Q7. All vulnerable to
+			// address bus ringing during unrelated register accesses.
+			// Motor/drive glitches chop _enbl2 mid-transaction,
+			// causing FujiNet to abort SPI capture.
 			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
 				case (addr[3:1])
+					3'h4: motorOn     <= addr[0];
+					3'h5: driveSelect <= addr[0];
 					3'h6: q6 <= addr[0];
 					3'h7: q7 <= addr[0];
 					default: ;
@@ -225,17 +229,28 @@ module iwm (
 	wire enbl1_timer = timerActive & ~timerDriveSel;
 	wire enbl2_timer = timerActive &  timerDriveSel;
 
-	// SmartPort enable gating: when modeLatch=1 (SmartPort mode), only
-	// allow enables through when phases = 1011 (REQ, command ready).
-	// All other phase patterns suppress enables. This covers:
-	//   - Boot scan glitches (motorOn toggled before ROM sets SP phases)
-	//   - Inter-command idle (phases=0000 with motorOn=1)
-	//   - SP attention (phases=1010) before REQ — FujiNet doesn't need
-	//     _enbl2 yet and would enter Disk II mode if it saw it
-	//   - Any transient phase pattern during ROM command dispatch
-	// modeLatch is always 0 for Disk II, so this cannot affect Disk II.
+	// SmartPort enable gating: when modeLatch=1 (SmartPort mode), suppress
+	// enables until phases first reach 1011 (REQ). Once REQ is seen,
+	// LATCH suppress OFF for the entire transaction. The ROM toggles
+	// phase[0] between packets (1011→1010→1011) as part of the REQ
+	// handshake — if sp_suppress reactivated on every 1010 dip, it would
+	// yank _enbl2 HIGH mid-transaction, cutting FujiNet's ACK short and
+	// causing it to abort. Re-arm suppress only when motorOn drops
+	// (transaction fully over) or phases go idle/reset.
 	wire sp_req_active = (phase == 4'b1011);
-	wire sp_suppress = modeLatch & ~sp_req_active;
+	wire sp_idle = (phase == 4'b0000) | (phase == 4'b0101) | ~motorOn;
+	reg  sp_transaction;  // 1 = in active SmartPort transaction
+
+	always @(posedge fclk or negedge nRES) begin
+		if (~nRES)
+			sp_transaction <= 1'b0;
+		else if (sp_idle)
+			sp_transaction <= 1'b0;
+		else if (sp_req_active)
+			sp_transaction <= 1'b1;
+	end
+
+	wire sp_suppress = modeLatch & ~sp_req_active & ~sp_transaction;
 
 	assign _enbl1 = sp_suppress ? 1'b1 : ~(enbl1_motor | enbl1_timer);
 	assign _enbl2 = sp_suppress ? 1'b1 : ~(enbl2_motor | enbl2_timer);
@@ -333,7 +348,7 @@ module iwm (
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
 			q7_rise_ctr      <= 4'd0;
-			q7_fall_ctr      <= 6'd0;
+			q7_fall_ctr      <= 7'd0;
 			q7_stable        <= 1'b0;
 		end
 		else begin
@@ -436,7 +451,7 @@ module iwm (
 			// =============================================================
 			if (q7) begin
 				// Q7 is HIGH — count toward rising threshold, reset falling counter
-				q7_fall_ctr <= 6'd0;
+				q7_fall_ctr <= 7'd0;
 				if (!q7_stable) begin
 					if (q7_rise_ctr < Q7_RISE_THRESH)
 						q7_rise_ctr <= q7_rise_ctr + 1'b1;
@@ -474,13 +489,15 @@ module iwm (
 					// Counter=7 so the first byte-boundary loads from
 					// buffer on the next writeBitCell rollover.
 					//
-					// Timer starts at 2 (not 0) so the first toggle at
-					// writeBitTimer==1 occurs after a full bit cell
-					// (writeBitCell - 2 + writeBitCell + 1 = 2*wBC - 1
-					// fclk cycles ≈ 55 cycles ≈ 7.9µs for slow/7M).
-					// Starting at 0 would produce a runt 280ns first
-					// pulse that corrupts the FM decoder's sync phase.
-					writeBitTimer   <= 6'd2;
+					// IWM spec: "the write shift register is loaded
+					// every 8 bit cell times starting seven CLK periods
+					// after the write state begins." In slow mode,
+					// CLK = fclk/2, so 7 CLK = 14 fclk. Timer starts
+					// at 14 so it rolls over after 14 cycles (27-14+1),
+					// triggering the first byte load at the spec-correct
+					// time. No wrdata toggle in this initial partial cell
+					// (toggle is at timer==1, already passed).
+					writeBitTimer   <= 6'd14;
 					writeBitCounter <= 3'd7;
 					writeShifter    <= 8'hFF;
 				end
@@ -505,7 +522,16 @@ module iwm (
 					else
 						writeBitTimer <= writeBitTimer + 1'b1;
 
-					if (writeBitTimer == 1 && writeShifter[7] == 1)
+					// Toggle wrdata at bit-cell midpoint when MSB=1.
+					// Gate on _underrun: once underrun fires, wrdata
+					// must stop immediately. Without this, the serializer
+					// keeps toggling for up to Q7_FALL_THRESH cycles
+					// (~14µs) while _wrreq is already HIGH — producing
+					// trailing wrdata transitions that corrupt FujiNet's
+					// FM decoder byte alignment.
+					if (~_underrun)
+						wrdata <= 1'b0;  // Underrun: force idle immediately
+					else if (writeBitTimer == 1 && writeShifter[7] == 1)
 						wrdata <= ~wrdata;
 				end
 			end
@@ -544,8 +570,17 @@ module iwm (
 			// =============================================================
 			if (~q3orDev & q7 & q6 & addr[0]) begin
 				if (motorOn) begin
-					buffer <= data_in;
-					writeBufferEmpty <= 0;
+					// Guard: reject buffer writes after underrun.
+					// The Liron ROM's drain wait at $C92C exits with
+					// STA $C08D,X (A=0), which triggers a data write
+					// of $00 into the buffer. Without this guard, the
+					// serializer loads and shifts out a spurious zero
+					// byte after PEND, adding false wrdata inactivity
+					// that can desync FujiNet's FM decoder.
+					if (_underrun) begin
+						buffer <= data_in;
+						writeBufferEmpty <= 0;
+					end
 				end
 				else begin
 					modeReg <= data_in;
