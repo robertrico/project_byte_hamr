@@ -120,26 +120,13 @@ module iwm (
 	// State pseudo-register (spec p7)
 	// Bits are individually addressed by A3-A1, data on A0.
 	//
-	// HYBRID DETECTION + STABILITY FILTER:
-	// Level-detect for phases/motor/drive (safe, need to respond to rapid
-	// consecutive accesses where nDEVICE_SELECT stays LOW).
-	// Edge-detect (falling nDEVICE_SELECT) for Q6 and Q7 only — these are
-	// the dangerous bits where address bus glitches during level-detect can
-	// cause $C08E (Q7=0) to be misread as $C08F (Q7=1).
+	// Level-detect for phases/motor/drive (safe — different addr[3:1]
+	// values can't cross-contaminate). Edge-detect (falling nDEVICE_SELECT)
+	// for Q6/Q7 because $C08C/$C08D and $C08E/$C08F differ only in addr[0].
 	//
-	// Even with edge-detect, nDEVICE_SELECT decoder ringing can still
-	// create false falling edges. A downstream Q7 STABILITY FILTER
-	// (q7_stable) requires Q7 to be continuously HIGH for 8 fclk cycles
-	// before the write serializer, _wrreq, and latchSynced are affected.
-	// This prevents transient Q7 glitches from activating wrdata during
-	// response receive and corrupting rddata.
+	// The downstream Q7 STABILITY FILTER (q7_stable) handles the ROM's
+	// legitimate Q7 oscillation during the write handshake loop ($C08E/$C08F).
 	// =========================================================================
-
-	// SmartPort bus reset detect: phases = 0101 (ph0+ph2 ON, ph1+ph3 OFF)
-	// The Liron ROM asserts this pattern for ~80ms before every INIT.
-	// Use it to clean up motorOn/driveSelect/Q6/Q7 since the ROM's own
-	// cleanup at $C949 never turns off motorOn (leaving _enbl2 stuck LOW).
-	wire busReset = (phase == 4'b0101);
 
 	reg nDEVICE_SELECT_prev;
 
@@ -154,14 +141,6 @@ module iwm (
 		end
 		else begin
 			nDEVICE_SELECT_prev <= nDEVICE_SELECT;
-
-			if (busReset) begin
-				// SmartPort bus reset — scrub non-phase state
-				motorOn     <= 1'b0;
-				driveSelect <= 1'b0;
-				q6          <= 1'b0;
-				q7          <= 1'b0;
-			end
 
 			if (~nDEVICE_SELECT) begin
 				// Level-detect: phases, motor, drive — safe to re-latch
@@ -178,16 +157,14 @@ module iwm (
 				endcase
 			end
 
+			// Edge-detect: Q6 and Q7 only. These are vulnerable to
+			// address bus glitches because $C08C/$C08D (Q6) and
+			// $C08E/$C08F (Q7) differ only in addr[0].
 			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
-				// Edge-detect: Q6 and Q7 only. These are vulnerable to
-				// address bus glitches because $C08C/$C08D (Q6) and
-				// $C08E/$C08F (Q7) differ only in addr[0]. During level-
-				// detect, addr[0] transitioning between bus cycles can
-				// cause Q7=1 to be latched when Q7=0 was intended.
 				case (addr[3:1])
 					3'h6: q6 <= addr[0];
 					3'h7: q7 <= addr[0];
-					default: ; // phases/motor/drive handled above
+					default: ;
 				endcase
 			end
 		end
