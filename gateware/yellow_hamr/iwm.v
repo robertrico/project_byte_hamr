@@ -19,11 +19,7 @@ module iwm (
 	input wire        rddata,         // Serial data input (falling edge = 1 bit)
 
 	// Q7 output for ESP32 command decoding
-	output wire       q7_out,
-
-	// Debug outputs for logic analyzer
-	output wire       dbg_buf7,       // buffer[7] = data ready flag
-	output wire       dbg_latch_sync  // latchSynced (1 = synced on $FF)
+	output wire       q7_out
 );
 
 	// =========================================================================
@@ -112,7 +108,7 @@ module iwm (
 	always @(*) begin
 		case ({modeFast, mode8MHz})
 			// writeBitCell is period-1 because the timer counts 0..N inclusive
-			// (N+1 fclk cycles). Spec says 28 FCLK for slow/7M = 4.0µs bit cell.
+			// (N+1 fclk cycles). IWM spec: 28 FCLK for slow/7M = 3.91µs bit cell.
 			2'b00: begin oneThreshold = 14; zeroThreshold = 42; writeBitCell = 27; end
 			2'b01: begin oneThreshold = 16; zeroThreshold = 48; writeBitCell = 31; end
 			2'b10: begin oneThreshold =  7; zeroThreshold = 21; writeBitCell = 13; end
@@ -147,25 +143,21 @@ module iwm (
 			nDEVICE_SELECT_prev <= nDEVICE_SELECT;
 
 			if (~nDEVICE_SELECT) begin
-				// Level-detect: phases only. These are set by distinct
-				// ROM accesses where the target addr is unambiguous.
+				// Level-detect: phases, motor, drive.
 				case (addr[3:1])
 					3'h0: phase[0]    <= addr[0];
 					3'h1: phase[1]    <= addr[0];
 					3'h2: phase[2]    <= addr[0];
 					3'h3: phase[3]    <= addr[0];
-					default: ; // motor, drive, Q6, Q7 use edge-detect
+					3'h4: motorOn     <= addr[0];
+					3'h5: driveSelect <= addr[0];
+					default: ; // Q6, Q7 use edge-detect
 				endcase
 			end
 
-			// Edge-detect: motor, drive, Q6, Q7. All vulnerable to
-			// address bus ringing during unrelated register accesses.
-			// Motor/drive glitches chop _enbl2 mid-transaction,
-			// causing FujiNet to abort SPI capture.
+			// Edge-detect: Q6, Q7 only.
 			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
 				case (addr[3:1])
-					3'h4: motorOn     <= addr[0];
-					3'h5: driveSelect <= addr[0];
 					3'h6: q6 <= addr[0];
 					3'h7: q7 <= addr[0];
 					default: ;
@@ -229,31 +221,30 @@ module iwm (
 	wire enbl1_timer = timerActive & ~timerDriveSel;
 	wire enbl2_timer = timerActive &  timerDriveSel;
 
-	// SmartPort enable gating: when modeLatch=1 (SmartPort mode), suppress
-	// enables until phases first reach 1011 (REQ). Once REQ is seen,
-	// LATCH suppress OFF for the entire transaction. The ROM toggles
-	// phase[0] between packets (1011→1010→1011) as part of the REQ
-	// handshake — if sp_suppress reactivated on every 1010 dip, it would
-	// yank _enbl2 HIGH mid-transaction, cutting FujiNet's ACK short and
-	// causing it to abort. Re-arm suppress only when motorOn drops
-	// (transaction fully over) or phases go idle/reset.
-	wire sp_req_active = (phase == 4'b1011);
-	wire sp_idle = (phase == 4'b0000) | (phase == 4'b0101) | ~motorOn;
-	reg  sp_transaction;  // 1 = in active SmartPort transaction
-
+	// SmartPort enable gating: suppress _enbl2 until phases first reach
+	// 1011 (REQ) after motorOn rises. This prevents FujiNet's ISR from
+	// firing during the ~16µs window while the ROM is still setting up
+	// phases (STA $C080-$C087, ~4µs each). The optocoupler delay alone
+	// (5µs) isn't enough to cover this.
+	//
+	// sp_seen_req latches ON when phases==1011, latches OFF only when
+	// motorOn drops. It does NOT clear on intermediate phase values
+	// during data transfer (1010, etc), avoiding the toggling bug that
+	// the old sp_suppress/sp_transaction mechanism had.
+	reg sp_seen_req;
 	always @(posedge fclk or negedge nRES) begin
 		if (~nRES)
-			sp_transaction <= 1'b0;
-		else if (sp_idle)
-			sp_transaction <= 1'b0;
-		else if (sp_req_active)
-			sp_transaction <= 1'b1;
+			sp_seen_req <= 1'b0;
+		else if (~motorOn)
+			sp_seen_req <= 1'b0;
+		else if (phase == 4'b1011)
+			sp_seen_req <= 1'b1;
 	end
 
-	wire sp_suppress = modeLatch & ~sp_req_active & ~sp_transaction;
+	wire sp_gate = modeLatch & ~sp_seen_req;
 
-	assign _enbl1 = sp_suppress ? 1'b1 : ~(enbl1_motor | enbl1_timer);
-	assign _enbl2 = sp_suppress ? 1'b1 : ~(enbl2_motor | enbl2_timer);
+	assign _enbl1 = sp_gate ? 1'b1 : ~(enbl1_motor | enbl1_timer);
+	assign _enbl2 = sp_gate ? 1'b1 : ~(enbl2_motor | enbl2_timer);
 
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
@@ -286,12 +277,10 @@ module iwm (
 	// =========================================================================
 	// Write data sampling (spec p4)
 	// The real IWM samples on the rising edge of (Q3 OR /DEV). In our FPGA,
-	// data_in is stable for the entire nDEVICE_SELECT LOW window, so we only
-	// need nDEVICE_SELECT. Dropping Q3 avoids a timing dependency where Q3
-	// must be LOW simultaneously with nDEVICE_SELECT during a fclk posedge —
-	// a narrow window that can systematically miss all buffer writes.
+	// we use falling-edge detection of nDEVICE_SELECT to latch data writes
+	// exactly once per bus access. Q3 is not used — data_in is stable for
+	// the entire nDEVICE_SELECT LOW window.
 	// =========================================================================
-	wire q3orDev = nDEVICE_SELECT;
 
 	// =========================================================================
 	// Serial I/O
@@ -299,22 +288,13 @@ module iwm (
 	//
 	// LATCH MODE (modeReg[0]=1) BYTE FRAMING
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	// The original code latched to buffer only when shifter[7]==1. This
-	// is correct for GCR floppy data (latch=0) where every valid byte has
-	// MSB=1. But SmartPort mode uses latch mode (modeReg[0]=1), and the
-	// sync pattern contains bytes WITHOUT MSB=1:
-	//   FF 3F CF F3 FC FF C3 ...
-	//        ^^
-	//   $3F = 00111111  -  bit 7 is 0!
+	// In GCR mode (latch=0), bytes latch when shifter[7]==1 (MSB-based
+	// framing). SmartPort latch mode needs different framing because the
+	// sync pattern contains bytes with MSB=0 (e.g. $3F = 00111111).
 	//
-	// With the old logic, $3F never latches. Its bits merge with the
-	// next byte, destroying byte alignment. The ROM scans for PBEGIN
-	// ($C3) and never finds it.
-	//
-	// Fix: once the first byte syncs via shifter[7]==1 (from the leading
-	// $FF sync), switch to an 8-bit counter that latches every 8 bits
-	// unconditionally. This matches the real IWM's latch-mode behavior
-	// described in the IWM specification.
+	// Approach: sync on the first $FF (via shifter[7]==1), then switch to
+	// an 8-bit counter that latches every 8 bits unconditionally. This
+	// matches the real IWM's latch-mode behavior (IWM spec).
 
 	reg [1:0] rddataSync;
 	always @(posedge fclk) begin
@@ -563,20 +543,16 @@ module iwm (
 			// =============================================================
 			// WRITE REGISTERS (spec p4/p7)
 			// Q7=1, Q6=1, A0=1: Motor-On=1 writes data, Motor-On=0 writes mode
-			// Spec says data sampled on rising edge of (Q3 OR /DEV), but
-			// level-detect works because data/addr are stable while /DEV
-			// is low. Writing the same value on multiple fclk cycles is
-			// harmless and avoids edge-detection timing sensitivity.
+			//
+			// Level-detect: must NOT use edge-detect on nDEVICE_SELECT
+			// because the Liron ROM's STA $C08D sets Q6=1 in the SAME
+			// fclk as the falling edge — q6 is still stale (0) at that
+			// instant. Level-detect catches it on the next fclk when
+			// q6=1 and nDEVICE_SELECT is still LOW.
 			// =============================================================
-			if (~q3orDev & q7 & q6 & addr[0]) begin
+			if (~nDEVICE_SELECT & q7 & q6 & addr[0]) begin
 				if (motorOn) begin
 					// Guard: reject buffer writes after underrun.
-					// The Liron ROM's drain wait at $C92C exits with
-					// STA $C08D,X (A=0), which triggers a data write
-					// of $00 into the buffer. Without this guard, the
-					// serializer loads and shifts out a spurious zero
-					// byte after PEND, adding false wrdata inactivity
-					// that can desync FujiNet's FM decoder.
 					if (_underrun) begin
 						buffer <= data_in;
 						writeBufferEmpty <= 0;
@@ -588,13 +564,5 @@ module iwm (
 			end
 		end
 	end
-
-	// Debug signal assignments
-	// dbg_buf7: _underrun indicator (active-LOW = serializer starved).
-	// If this goes LOW during a command, the FPGA ran out of data.
-	// If it stays HIGH, the FPGA output is correct and the problem is
-	// downstream (wire/ESP32).
-	assign dbg_buf7       = _underrun;
-	assign dbg_latch_sync = latchSynced;
 
 endmodule

@@ -124,8 +124,6 @@ module yellow_hamr_top (
     // IWM signals
     wire [7:0] iwm_data_out;
     wire       iwm_q7;
-    wire       iwm_dbg_buf7;
-    wire       iwm_dbg_latch_sync;
 
     // Data bus output mux
     wire [7:0] data_out_mux;
@@ -149,9 +147,9 @@ module yellow_hamr_top (
     assign GPIO2  = phase_gpio[2];     // phase[2] → ESP32 IO34 (SP_PHI2)
     assign GPIO3  = phase_gpio[3];     // phase[3] → ESP32 IO35 (SP_PHI3)
 
-    assign GPIO1  = _enbl1;            // _enbl1   → ESP32 IO36 (SP_DRIVE1)
+    assign GPIO1  = rd_buf_en ? 1'b1 : _enbl1;            // _enbl1   → ESP32 IO36 (SP_DRIVE1)
     assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
-    assign GPIO7  = _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
+    assign GPIO7  = rd_buf_en ? 1'b1 : _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
     assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
 
     // =========================================================================
@@ -261,8 +259,6 @@ module yellow_hamr_top (
         .sense          (sense),
         .rddata         (rddata),
         .q7_out         (iwm_q7),
-        .dbg_buf7       (iwm_dbg_buf7),
-        .dbg_latch_sync (iwm_dbg_latch_sync)
     );
 
     // =========================================================================

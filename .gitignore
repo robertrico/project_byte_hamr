@@ -66,3 +66,5 @@ __pycache__/
 /reporting/*.txt
 /reporting/*.json
 /reporting/*.log
+# Logic Analyzer Captures
+*.dsl
