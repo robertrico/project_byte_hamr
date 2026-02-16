@@ -35,6 +35,20 @@ module iwm (
 	reg       _underrun;
 	reg       writeBufferEmpty;
 
+	// Write-register one-shot: the real IWM latches data once per bus
+	// access on the rising edge of (Q3 OR /DEV). Our level-detect fires
+	// every fclk while nDEVICE_SELECT is LOW (~7 cycles), which causes
+	// the serializer to replay bytes when it consumes the buffer mid-access.
+	// This edge-detect on the combined write condition fires exactly once
+	// per bus access, matching real IWM behavior.
+	//
+	// Two-stage pipeline: writeCondPrev1 delays one fclk so data_in
+	// has settled before the latch fires. writeCondPrev2 blocks all
+	// subsequent fclk cycles in the same bus access.
+	reg       writeCondPrev1;
+	reg       writeCondPrev2;
+	wire      writeCondNow = ~nDEVICE_SELECT & q7 & q6 & addr[0];
+
 	// Q7 stability filter with hysteresis: Prevents address bus glitches
 	// from spuriously activating the write serializer during receive.
 	//
@@ -330,6 +344,8 @@ module iwm (
 			q7_rise_ctr      <= 4'd0;
 			q7_fall_ctr      <= 7'd0;
 			q7_stable        <= 1'b0;
+			writeCondPrev1   <= 1'b0;
+			writeCondPrev2   <= 1'b0;
 		end
 		else begin
 
@@ -544,13 +560,19 @@ module iwm (
 			// WRITE REGISTERS (spec p4/p7)
 			// Q7=1, Q6=1, A0=1: Motor-On=1 writes data, Motor-On=0 writes mode
 			//
-			// Level-detect: must NOT use edge-detect on nDEVICE_SELECT
-			// because the Liron ROM's STA $C08D sets Q6=1 in the SAME
-			// fclk as the falling edge — q6 is still stale (0) at that
-			// instant. Level-detect catches it on the next fclk when
-			// q6=1 and nDEVICE_SELECT is still LOW.
+			// One-shot write pulse with 1-fclk settle delay:
+			// - fclk N:   writeCondNow goes TRUE (q6 just updated)
+			// - fclk N+1: writeCondPrev1=1, writeCondPrev2=0 → FIRE
+			// - fclk N+2: writeCondPrev2=1 → blocked for rest of access
+			//
+			// The 1-fclk delay ensures data_in has settled after the
+			// address decode propagates through the FPGA fabric.
+			// writeCondPrev2 prevents re-fire for the remaining ~5 fclk
+			// of the bus access, eliminating the double-load race.
 			// =============================================================
-			if (~nDEVICE_SELECT & q7 & q6 & addr[0]) begin
+			writeCondPrev1 <= writeCondNow;
+			writeCondPrev2 <= writeCondPrev1;
+			if (writeCondPrev1 & ~writeCondPrev2) begin
 				if (motorOn) begin
 					// Guard: reject buffer writes after underrun.
 					if (_underrun) begin
