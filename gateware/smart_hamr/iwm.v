@@ -336,7 +336,7 @@ module iwm (
 			shifter          <= 8'd0;
 			writeShifter     <= 8'd0;
 			clearBufferTimer <= 4'd0;
-			wrdata           <= 1'b0;
+			wrdata           <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true
 			latchSynced      <= 1'b0;
 			drain_delay_ctr  <= 11'd0;
 			_underrun_prev   <= 1'b1;
@@ -526,16 +526,18 @@ module iwm (
 					// trailing wrdata transitions that corrupt FujiNet's
 					// FM decoder byte alignment.
 					if (~_underrun)
-						wrdata <= 1'b0;  // Underrun: force idle immediately
+						wrdata <= 1'b0;
 					else if (writeBitTimer == 1 && writeShifter[7] == 1)
 						wrdata <= ~wrdata;
 				end
 			end
 			else begin
 				_underrun <= 1;
-				wrdata    <= 1'b0; // Known idle state — prevents stale level
-				                   // from corrupting FujiNet's static prev_level
-				                   // at the start of the next command packet.
+				wrdata    <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true.
+				                   // FujiNet's iwm_decode_byte initializes prev_level=true.
+				                   // If wrdata is LOW at SPI capture start, prev_level≠current
+				                   // fires a spurious edge at sample 0, resyncing idx to
+				                   // half_samples and shifting the entire decode window by 2µs.
 			end
 
 			// =============================================================

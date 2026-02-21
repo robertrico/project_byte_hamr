@@ -22,6 +22,7 @@ endif
 DEVICE   := 85k
 PACKAGE  := CABGA381
 SPEED    := 8
+PNR_SEED ?= 1
 
 # Directories
 BUILD_DIR     := build
@@ -175,6 +176,7 @@ $(CFG): $(JSON) $(LPF) | $(REPORT_DIR)
 	$(NEXTPNR) --$(DEVICE) --package $(PACKAGE) --speed $(SPEED) \
 		--lpf $(LPF) --json $(JSON) --textcfg $@ \
 		--report $(PNR_REPORT) \
+		--seed $(PNR_SEED) \
 		--timing-allow-fail 2>&1 | tee -a $(PNR_LOG)
 	@echo "" >> $(PNR_LOG)
 	@echo "Place & Route completed at $$(date)" >> $(PNR_LOG)

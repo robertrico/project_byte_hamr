@@ -151,7 +151,7 @@ LOCATE COMP "GPIO11" SITE "B5";
 IOBUF PORT "GPIO11" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE; // _enbl2   → IO21
 // Inputs (ESP32 → FPGA):
 LOCATE COMP "GPIO6" SITE "E2";
-IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 PULLMODE=UP;                          // rd_buf_en ← IO25 (UP = buffer disabled at boot)
+IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 PULLMODE=DOWN SLEWRATE=SLOW;                          // rd_buf_en ← IO25 (UP = buffer disabled at boot)
 LOCATE COMP "GPIO8" SITE "D1";
 IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 PULLMODE=UP;                          // sense/ACK ← IO27
 LOCATE COMP "GPIO9" SITE "C1";
