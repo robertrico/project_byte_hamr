@@ -42,7 +42,7 @@
 //   GPIO12:   Level shifter OE (active-low, for Apple II data bus)
 // =============================================================================
 
-module yellow_hamr_top (
+module smart_hamr_top (
     // System clock - DIRECTLY from Apple II bus, no on-board oscillator needed
     // CLK_25MHz exists on the board but is deliberately unused to keep
     // the design in a single clock domain (matching Yellowstone architecture)

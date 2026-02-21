@@ -14,7 +14,7 @@
 //   T7: Serial read        - Pulse rddata -> data appears in buffer
 // =============================================================================
 
-module yellow_hamr_tb;
+module smart_hamr_tb;
 
     // =========================================================================
     // Parameters
@@ -89,7 +89,7 @@ module yellow_hamr_tb;
     // =========================================================================
     // DUT Instantiation
     // =========================================================================
-    yellow_hamr_top dut (
+    smart_hamr_top dut (
         .CLK_25MHz      (clk_25),
         .addr           (addr),
         .D0             (D0),
@@ -268,12 +268,12 @@ module yellow_hamr_tb;
     // =========================================================================
 
     initial begin
-        $dumpfile("yellow_hamr_tb.vcd");
-        $dumpvars(0, yellow_hamr_tb);
+        $dumpfile("smart_hamr_tb.vcd");
+        $dumpvars(0, smart_hamr_tb);
 
         $display("");
         $display("===========================================");
-        $display("Yellow Hamr Testbench");
+        $display("Smart Hamr Testbench");
         $display("===========================================");
         $display("");
 

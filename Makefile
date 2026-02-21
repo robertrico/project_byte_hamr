@@ -374,7 +374,7 @@ list-dsk:
 # Requires: source ~/esp/esp-idf/export.sh (once per terminal session)
 # =============================================================================
 
-ESP_FW_DIR   := gateware/yellow_hamr/firmware
+ESP_FW_DIR   := gateware/smart_hamr/firmware
 ESP_PROJECT  ?= phase1_signal_monitor
 ESP_PORT     ?= $(shell ls /dev/cu.usbserial-* 2>/dev/null | head -1)
 IDF_PATH     ?= $(HOME)/esp/esp-idf
