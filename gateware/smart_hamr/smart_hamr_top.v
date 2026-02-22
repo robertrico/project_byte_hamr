@@ -1,203 +1,137 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// Yellow Hamr - Top Level Module
+// Smart Hamr — Top Level Module (Liron Card Emulation)
 // =============================================================================
-// Apple IIe-compatible Liron disk controller (IWM-based SmartPort interface)
-// for the Byte Hamr FPGA card.
 //
-// Adapted from Steve Chamberlin's Yellowstone project:
-//   Original target: Lattice MachXO2-1200HC (no oscillator, fclk-only design)
-//   This target: Lattice ECP5-85F (Byte Hamr)
+// This is the complete Liron disk controller card, implemented in an ECP5.
+// A real Liron card contains:
 //
-// SINGLE CLOCK DOMAIN DESIGN
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Like Yellowstone, this design runs entirely from sig_7M (the Apple II's
-// 7 MHz clock). CLK_25MHz is deliberately unused to avoid introducing a
-// second clock domain, which would cause nextpnr to analyze cross-domain
-// timing on the purely combinatorial IWM-to-GPIO paths and create false
-// timing violations. Yellowstone's LPF uses "BLOCK ASYNCPATHS" to suppress
-// this; our approach is simpler — don't create the second domain at all.
+//   1. IWM chip (Integrated Woz Machine)   — emulated by iwm_ii.v
+//   2. 4K ROM (Liron firmware, 341-0372)   — boot_rom.v + liron_rom.mem
+//   3. Address decoder / expansion ROM flag — addr_decoder.v
+//   4. 74LS245 bus transceiver              — FPGA tristate + GPIO12 OE
+//   5. 74LS21 / 74LS30 / 74LS00 glue       — wiring below
 //
-// All GPIO outputs to the ESP32 are driven directly from IWM combinatorial
-// outputs, exactly as Yellowstone drives its DB-19 connector. The ESP32
-// samples at GPIO speeds (~microseconds), well above any glitch concern.
+// Signal flow:
+//   Apple IIe bus → FPGA (IWM + ROM + glue) → GPIO header → ESP32 (FujiNet)
+//
+// SINGLE CLOCK DOMAIN: sig_7M only. CLK_25MHz is unused.
 //
 // Memory Map (Slot 4):
-//   $C0C0-$C0CF  nDEVICE_SELECT  IWM registers
-//   $C400-$C4FF  nI_O_SELECT     Boot ROM ($000-$0FF)
-//   $C800-$CFFF  nI_O_STROBE     Boot ROM ($100-$7FF) when expansion active
+//   $C0C0-$C0CF  nDEVICE_SELECT  → IWM registers (16 softswitches)
+//   $C400-$C4FF  nI_O_SELECT     → Boot ROM ($400-$4FF, slot 4 page)
+//   $C800-$CFFF  nI_O_STROBE     → Expansion ROM ($800-$FFF)
 //
-// GPIO Header Pinout (FujiNet Rev0-compatible, with FPGA tri-state buffer):
-//   GPIO1:    _enbl1    - Drive 1 enable (active LOW)         → ESP32 IO36
-//   GPIO2:    phase[2]  - SmartPort command bit 2             → ESP32 IO34
-//   GPIO3:    phase[3]  - SmartPort command bit 3             → ESP32 IO35
-//   GPIO4:    phase[0]  - SmartPort command bit 0             → ESP32 IO32
-//   GPIO5:    phase[1]  - SmartPort command bit 1             → ESP32 IO33
-//   GPIO6:    rd_buf_en - Tri-state buffer enable (from ESP32) [INPUT] ← ESP32 IO25
-//   GPIO7:    _wreq     - Write request (active LOW)          → ESP32 IO26
-//   GPIO8:    sense     - Write-protect / ACK (from ESP32)    [INPUT] ← ESP32 IO27
-//   GPIO9:    rddata    - Serial read data (from ESP32)       [INPUT] ← ESP32 IO14
-//   GPIO10:   wrdata    - Serial write data (to ESP32)        → ESP32 IO22
-//   GPIO11:   _enbl2    - Drive 2 enable (active LOW)         → ESP32 IO21
-//   GPIO12:   Level shifter OE (active-low, for Apple II data bus)
+// GPIO Header Pinout (FujiNet-compatible):
+//   GPIO1:  _enbl1    → ESP32 IO36   (Drive 1 enable, active LOW)
+//   GPIO2:  phase[2]  → ESP32 IO34   (SmartPort command bit 2)
+//   GPIO3:  phase[3]  → ESP32 IO35   (SmartPort command bit 3)
+//   GPIO4:  phase[0]  → ESP32 IO32   (SmartPort command bit 0)
+//   GPIO5:  phase[1]  → ESP32 IO33   (SmartPort command bit 1)
+//   GPIO6:  rd_buf_en ← ESP32 IO25   (Tri-state buffer enable) [INPUT]
+//   GPIO7:  _wreq     → ESP32 IO26   (Write request, active LOW)
+//   GPIO8:  sense     ← ESP32 IO27   (Write-protect / ACK)     [INPUT]
+//   GPIO9:  rddata    ← ESP32 IO14   (Serial read data)        [INPUT]
+//   GPIO10: wrdata    → ESP32 IO22   (Serial write data)
+//   GPIO11: _enbl2    → ESP32 IO21   (Drive 2 enable, active LOW)
+//   GPIO12: lvl_shift → data bus     (Level shifter OE, active LOW)
 // =============================================================================
 
 module smart_hamr_top (
-    // System clock - DIRECTLY from Apple II bus, no on-board oscillator needed
-    // CLK_25MHz exists on the board but is deliberately unused to keep
-    // the design in a single clock domain (matching Yellowstone architecture)
+    // System clock (exists on board, deliberately unused)
     input wire        CLK_25MHz,
 
     // Apple II bus interface
-    input wire [11:0] addr,             // Address bus
-    // Data bus as individual pins (like Logic Hamr)
-    inout wire        D0,
-    inout wire        D1,
-    inout wire        D2,
-    inout wire        D3,
-    inout wire        D4,
-    inout wire        D5,
-    inout wire        D6,
-    inout wire        D7,
-    input wire        sig_7M,           // 7 MHz clock (IWM FCLK) - THE clock
-    input wire        Q3,               // 2 MHz timing reference
-    input wire        R_nW,             // Read/Write (1=read, 0=write)
-    input wire        nDEVICE_SELECT,   // $C0C0-$C0CF
-    input wire        nI_O_SELECT,      // $C400-$C4FF
-    input wire        nI_O_STROBE,      // $C800-$CFFF
-    output wire       nRES,             // System reset (active low, open-drain)
+    input wire [11:0] addr,
+    inout wire        D0, D1, D2, D3, D4, D5, D6, D7,
+    input wire        sig_7M,
+    input wire        Q3,
+    input wire        R_nW,
+    input wire        nDEVICE_SELECT,
+    input wire        nI_O_SELECT,
+    input wire        nI_O_STROBE,
+    output wire       nRES,
 
-    // Critical control signals (directly hi-Z to avoid bus contention)
-    input  wire        RDY,             // Ready (input only)
-    output wire        nIRQ,            // Interrupt request (tri-stated)
-    output wire        nNMI,            // Non-maskable interrupt (tri-stated)
-    output wire        nDMA,            // DMA (tri-stated)
-    output wire        nINH,            // Inhibit (tri-stated)
+    // Control signals (active low, directly hi-Z to avoid bus contention)
+    input  wire       RDY,
+    output wire       nIRQ,
+    output wire       nNMI,
+    output wire       nDMA,
+    output wire       nINH,
 
-    // Daisy chain signals - match Logic Hamr direction exactly!
-    input  wire        DMA_OUT,         // DMA from higher slots (input)
-    output wire        DMA_IN,          // DMA to lower slots (output)
-    input  wire        INT_OUT,         // INT from higher slots (input)
-    output wire        INT_IN,          // INT to lower slots (output)
+    // Daisy chain
+    input  wire       DMA_OUT,
+    output wire       DMA_IN,
+    input  wire       INT_OUT,
+    output wire       INT_IN,
 
-    // Clock phases
-    input  wire        PHI0,            // Phase 0 clock
-    input  wire        PHI1,            // Phase 1 clock
-    input  wire        uSync,           // Microsecond sync
+    // Clock phases (unused in single-clock design, but pinned)
+    input  wire       PHI0,
+    input  wire       PHI1,
+    input  wire       uSync,
 
     // ESP32 FujiNet interface (via GPIO header)
-    output wire       GPIO1,            // _enbl1    → ESP32 IO36
-    output wire       GPIO2,            // phase[2]  → ESP32 IO34
-    output wire       GPIO3,            // phase[3]  → ESP32 IO35
-    output wire       GPIO4,            // phase[0]  → ESP32 IO32
-    output wire       GPIO5,            // phase[1]  → ESP32 IO33
-    input wire        GPIO6,            // rd_buf_en ← ESP32 IO25 (tri-state gate)
-    output wire       GPIO7,            // _wreq     → ESP32 IO26
-    input wire        GPIO8,            // sense/ACK ← ESP32 IO27
-    input wire        GPIO9,            // rddata    ← ESP32 IO14
-    output wire       GPIO10,           // wrdata    → ESP32 IO22
-    output wire       GPIO11,           // _enbl2    → ESP32 IO21
-    output wire       GPIO12            // Level shifter OE (active-low)
+    output wire       GPIO1,
+    output wire       GPIO2,
+    output wire       GPIO3,
+    output wire       GPIO4,
+    output wire       GPIO5,
+    input  wire       GPIO6,
+    output wire       GPIO7,
+    input  wire       GPIO8,
+    input  wire       GPIO9,
+    output wire       GPIO10,
+    output wire       GPIO11,
+    output wire       GPIO12
 );
 
     // =========================================================================
     // Internal Signals
     // =========================================================================
 
-    // Drive interface signals
+    // IWM ↔ drive interface
     wire [3:0] phase;
     wire       wrdata;
-    wire       rddata;
-    wire       sense;
     wire       _enbl1;
     wire       _enbl2;
     wire       _wrreq;
 
-    // Tri-state buffer control from ESP32 (active LOW = enable rddata output)
+    // ESP32 → FPGA inputs
     wire       rd_buf_en;
+    wire       rddata;
+    wire       sense;
 
-    // ROM signals
+    // IWM → data bus
+    wire [7:0] iwm_data_out;
+    wire       q6, q7;
+
+    // ROM → data bus
     wire [7:0] rom_data;
     wire       rom_oe;
     wire       rom_expansion_active;
 
-    // IWM signals
-    wire [7:0] iwm_data_out;
-    wire       iwm_q7;
-
-    // Data bus output mux
-    wire [7:0] data_out_mux;
-
-    // =========================================================================
-    // GPIO Output Assignments (FPGA → ESP32)
-    // =========================================================================
-
-    // Phase outputs - registered to avoid combinatorial glitches on ESP32 inputs
-    reg [3:0]  phase_gpio = 4'b0000;
-
-    always @(posedge sig_7M or negedge por_n) begin
-        if (!por_n)
-            phase_gpio <= 4'b0000;
-        else
-            phase_gpio <= phase;
-    end
-
-    assign GPIO4  = phase_gpio[0];     // phase[0] → ESP32 IO32 (SP_PHI0/SP_REQ)
-    assign GPIO5  = phase_gpio[1];     // phase[1] → ESP32 IO33 (SP_PHI1)
-    assign GPIO2  = phase_gpio[2];     // phase[2] → ESP32 IO34 (SP_PHI2)
-    assign GPIO3  = phase_gpio[3];     // phase[3] → ESP32 IO35 (SP_PHI3)
-
-    assign GPIO1  = rd_buf_en ? 1'b1 : _enbl1;            // _enbl1   → ESP32 IO36 (SP_DRIVE1)
-    assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
-    assign GPIO7  = rd_buf_en ? 1'b1 : _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
-    assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
-
-    // =========================================================================
-    // GPIO Input Assignments (ESP32 → FPGA)
-    // =========================================================================
-
-    // Tri-state buffer control from ESP32 (active LOW = enable rddata to IWM).
-    // Replaces the external 74LVC125 buffer on real FujiNet hardware.
-    // When rd_buf_en is HIGH (disabled), rddata is forced to idle-HIGH
-    // (IWM idle state), preventing bus contention when ESP32 is reconfiguring
-    // its GPIO direction.
-    assign rd_buf_en = GPIO6;          // rd_buf_en ← ESP32 IO25 (SP_RD_BUFFER)
-
-    // FujiNet drives rddata as idle-LOW / pulse-HIGH (SPI mode 0, no inversion).
-    // The IWM expects idle-HIGH / pulse-LOW (falling-edge = '1' bit), matching
-    // original Apple hardware where an inverting amplifier sits between the
-    // drive head and the IWM chip. Invert here to restore correct polarity.
-    // When rd_buf_en is HIGH (buffer disabled), force rddata HIGH (IWM idle).
-    assign rddata = rd_buf_en ? 1'b1 : ~GPIO9;  // rddata ← ESP32 IO14 (SP_RDDATA)
-
-    assign sense = GPIO8;              // sense/ACK ← ESP32 IO27 (SP_WRPROT/SP_ACK)
-
-    // =========================================================================
-    // Level Shifter OE Control (active-low)
-    // =========================================================================
-    // Enable for both reads and writes when IWM or ROM is selected.
-    // R_nW controls the '245 DIR pin (direction), not OE.
-    wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
-    assign GPIO12 = ~lvl_shift_oe;
-
     // =========================================================================
     // Power-On Reset
     // =========================================================================
-    // Byte Hamr nRES cannot be read (hardware limitation). POR only.
-    // Holds reset low for 15 fclk cycles (~2 us) after FPGA configuration.
+    // Byte Hamr nRES pin cannot be read (hardware limitation). POR only.
+    // Holds reset for 15 fclk cycles (~2 us) after FPGA configuration.
     // ECP5 initializes registers to their declared values on configuration.
 
     assign nRES = 1'b1;
 
     reg [3:0] por_counter = 4'd0;
-    wire      por_n = &por_counter;   // HIGH (released) when counter saturates
+    wire      por_n = &por_counter;
 
     always @(posedge sig_7M) begin
         if (!por_n)
             por_counter <= por_counter + 4'd1;
     end
 
-    // Tri-state control signals (match Logic Hamr)
+    // =========================================================================
+    // Control Signal Tri-State (match Logic Hamr)
+    // =========================================================================
+    // These signals are active-low, directly tri-stated to avoid bus contention.
+
     assign nIRQ = 1'bZ;
     assign nNMI = 1'bZ;
     assign nINH = 1'bZ;
@@ -208,13 +142,66 @@ module smart_hamr_top (
     assign INT_IN = INT_OUT;
 
     // =========================================================================
-    // Data Bus Control
+    // ESP32 GPIO — Input Conditioning
     // =========================================================================
-    // ROM has priority, then IWM. Bus is hi-Z when not being read.
 
-    assign data_out_mux = rom_oe ? rom_data : iwm_data_out;
+    // Tri-state buffer control from ESP32 (active LOW = enable rddata output).
+    // Replaces the external 74LVC125 buffer on real FujiNet hardware.
+    // When rd_buf_en is HIGH (disabled), rddata is forced to idle-HIGH
+    // (IWM idle state), preventing bus contention when ESP32 is reconfiguring.
+    assign rd_buf_en = GPIO6;
 
-    wire data_oe = R_nW && (rom_oe || !nDEVICE_SELECT);
+    // FujiNet drives rddata as idle-LOW / pulse-HIGH (SPI mode 0, no inversion).
+    // The IWM expects idle-HIGH / pulse-LOW (falling-edge = '1' bit), matching
+    // original Apple hardware where an inverting amplifier sits between the
+    // drive head and the IWM chip. Invert here to restore correct polarity.
+    assign rddata = rd_buf_en ? 1'b1 : ~GPIO9;
+
+    assign sense = GPIO8;
+
+    // =========================================================================
+    // ESP32 GPIO — Output Assignments (FPGA → ESP32)
+    // =========================================================================
+
+    // Phase outputs — registered to suppress combinatorial glitches
+    reg [3:0] phase_gpio = 4'b0000;
+
+    always @(posedge sig_7M or negedge por_n) begin
+        if (!por_n)
+            phase_gpio <= 4'b0000;
+        else
+            phase_gpio <= phase;
+    end
+
+    assign GPIO4  = phase_gpio[0];          // phase[0] → ESP32 IO32
+    assign GPIO5  = phase_gpio[1];          // phase[1] → ESP32 IO33
+    assign GPIO2  = phase_gpio[2];          // phase[2] → ESP32 IO34
+    assign GPIO3  = phase_gpio[3];          // phase[3] → ESP32 IO35
+
+    // Enable and write-request: gated by rd_buf_en to avoid
+    // spurious assertions while ESP32 is reconfiguring GPIO direction.
+    assign GPIO1  = rd_buf_en ? 1'b1 : _enbl1;   // _enbl1 → ESP32 IO36
+    assign GPIO11 = _enbl2;                        // _enbl2 → ESP32 IO21
+    assign GPIO7  = rd_buf_en ? 1'b1 : _wrreq;   // _wrreq → ESP32 IO26
+    assign GPIO10 = wrdata;                        // wrdata → ESP32 IO22
+
+    // =========================================================================
+    // Level Shifter OE (74LVC245 on the Byte Hamr PCB)
+    // =========================================================================
+    // Active-low. Enable for both reads and writes when IWM or ROM is selected.
+    // R_nW controls the '245 DIR pin (direction), not OE.
+
+    wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
+    assign GPIO12 = ~lvl_shift_oe;
+
+    // =========================================================================
+    // Data Bus — Output Mux & Tri-State
+    // =========================================================================
+    // ROM has priority (it covers both I/O select and expansion ROM),
+    // then IWM data. Bus is hi-Z when not being read.
+
+    wire [7:0] data_out_mux = rom_oe ? rom_data : iwm_data_out;
+    wire       data_oe = R_nW && (rom_oe || !nDEVICE_SELECT);
 
     assign D0 = data_oe ? data_out_mux[0] : 1'bZ;
     assign D1 = data_oe ? data_out_mux[1] : 1'bZ;
@@ -226,7 +213,7 @@ module smart_hamr_top (
     assign D7 = data_oe ? data_out_mux[7] : 1'bZ;
 
     // =========================================================================
-    // Address Decoder - manages ROM output enable and expansion ROM flag
+    // Address Decoder — ROM output enable & expansion ROM flag
     // =========================================================================
 
     addr_decoder u_addr_decoder (
@@ -240,7 +227,7 @@ module smart_hamr_top (
     );
 
     // =========================================================================
-    // IWM - Integrated Woz Machine disk controller
+    // IWM — Integrated Woz Machine (state machine + registers)
     // =========================================================================
 
     iwm u_iwm (
@@ -258,22 +245,23 @@ module smart_hamr_top (
         ._enbl2         (_enbl2),
         .sense          (sense),
         .rddata         (rddata),
-        .q7_out         (iwm_q7),
+        .q6_out         (q6),
+        .q7_out         (q7)
     );
 
     // =========================================================================
-    // Boot ROM - Liron firmware (clocked by sig_7M, matching Yellowstone)
+    // Boot ROM — Liron firmware (4K, combinatorial read)
     // =========================================================================
-
     // ROM address mapping for SLOT 4:
-    //   $C4xx (nI_O_SELECT low)  -> ROM $400-$4FF (slot 4 boot code)
-    //   $C8xx-$CFxx (nI_O_STROBE low) -> ROM $800-$FFF (expansion ROM)
-    // The Liron ROM has slot-specific boot code at $n00 for each slot n
-    wire [11:0] rom_addr = !nI_O_SELECT ? {4'b0100, addr[7:0]}   // Slot 4: ROM $400-$4FF
-                                        : {1'b1, addr[10:0]};    // Expansion: ROM $800-$FFF
+    //   $C4xx (nI_O_SELECT low)     → ROM $400-$4FF (slot 4 boot code)
+    //   $C8xx-$CFxx (nI_O_STROBE)   → ROM $800-$FFF (expansion ROM)
+    // The Liron ROM has slot-specific boot code at $n00 for each slot n.
+
+    wire [11:0] rom_addr = !nI_O_SELECT ? {4'b0100, addr[7:0]}
+                                        : {1'b1, addr[10:0]};
 
     boot_rom u_boot_rom (
-        .clk  (sig_7M),            // Same clock as Yellowstone (fclk)
+        .clk  (sig_7M),
         .addr (rom_addr),
         .data (rom_data)
     );
