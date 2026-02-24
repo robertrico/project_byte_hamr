@@ -9,14 +9,14 @@
 //   Original target: Lattice MachXO2-1200HC (no oscillator, fclk-only design)
 //   This target: Lattice ECP5-85F (Byte Hamr)
 //
-// SINGLE CLOCK DOMAIN DESIGN
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Like Yellowstone, this design runs entirely from sig_7M (the Apple II's
-// 7 MHz clock). CLK_25MHz is deliberately unused to avoid introducing a
-// second clock domain, which would cause nextpnr to analyze cross-domain
-// timing on the purely combinatorial IWM-to-GPIO paths and create false
-// timing violations. Yellowstone's LPF uses "BLOCK ASYNCPATHS" to suppress
-// this; our approach is simpler — don't create the second domain at all.
+// HYBRID CLOCK DESIGN
+// ~~~~~~~~~~~~~~~~~~~~
+// All IWM logic runs from sig_7M (the Apple II's 7 MHz clock), matching
+// Yellowstone. CLK_25MHz is used ONLY as a timing reference for the write
+// serializer's bit-cell tick generator — a tiny counter that toggles every
+// 100 cycles (exact 4.000µs). The fclk domain synchronizes the toggle via
+// a 2-FF CDC chain. BLOCK ASYNCPATHS in the LPF suppresses false
+// cross-domain timing violations on this single-bit CDC path.
 //
 // All GPIO outputs to the ESP32 are driven directly from IWM combinatorial
 // outputs, exactly as Yellowstone drives its DB-19 connector. The ESP32
@@ -43,9 +43,8 @@
 // =============================================================================
 
 module smart_hamr_top (
-    // System clock - DIRECTLY from Apple II bus, no on-board oscillator needed
-    // CLK_25MHz exists on the board but is deliberately unused to keep
-    // the design in a single clock domain (matching Yellowstone architecture)
+    // System clocks
+    // CLK_25MHz: on-board crystal, used only for write bit-cell tick generator
     input wire        CLK_25MHz,
 
     // Apple II bus interface
@@ -258,6 +257,7 @@ module smart_hamr_top (
         ._enbl2         (_enbl2),
         .sense          (sense),
         .rddata         (rddata),
+        .wr_clk         (CLK_25MHz),
         .q7_out         (iwm_q7),
     );
 

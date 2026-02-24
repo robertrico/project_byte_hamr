@@ -18,6 +18,9 @@ module iwm (
 	input wire        sense,          // Write protect / ACK from drive
 	input wire        rddata,         // Serial data input (falling edge = 1 bit)
 
+	// 25MHz write timing reference (bit-cell tick generator only)
+	input wire        wr_clk,         // 25MHz crystal clock
+
 	// Q7 output for ESP32 command decoding
 	output wire       q7_out
 );
@@ -93,6 +96,31 @@ module iwm (
 	reg        _underrun_prev;
 	wire       _underrun_delayed = (drain_delay_ctr != 0) ? 1'b1 : _underrun;
 
+	// =========================================================================
+	// 25MHz Bit-Cell Tick Generator (separate clock domain)
+	// =========================================================================
+	// Free-running counter in the 25MHz domain. Toggles wr_tick every 100
+	// cycles (100 × 40ns = 4.000µs) — exact SmartPort bit cell timing.
+	// Only this tiny block runs in the 25MHz domain. The fclk domain
+	// synchronizes the toggle via a 2-FF CDC chain, producing a
+	// non-accumulating ±140ns jitter (vs the old ±89ns/cell CUMULATIVE drift).
+	reg [6:0] wr_tick_ctr = 7'd0;
+	reg       wr_tick     = 1'b0;
+
+	always @(posedge wr_clk) begin
+		if (wr_tick_ctr == 7'd99) begin
+			wr_tick_ctr <= 7'd0;
+			wr_tick     <= ~wr_tick;
+		end else
+			wr_tick_ctr <= wr_tick_ctr + 7'd1;
+	end
+
+	// CDC: 2-FF synchronizer + edge detect in fclk domain
+	reg [1:0] wr_tick_sync;
+	reg       wr_tick_prev;
+	wire      bit_cell_tick = (wr_tick_sync[1] != wr_tick_prev);
+	reg       bit_cell_tick_d1;
+
 	// Mode register bit aliases (spec p8)
 	wire modeLatch   = modeReg[0]; // 1 = latch mode
 	wire modeAsync   = modeReg[1]; // 1 = asynchronous handshake
@@ -110,23 +138,20 @@ module iwm (
 	//   FCLK/2 in slow). Since our counter runs at FCLK, slow mode values
 	//   are doubled.
 	//
-	//   Mode       | oneThreshold | zeroThreshold | writeBitCell
-	//   slow, 7M   |   14 (7*2)   |   42 (21*2)   |     28
-	//   slow, 8M   |   16 (8*2)   |   48 (24*2)   |     32
-	//   fast, 7M   |    7         |   21           |     14
-	//   fast, 8M   |    8         |   24           |     16
+	//   Mode       | oneThreshold | zeroThreshold
+	//   slow, 7M   |   14 (7*2)   |   42 (21*2)
+	//   slow, 8M   |   16 (8*2)   |   48 (24*2)
+	//   fast, 7M   |    7         |   21
+	//   fast, 8M   |    8         |   24
 	reg [5:0] oneThreshold;
 	reg [5:0] zeroThreshold;
-	reg [5:0] writeBitCell;
 
 	always @(*) begin
 		case ({modeFast, mode8MHz})
-			// writeBitCell is period-1 because the timer counts 0..N inclusive
-			// (N+1 fclk cycles). IWM spec: 28 FCLK for slow/7M = 3.91µs bit cell.
-			2'b00: begin oneThreshold = 14; zeroThreshold = 42; writeBitCell = 27; end
-			2'b01: begin oneThreshold = 16; zeroThreshold = 48; writeBitCell = 31; end
-			2'b10: begin oneThreshold =  7; zeroThreshold = 21; writeBitCell = 13; end
-			2'b11: begin oneThreshold =  8; zeroThreshold = 24; writeBitCell = 15; end
+			2'b00: begin oneThreshold = 14; zeroThreshold = 42; end
+			2'b01: begin oneThreshold = 16; zeroThreshold = 48; end
+			2'b10: begin oneThreshold =  7; zeroThreshold = 21; end
+			2'b11: begin oneThreshold =  8; zeroThreshold = 24; end
 		endcase
 	end
 
@@ -317,8 +342,7 @@ module iwm (
 
 	reg [5:0] bitTimer;
 	reg [2:0] bitCounter;
-	reg [5:0] writeBitTimer;     // Separate write bit timer (avoids read↔write crosstalk)
-	reg [2:0] writeBitCounter;   // Separate write bit counter
+	reg [2:0] writeBitCounter;   // Write bit counter (8 bits per byte)
 	reg [3:0] clearBufferTimer;
 	reg       latchSynced;       // 1 = synced, latch every 8 bits
 	reg       q7_prev;           // For detecting Q7 0→1 transition
@@ -330,8 +354,7 @@ module iwm (
 			writeBufferEmpty <= 1'b1;
 			bitCounter       <= 3'd0;
 			bitTimer         <= 6'd0;
-			writeBitCounter  <= 3'd7;
-			writeBitTimer    <= 6'd0;
+			writeBitCounter  <= 3'd0;
 			buffer           <= 8'd0;
 			shifter          <= 8'd0;
 			writeShifter     <= 8'd0;
@@ -344,10 +367,18 @@ module iwm (
 			q7_rise_ctr      <= 4'd0;
 			q7_fall_ctr      <= 7'd0;
 			q7_stable        <= 1'b0;
+			wr_tick_sync     <= 2'b00;
+			wr_tick_prev     <= 1'b0;
+			bit_cell_tick_d1 <= 1'b0;
 			writeCondPrev1   <= 1'b0;
 			writeCondPrev2   <= 1'b0;
 		end
 		else begin
+
+			// CDC: synchronize 25MHz tick toggle into fclk domain
+			wr_tick_sync <= {wr_tick_sync[0], wr_tick};
+			wr_tick_prev <= wr_tick_sync[1];
+			bit_cell_tick_d1 <= bit_cell_tick;
 
 			// Clear buffer MSB when CPU reads data register (Q7=0, Q6=0)
 			// Spec p3: after a valid data read, MSB is cleared (14 FCLK
@@ -467,13 +498,12 @@ module iwm (
 			end
 
 			// =============================================================
-			// WRITE TO DISK (spec p2)
-			// Uses separate writeShifter/writeBitTimer/writeBitCounter
-			// to avoid read-path state corrupting write output.
-			// On q7_stable 0→1 transition, write state is initialized
-			// so the first byte loads immediately with no garbage on
-			// wrdata. The stability filter ensures Q7 glitches never
-			// reach the serializer.
+			// WRITE TO DISK (spec p2) — 25MHz tick-based timing
+			// Uses 25MHz crystal as a timing reference for exact
+			// 4.000µs bit cells. A tiny counter in the 25MHz domain
+			// toggles every 100 cycles; the fclk domain synchronizes
+			// the toggle via 2-FF CDC and uses the edge as bit_cell_tick.
+			// All serializer logic remains in the fclk domain.
 			// =============================================================
 			q7_prev <= q7_stable;
 
@@ -482,25 +512,18 @@ module iwm (
 					// q7_stable just went high — initialize write state.
 					// Load writeShifter with $FF (all-ones) so wrdata
 					// starts toggling immediately as sync preamble.
-					// Counter=7 so the first byte-boundary loads from
-					// buffer on the next writeBitCell rollover.
-					//
-					// IWM spec: "the write shift register is loaded
-					// every 8 bit cell times starting seven CLK periods
-					// after the write state begins." In slow mode,
-					// CLK = fclk/2, so 7 CLK = 14 fclk. Timer starts
-					// at 14 so it rolls over after 14 cycles (27-14+1),
-					// triggering the first byte load at the spec-correct
-					// time. No wrdata toggle in this initial partial cell
-					// (toggle is at timer==1, already passed).
-					writeBitTimer   <= 6'd14;
-					writeBitCounter <= 3'd7;
+					// Counter starts at 0 so 8 bit cells of $FF are
+					// serialized before the first byte-boundary load,
+					// giving the ROM ~32µs to write the first data byte.
+					writeBitCounter <= 3'd0;
 					writeShifter    <= 8'hFF;
 				end
 				else begin
-					// Normal write serializer operation
-					if (writeBitTimer == writeBitCell) begin
-						writeBitTimer <= 0;
+					// Tick-based write serializer: bit_cell_tick fires
+					// once per fclk when the 25MHz toggle edge is detected.
+					// Exact 4.000µs bit cells with ±140ns non-accumulating
+					// jitter (vs old ±89ns/cell cumulative drift).
+					if (bit_cell_tick) begin
 						if (writeBitCounter == 7) begin
 							writeBitCounter <= 0;
 							if (writeBufferEmpty == 0) begin
@@ -515,29 +538,23 @@ module iwm (
 							writeShifter <= {writeShifter[6:0], 1'b0};
 						end
 					end
-					else
-						writeBitTimer <= writeBitTimer + 1'b1;
 
-					// Toggle wrdata at bit-cell midpoint when MSB=1.
+					// Toggle wrdata one fclk after bit-cell boundary
+					// when MSB=1. The 1-cycle delay lets the new
+					// writeShifter value settle from the registered
+					// assignment above.
 					// Gate on _underrun: once underrun fires, wrdata
-					// must stop immediately. Without this, the serializer
-					// keeps toggling for up to Q7_FALL_THRESH cycles
-					// (~14µs) while _wrreq is already HIGH — producing
-					// trailing wrdata transitions that corrupt FujiNet's
-					// FM decoder byte alignment.
+					// must stop immediately to avoid corrupting
+					// FujiNet's FM decoder byte alignment.
 					if (~_underrun)
 						wrdata <= 1'b0;
-					else if (writeBitTimer == 1 && writeShifter[7] == 1)
+					else if (bit_cell_tick_d1 && writeShifter[7] == 1)
 						wrdata <= ~wrdata;
 				end
 			end
 			else begin
 				_underrun <= 1;
 				wrdata    <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true.
-				                   // FujiNet's iwm_decode_byte initializes prev_level=true.
-				                   // If wrdata is LOW at SPI capture start, prev_level≠current
-				                   // fires a spurious edge at sample 0, resyncing idx to
-				                   // half_samples and shifting the entire decode window by 2µs.
 			end
 
 			// =============================================================

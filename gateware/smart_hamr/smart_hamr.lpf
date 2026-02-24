@@ -5,11 +5,14 @@
 // =============================================================================
 // Clock Constraints
 // =============================================================================
-// CLK_25MHz is deliberately unused — single clock domain design using sig_7M
-// only, matching Yellowstone's no-oscillator architecture. No FREQUENCY
-// constraint for CLK_25MHz prevents nextpnr from creating a second clock
-// domain and analyzing false cross-domain timing violations.
+// sig_7M: Apple II bus clock — drives all IWM logic and read path.
+// CLK_25MHz: On-board crystal — drives only the write bit-cell tick
+// generator (tiny counter + toggle). Cross-domain path is a single
+// 2-FF CDC synchronizer; BLOCK ASYNCPATHS suppresses false violations.
 FREQUENCY PORT "sig_7M" 7.16 MHz;
+FREQUENCY PORT "CLK_25MHz" 25.0 MHz;
+BLOCK ASYNCPATHS;
+BLOCK RESETPATHS;
 
 // =============================================================================
 // Apple II Control (directly from Logic Hamr)
