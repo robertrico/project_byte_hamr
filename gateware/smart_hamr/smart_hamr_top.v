@@ -83,7 +83,7 @@ module smart_hamr_top (
     output wire       GPIO3,            // phase[3]  → ESP32 IO35
     output wire       GPIO4,            // phase[0]  → ESP32 IO32
     output wire       GPIO5,            // phase[1]  → ESP32 IO33
-    output wire       GPIO6,            // DEBUG: sig_7M → LA probe
+    output wire       GPIO6,            // DEBUG: q7_stable → LA probe
     output wire       GPIO7,            // _wreq     → ESP32 IO26
     input wire        GPIO8,            // sense/ACK ← ESP32 IO27
     input wire        GPIO9,            // rddata    ← ESP32 IO14
@@ -141,7 +141,7 @@ module smart_hamr_top (
     assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
     assign GPIO7  = _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
     assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
-    assign GPIO6  = iwm_q7_stable;            // DEBUG: iwm_q7_stable → LA probe
+    assign GPIO6  = iwm_q7_stable;    // DEBUG: q7_stable → LA probe
 
     // =========================================================================
     // GPIO Input Assignments (ESP32 → FPGA)
