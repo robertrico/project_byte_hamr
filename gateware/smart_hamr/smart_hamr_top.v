@@ -11,12 +11,9 @@
 //
 // SINGLE CLOCK DOMAIN DESIGN
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Like Yellowstone, this design runs entirely from sig_7M (the Apple II's
-// 7 MHz clock). CLK_25MHz is deliberately unused to avoid introducing a
-// second clock domain, which would cause nextpnr to analyze cross-domain
-// timing on the purely combinatorial IWM-to-GPIO paths and create false
-// timing violations. Yellowstone's LPF uses "BLOCK ASYNCPATHS" to suppress
-// this; our approach is simpler — don't create the second domain at all.
+// This design runs entirely from sig_7M (the Apple II's 7 MHz clock),
+// matching Yellowstone's single-clock architecture. The on-board 25 MHz
+// oscillator is not connected to the FPGA fabric.
 //
 // All GPIO outputs to the ESP32 are driven directly from IWM combinatorial
 // outputs, exactly as Yellowstone drives its DB-19 connector. The ESP32
@@ -33,7 +30,7 @@
 //   GPIO3:    phase[3]  - SmartPort command bit 3             → ESP32 IO35
 //   GPIO4:    phase[0]  - SmartPort command bit 0             → ESP32 IO32
 //   GPIO5:    phase[1]  - SmartPort command bit 1             → ESP32 IO33
-//   GPIO6:    rd_buf_en - Tri-state buffer enable (from ESP32) [INPUT] ← ESP32 IO25
+//   GPIO6:    sig_7M    - Apple II 7 MHz clock (debug probe)    [OUTPUT]
 //   GPIO7:    _wreq     - Write request (active LOW)          → ESP32 IO26
 //   GPIO8:    sense     - Write-protect / ACK (from ESP32)    [INPUT] ← ESP32 IO27
 //   GPIO9:    rddata    - Serial read data (from ESP32)       [INPUT] ← ESP32 IO14
@@ -43,11 +40,6 @@
 // =============================================================================
 
 module smart_hamr_top (
-    // System clock - DIRECTLY from Apple II bus, no on-board oscillator needed
-    // CLK_25MHz exists on the board but is deliberately unused to keep
-    // the design in a single clock domain (matching Yellowstone architecture)
-    input wire        CLK_25MHz,
-
     // Apple II bus interface
     input wire [11:0] addr,             // Address bus
     // Data bus as individual pins (like Logic Hamr)
@@ -91,7 +83,7 @@ module smart_hamr_top (
     output wire       GPIO3,            // phase[3]  → ESP32 IO35
     output wire       GPIO4,            // phase[0]  → ESP32 IO32
     output wire       GPIO5,            // phase[1]  → ESP32 IO33
-    input wire        GPIO6,            // rd_buf_en ← ESP32 IO25 (tri-state gate)
+    output wire       GPIO6,            // DEBUG: sig_7M → LA probe
     output wire       GPIO7,            // _wreq     → ESP32 IO26
     input wire        GPIO8,            // sense/ACK ← ESP32 IO27
     input wire        GPIO9,            // rddata    ← ESP32 IO14
@@ -113,9 +105,6 @@ module smart_hamr_top (
     wire       _enbl2;
     wire       _wrreq;
 
-    // Tri-state buffer control from ESP32 (active LOW = enable rddata output)
-    wire       rd_buf_en;
-
     // ROM signals
     wire [7:0] rom_data;
     wire       rom_oe;
@@ -124,6 +113,7 @@ module smart_hamr_top (
     // IWM signals
     wire [7:0] iwm_data_out;
     wire       iwm_q7;
+    wire       iwm_q7_stable;
 
     // Data bus output mux
     wire [7:0] data_out_mux;
@@ -147,28 +137,23 @@ module smart_hamr_top (
     assign GPIO2  = phase_gpio[2];     // phase[2] → ESP32 IO34 (SP_PHI2)
     assign GPIO3  = phase_gpio[3];     // phase[3] → ESP32 IO35 (SP_PHI3)
 
-    assign GPIO1  = rd_buf_en ? 1'b1 : _enbl1;            // _enbl1   → ESP32 IO36 (SP_DRIVE1)
+    assign GPIO1  = _enbl1;             // _enbl1   → ESP32 IO36 (SP_DRIVE1)
     assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
-    assign GPIO7  = rd_buf_en ? 1'b1 : _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
+    assign GPIO7  = _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
     assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
+    assign GPIO6  = iwm_q7_stable;            // DEBUG: iwm_q7_stable → LA probe
 
     // =========================================================================
     // GPIO Input Assignments (ESP32 → FPGA)
     // =========================================================================
 
-    // Tri-state buffer control from ESP32 (active LOW = enable rddata to IWM).
-    // Replaces the external 74LVC125 buffer on real FujiNet hardware.
-    // When rd_buf_en is HIGH (disabled), rddata is forced to idle-HIGH
-    // (IWM idle state), preventing bus contention when ESP32 is reconfiguring
-    // its GPIO direction.
-    assign rd_buf_en = GPIO6;          // rd_buf_en ← ESP32 IO25 (SP_RD_BUFFER)
-
-    // FujiNet drives rddata as idle-LOW / pulse-HIGH (SPI mode 0, no inversion).
-    // The IWM expects idle-HIGH / pulse-LOW (falling-edge = '1' bit), matching
-    // original Apple hardware where an inverting amplifier sits between the
-    // drive head and the IWM chip. Invert here to restore correct polarity.
-    // When rd_buf_en is HIGH (buffer disabled), force rddata HIGH (IWM idle).
-    assign rddata = rd_buf_en ? 1'b1 : ~GPIO9;  // rddata ← ESP32 IO14 (SP_RDDATA)
+    // rddata: invert GPIO9 (ESP32 sends idle-LOW/pulse-HIGH, IWM expects
+    // idle-HIGH/pulse-LOW). No q7_stable gate — the read shift register
+    // already self-gates on q7_stable internally (iwm.v line 379).
+    // The old gate (iwm_q7_stable ? 1'b1 : ~GPIO9) was blanking valid
+    // rddata when q7_stable briefly glitched HIGH during receive,
+    // causing the ROM to lose sync and hang.
+    assign rddata = ~GPIO9;  // rddata ← ESP32 IO14 (SP_RDDATA)
 
     assign sense = GPIO8;              // sense/ACK ← ESP32 IO27 (SP_WRPROT/SP_ACK)
 
@@ -259,6 +244,7 @@ module smart_hamr_top (
         .sense          (sense),
         .rddata         (rddata),
         .q7_out         (iwm_q7),
+        .q7_stable_out  (iwm_q7_stable),
     );
 
     // =========================================================================

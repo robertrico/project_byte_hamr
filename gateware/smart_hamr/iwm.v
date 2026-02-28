@@ -19,7 +19,10 @@ module iwm (
 	input wire        rddata,         // Serial data input (falling edge = 1 bit)
 
 	// Q7 output for ESP32 command decoding
-	output wire       q7_out
+	output wire       q7_out,
+
+	// Write mode indicator (filtered Q7 with hysteresis)
+	output wire       q7_stable_out
 );
 
 	// =========================================================================
@@ -49,35 +52,24 @@ module iwm (
 	reg       writeCondPrev2;
 	wire      writeCondNow = ~nDEVICE_SELECT & q7 & q6 & addr[0];
 
-	// Q7 stability filter with hysteresis: Prevents address bus glitches
-	// from spuriously activating the write serializer during receive.
+	// Q7 stability filter with hysteresis.
 	//
-	// RISING FILTER: When Q7 first goes 0→1 (from idle/read mode), require
-	// it to stay HIGH for Q7_RISE_THRESH fclk cycles before q7_stable goes
-	// HIGH. Glitches last 1-2 cycles and are filtered out.
+	// The write serializer needs a HIGH falling threshold to ride through
+	// bus glitches during Q6 toggling (~6-8µs bursts). The ROM NEVER
+	// intentionally sets Q7=0 during writing — the write handshake
+	// toggles Q6 only ($C08C/$C08D). Q7 transitions are permanent:
+	// 0→1 at STA $C08F, 1→0 at LDA $C08E. But hardware glitches on
+	// the address bus during Q6 toggles can briefly make addr[3:1]
+	// look like 111, causing Q7 to glitch via edge-detect. These
+	// glitches can last up to one full Q6 cycle (~6-8µs).
 	//
-	// HYSTERESIS: Once q7_stable is HIGH, it stays HIGH even when Q7
-	// briefly dips to 0. This is essential because the ROM's write loop
-	// reads the handshake register at $C08E (Q7=0) between every data
-	// write at $C08F (Q7=1), causing Q7 to oscillate rapidly. Without
-	// hysteresis, q7_stable would never stay HIGH and the serializer
-	// would never run.
-	//
-	// FALLING FILTER: q7_stable only goes LOW after Q7 has been
-	// continuously LOW for Q7_FALL_THRESH fclk cycles. The ROM's
-	// handshake read ($C08E) takes ~2µs before the next $C08F write,
-	// so a 32-cycle (~4.5µs) falling threshold filters the handshake
-	// dips while still responding to real Q7 clears (which last until
-	// the next command, hundreds of µs).
-	localparam Q7_RISE_THRESH = 4'd8;    // ~1.1µs to confirm Q7 rising
-	localparam Q7_FALL_THRESH = 7'd100;  // ~14µs to confirm Q7 falling
-	                                      // Must ride through the ROM's ASL $C08C,X
-	                                      // handshake poll (~6µs RMW instruction)
-	                                      // where address bus ringing can glitch Q7.
-	                                      // Real Q7 clears last hundreds of µs.
+	// Rising: q7_stable HIGH after Q7 continuously HIGH for 8 fclk (~1.1µs)
+	// Falling: q7_stable LOW after Q7 continuously LOW for 100 fclk (~14µs)
+	localparam Q7_RISE_THRESH = 4'd8;    // ~1.1µs
+	localparam Q7_FALL_THRESH = 7'd100;  // ~14µs
 	reg [3:0]  q7_rise_ctr;
 	reg [6:0]  q7_fall_ctr;
-	reg        q7_stable;         // HIGH only after confirmed write mode
+	reg        q7_stable;
 
 	// Drain delay: after underrun fires, keep the handshake register's
 	// bit 6 showing "no underrun" for DRAIN_DELAY fclk cycles. This
@@ -138,8 +130,8 @@ module iwm (
 	// values can't cross-contaminate). Edge-detect (falling nDEVICE_SELECT)
 	// for Q6/Q7 because $C08C/$C08D and $C08E/$C08F differ only in addr[0].
 	//
-	// The downstream Q7 STABILITY FILTER (q7_stable) handles the ROM's
-	// legitimate Q7 oscillation during the write handshake loop ($C08E/$C08F).
+	// The downstream Q7 STABILITY FILTER (q7_stable) handles hardware bus
+	// glitches that make Q7 appear to transition during writing.
 	// =========================================================================
 
 	reg nDEVICE_SELECT_prev;
@@ -158,6 +150,10 @@ module iwm (
 
 			if (~nDEVICE_SELECT) begin
 				// Level-detect: phases, motor, drive.
+				// Samples every fclk while /DEV is LOW, which acts as
+				// a self-correcting latch — even if the first fclk
+				// catches an address bus glitch, subsequent cycles
+				// overwrite with the correct stable value.
 				case (addr[3:1])
 					3'h0: phase[0]    <= addr[0];
 					3'h1: phase[1]    <= addr[0];
@@ -165,11 +161,15 @@ module iwm (
 					3'h3: phase[3]    <= addr[0];
 					3'h4: motorOn     <= addr[0];
 					3'h5: driveSelect <= addr[0];
-					default: ; // Q6, Q7 use edge-detect
+					default: ; // Q6, Q7 use edge-detect below
 				endcase
 			end
 
 			// Edge-detect: Q6, Q7 only.
+			// These share addr[3:1]=11x and differ only in addr[0],
+			// so level-detect could cross-contaminate $C08C↔$C08D
+			// or $C08E↔$C08F. Edge-detect fires once per bus access
+			// when the address is stable.
 			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
 				case (addr[3:1])
 					3'h6: q6 <= addr[0];
@@ -222,43 +222,31 @@ module iwm (
 	// Drive enable outputs (spec p7/p12)
 	// /ENBLx is active (low) when Motor-On=1 OR timer is still running
 	// for that drive.
-	//
-	// SMARTPORT FIX: When SmartPort phases are active (ph1+ph3 = 1010),
-	// suppress _enbl2 going LOW until phase[0] is also set (1011 = REQ).
-	// This prevents FujiNet's ISR from entering the Disk II head-stepping
-	// path during the ~12µs window between motorOn=1 and REQ assertion.
-	// Without this, the ISR gets stuck processing a Disk II move_head()
-	// call and misses the 1011 SmartPort command window entirely.
 	// =========================================================================
 	wire enbl1_motor = motorOn & ~driveSelect;
 	wire enbl2_motor = motorOn &  driveSelect;
 	wire enbl1_timer = timerActive & ~timerDriveSel;
 	wire enbl2_timer = timerActive &  timerDriveSel;
 
-	// SmartPort enable gating: suppress _enbl2 until phases first reach
-	// 1011 (REQ) after motorOn rises. This prevents FujiNet's ISR from
-	// firing during the ~16µs window while the ROM is still setting up
-	// phases (STA $C080-$C087, ~4µs each). The optocoupler delay alone
-	// (5µs) isn't enough to cover this.
+	// SmartPort drive gating: force /ENBL1 and /ENBL2 inactive (HIGH)
+	// for the ENTIRE SmartPort session — both during the initial phase
+	// setup AND between commands. Without this, the ESP32 sees active
+	// drives in the inter-command gaps (when phases briefly go idle)
+	// and starts Disk II emulation, burning CPU and blocking STATUS.
 	//
-	// sp_seen_req latches ON when phases==1011, latches OFF only when
-	// motorOn drops. It does NOT clear on intermediate phase values
-	// during data transfer (1010, etc), avoiding the toggling bug that
-	// the old sp_suppress/sp_transaction mechanism had.
-	reg sp_seen_req;
-	always @(posedge fclk or negedge nRES) begin
-		if (~nRES)
-			sp_seen_req <= 1'b0;
-		else if (~motorOn)
-			sp_seen_req <= 1'b0;
-		else if (phase == 4'b1011)
-			sp_seen_req <= 1'b1;
-	end
+	// In SmartPort mode (modeLatch=1), /ENBLx lines serve no purpose —
+	// the ESP32 uses phases for SP command detection, not drive enables.
+	// So whenever modeLatch is set and motorOn is high, we suppress
+	// both drive enables unconditionally. This covers:
+	//   - Pre-REQ window (ROM setting up phases, ~16µs)
+	//   - Active SP command (phases cycling through 1011/1010/etc)
+	//   - Inter-command gaps (phases briefly at 0000)
+	//
+	// modeLatch=0 (Disk II mode) is unaffected — drives pass through.
+	wire sp_drive_gate = modeLatch & motorOn;
 
-	wire sp_gate = modeLatch & ~sp_seen_req;
-
-	assign _enbl1 = sp_gate ? 1'b1 : ~(enbl1_motor | enbl1_timer);
-	assign _enbl2 = sp_gate ? 1'b1 : ~(enbl2_motor | enbl2_timer);
+	assign _enbl1 = sp_drive_gate ? 1'b1 : ~(enbl1_motor | enbl1_timer);
+	assign _enbl2 = sp_drive_gate ? 1'b1 : ~(enbl2_motor | enbl2_timer);
 
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
@@ -268,6 +256,7 @@ module iwm (
 	assign _wrreq = ~(q7_stable & _underrun & (~_enbl1 | ~_enbl2));
 
 	assign q7_out = q7;
+	assign q7_stable_out = q7_stable;
 
 	// =========================================================================
 	// Read registers (spec p7/p9)
@@ -369,9 +358,9 @@ module iwm (
 
 			// =============================================================
 			// READ FROM DISK — shift register runs when q7_stable=0.
-			// Uses q7_stable (not raw q7) so a transient Q7 glitch
-			// doesn't stop the shift register mid-byte or clear
-			// latchSynced during response receive.
+			// Uses q7_stable (FALL=100, ~14µs) so bus glitches during
+			// writing don't let the shift register run and corrupt the
+			// buffer via the MSB=1 latch path.
 			// Q6 must NOT gate this: the real IWM shift register runs
 			// continuously, and SmartPort data arrives while Q6=1 (status
 			// read mode) during the ACK/REQ handshake.
@@ -435,18 +424,17 @@ module iwm (
 				// q7_stable=1 (write mode) — reset latch sync so next
 				// read re-syncs from the leading $FF.
 				latchSynced <= 1'b0;
+				bitTimer    <= 6'd0;
+				bitCounter  <= 3'd0;
+				shifter     <= 8'd0;
 			end
 
 			// =============================================================
-			// Q7 STABILITY FILTER WITH HYSTERESIS
-			// Rising: q7_stable goes HIGH after Q7 is continuously
-			// HIGH for Q7_RISE_THRESH cycles (filters glitches).
-			// Falling: q7_stable goes LOW after Q7 is continuously
-			// LOW for Q7_FALL_THRESH cycles (rides through handshake
-			// register reads where Q7 briefly dips to 0).
+			// Q7 STABILITY FILTER
+			// Rising: q7_stable HIGH after Q7 continuously HIGH for 8 fclk.
+			// Falling: q7_stable LOW after Q7 continuously LOW for 100 fclk.
 			// =============================================================
 			if (q7) begin
-				// Q7 is HIGH — count toward rising threshold, reset falling counter
 				q7_fall_ctr <= 7'd0;
 				if (!q7_stable) begin
 					if (q7_rise_ctr < Q7_RISE_THRESH)
@@ -456,7 +444,6 @@ module iwm (
 				end
 			end
 			else begin
-				// Q7 is LOW — count toward falling threshold, reset rising counter
 				q7_rise_ctr <= 4'd0;
 				if (q7_stable) begin
 					if (q7_fall_ctr < Q7_FALL_THRESH)
@@ -526,7 +513,7 @@ module iwm (
 					// trailing wrdata transitions that corrupt FujiNet's
 					// FM decoder byte alignment.
 					if (~_underrun)
-						wrdata <= 1'b0;
+						wrdata <= 1'b1; // Idle HIGH immediately on underrun
 					else if (writeBitTimer == 1 && writeShifter[7] == 1)
 						wrdata <= ~wrdata;
 				end

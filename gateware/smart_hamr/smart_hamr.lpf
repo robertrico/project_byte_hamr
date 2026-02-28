@@ -5,10 +5,7 @@
 // =============================================================================
 // Clock Constraints
 // =============================================================================
-// CLK_25MHz is deliberately unused — single clock domain design using sig_7M
-// only, matching Yellowstone's no-oscillator architecture. No FREQUENCY
-// constraint for CLK_25MHz prevents nextpnr from creating a second clock
-// domain and analyzing false cross-domain timing violations.
+// Single clock domain: sig_7M only, matching Yellowstone's architecture.
 FREQUENCY PORT "sig_7M" 7.16 MHz;
 
 // =============================================================================
@@ -60,10 +57,8 @@ LOCATE COMP "R_nW" SITE "D10";
 IOBUF PORT "R_nW" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=UP;
 
 // =============================================================================
-// Clock
+// Clock Phases
 // =============================================================================
-LOCATE COMP "CLK_25MHz" SITE "G3";
-IOBUF PORT "CLK_25MHz" IO_TYPE=LVCMOS33 PULLMODE=NONE;
 
 LOCATE COMP "PHI0" SITE "A11";
 IOBUF PORT "PHI0" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;
@@ -146,12 +141,12 @@ IOBUF PORT "GPIO5" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;  // pha
 LOCATE COMP "GPIO7" SITE "E1";
 IOBUF PORT "GPIO7" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;  // _wrreq   → IO26
 LOCATE COMP "GPIO10" SITE "A4";
-IOBUF PORT "GPIO10" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE; // wrdata   → IO22
+IOBUF PORT "GPIO10" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=NONE; // wrdata   → IO22
 LOCATE COMP "GPIO11" SITE "B5";
 IOBUF PORT "GPIO11" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE; // _enbl2   → IO21
 // Inputs (ESP32 → FPGA):
 LOCATE COMP "GPIO6" SITE "E2";
-IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 PULLMODE=DOWN SLEWRATE=SLOW;                          // rd_buf_en ← IO25 (UP = buffer disabled at boot)
+IOBUF PORT "GPIO6" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=NONE;  // sig_7M debug → LA probe
 LOCATE COMP "GPIO8" SITE "D1";
 IOBUF PORT "GPIO8" IO_TYPE=LVCMOS33 PULLMODE=UP;                          // sense/ACK ← IO27
 LOCATE COMP "GPIO9" SITE "C1";

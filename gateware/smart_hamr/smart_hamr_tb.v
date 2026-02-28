@@ -19,7 +19,6 @@ module smart_hamr_tb;
     // =========================================================================
     // Parameters
     // =========================================================================
-    localparam CLK_25_PERIOD = 40;      // 25 MHz = 40ns period
     localparam CLK_7M_PERIOD = 140;     // 7.16 MHz = ~140ns period
     localparam Q3_PERIOD     = 500;     // ~2 MHz = 500ns period
 
@@ -28,7 +27,6 @@ module smart_hamr_tb;
     // =========================================================================
 
     // System
-    reg         clk_25;
     reg         sig_7M;
     reg         Q3;
 
@@ -90,7 +88,6 @@ module smart_hamr_tb;
     // DUT Instantiation
     // =========================================================================
     smart_hamr_top dut (
-        .CLK_25MHz      (clk_25),
         .addr           (addr),
         .D0             (D0),
         .D1             (D1),
@@ -136,9 +133,6 @@ module smart_hamr_tb;
     // =========================================================================
     // Clock Generation
     // =========================================================================
-    initial clk_25 = 0;
-    always #(CLK_25_PERIOD/2) clk_25 = ~clk_25;
-
     initial sig_7M = 0;
     always #(CLK_7M_PERIOD/2) sig_7M = ~sig_7M;
 
