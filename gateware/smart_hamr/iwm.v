@@ -312,6 +312,7 @@ module iwm (
 	reg [3:0] clrX7Timer;        // 14-FCLK clear delay for x7
 	reg       latchSynced;       // 1 = synced, latch every 8 bits
 	reg       q7_prev;           // For detecting Q7 0→1 transition
+	reg       q6_prev;           // For detecting Q6 transitions
 
 	always @(posedge fclk or negedge nRES) begin
 		if (~nRES) begin
@@ -332,6 +333,7 @@ module iwm (
 			drain_delay_ctr  <= 11'd0;
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
+			q6_prev          <= 1'b0;
 			writeCondPrev1   <= 1'b0;
 			writeCondPrev2   <= 1'b0;
 		end
@@ -370,7 +372,24 @@ module iwm (
 			// Q6 must NOT gate this: the real IWM shift register runs
 			// continuously, and SmartPort data arrives while Q6=1 (status
 			// read mode) during the ACK/REQ handshake.
+			//
+			// FLUSH ON Q6 FALLING EDGE: When the ROM transitions from
+			// status-read (Q6=1) to data-read (Q6=0), any noise-induced
+			// shift register state from the handshake phase is flushed.
+			// Without this, rddata noise during ACK/REQ polling could
+			// set latchSynced prematurely (false $FF detection), causing
+			// all subsequent bytes to be mis-framed. The ESP32 sends
+			// 5+ $FF sync bytes, so there's plenty of time to re-sync.
 			// =============================================================
+			q6_prev <= q6_sync;
+			if (~q6_sync & q6_prev & ~q7_stable) begin
+				// Q6 falling edge while in read mode — flush read state
+				latchSynced <= 1'b0;
+				bitTimer    <= 6'd0;
+				bitCounter  <= 3'd0;
+				shifter     <= 8'd0;
+			end
+
 			if (q7_stable == 0) begin
 				if (rddataSync[1] & ~rddataSync[0]) begin
 					// Falling edge on rddata
