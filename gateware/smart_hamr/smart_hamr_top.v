@@ -141,7 +141,7 @@ module smart_hamr_top (
     assign GPIO11 = _enbl2;            // _enbl2   → ESP32 IO21 (SP_DRIVE2)
     assign GPIO7  = _wrreq;            // _wrreq   → ESP32 IO26 (SP_WREQ)
     assign GPIO10 = wrdata;            // wrdata   → ESP32 IO22 (SP_WRDATA)
-    assign GPIO6  = iwm_q7_stable;            // DEBUG: iwm_q7_stable → LA probe
+    assign GPIO6  = nDEVICE_SELECT;             // DEBUG: /DEV → LA probe (check for glitches between accesses)
 
     // =========================================================================
     // GPIO Input Assignments (ESP32 → FPGA)

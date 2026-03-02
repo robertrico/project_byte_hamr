@@ -21,7 +21,7 @@ module iwm (
 	// Q7 output for ESP32 command decoding
 	output wire       q7_out,
 
-	// Write mode indicator (filtered Q7 with hysteresis)
+	// Write mode indicator (synchronized Q7, glitch-free)
 	output wire       q7_stable_out
 );
 
@@ -37,7 +37,6 @@ module iwm (
 	reg       q6, q7;
 	reg       _underrun;
 	reg       writeBufferEmpty;
-
 	// Write-register one-shot: the real IWM latches data once per bus
 	// access on the rising edge of (Q3 OR /DEV). Our level-detect fires
 	// every fclk while nDEVICE_SELECT is LOW (~7 cycles), which causes
@@ -50,26 +49,18 @@ module iwm (
 	// subsequent fclk cycles in the same bus access.
 	reg       writeCondPrev1;
 	reg       writeCondPrev2;
-	wire      writeCondNow = ~nDEVICE_SELECT & q7 & q6 & addr[0];
+	// writeCondNow uses _meta (1-FF) instead of _sync (2-FF) for q6/q7.
+	// The 2-FF sync adds 2 fclk delay, but nDEVICE_SELECT is only low
+	// for ~3.4 fclk (490ns at 7MHz). With 2-FF sync, the writeCondNow
+	// window is only 1.4 fclk — too narrow for reliable one-shot capture.
+	// Using _meta gives a 2.4 fclk window. Metastability is safe because
+	// writeCondPrev1 adds another fclk of pipeline, giving 3 total FFs
+	// of synchronization before the actual buffer load fires.
+	wire      writeCondNow = ~nDEVICE_SELECT & q7_meta & q6_meta & addr[0];
 
-	// Q7 stability filter with hysteresis.
-	//
-	// The write serializer needs a HIGH falling threshold to ride through
-	// bus glitches during Q6 toggling (~6-8µs bursts). The ROM NEVER
-	// intentionally sets Q7=0 during writing — the write handshake
-	// toggles Q6 only ($C08C/$C08D). Q7 transitions are permanent:
-	// 0→1 at STA $C08F, 1→0 at LDA $C08E. But hardware glitches on
-	// the address bus during Q6 toggles can briefly make addr[3:1]
-	// look like 111, causing Q7 to glitch via edge-detect. These
-	// glitches can last up to one full Q6 cycle (~6-8µs).
-	//
-	// Rising: q7_stable HIGH after Q7 continuously HIGH for 8 fclk (~1.1µs)
-	// Falling: q7_stable LOW after Q7 continuously LOW for 100 fclk (~14µs)
-	localparam Q7_RISE_THRESH = 4'd8;    // ~1.1µs
-	localparam Q7_FALL_THRESH = 7'd100;  // ~14µs
-	reg [3:0]  q7_rise_ctr;
-	reg [6:0]  q7_fall_ctr;
-	reg        q7_stable;
+	// q7_stable is now just q7_sync — the /DEV-clocked state latch
+	// eliminates glitches at the source, so no hysteresis filter needed.
+	wire q7_stable = q7_sync;
 
 	// Drain delay: after underrun fires, keep the handshake register's
 	// bit 6 showing "no underrun" for DRAIN_DELAY fclk cycles. This
@@ -123,60 +114,67 @@ module iwm (
 	end
 
 	// =========================================================================
-	// State pseudo-register (spec p7)
-	// Bits are individually addressed by A3-A1, data on A0.
+	// State latches (patent Fig. 2, block 39; spec p7)
 	//
-	// Level-detect for phases/motor/drive (safe — different addr[3:1]
-	// values can't cross-contaminate). Edge-detect (falling nDEVICE_SELECT)
-	// for Q6/Q7 because $C08C/$C08D and $C08E/$C08F differ only in addr[0].
+	// The real IWM latches state on the falling edge of /DEV — addr is
+	// guaranteed stable by the 6502's 40ns setup time (tas). Using /DEV
+	// as the clock eliminates metastability from fclk-sampling addr bus
+	// glitches, which was causing Q7 spikes during the write loop.
 	//
-	// The downstream Q7 STABILITY FILTER (q7_stable) handles hardware bus
-	// glitches that make Q7 appear to transition during writing.
+	// These registers are in the /DEV clock domain. They are synchronized
+	// into the fclk domain below via 2-FF synchronizers.
 	// =========================================================================
 
-	reg nDEVICE_SELECT_prev;
+	always @(negedge nDEVICE_SELECT or negedge nRES) begin
+		if (~nRES) begin
+			phase       <= 4'b0000;
+			motorOn     <= 1'b0;
+			driveSelect <= 1'b0;
+			q6          <= 1'b0;
+			q7          <= 1'b0;
+		end
+		else begin
+			case (addr[3:1])
+				3'h0: phase[0]    <= addr[0];
+				3'h1: phase[1]    <= addr[0];
+				3'h2: phase[2]    <= addr[0];
+				3'h3: phase[3]    <= addr[0];
+				3'h4: motorOn     <= addr[0];
+				3'h5: driveSelect <= addr[0];
+				3'h6: q6          <= addr[0];
+				3'h7: q7          <= addr[0];
+			endcase
+		end
+	end
+
+	// =========================================================================
+	// 2-FF synchronizers: /DEV domain → fclk domain
+	//
+	// State bits change only on /DEV falling edges (~1µs apart minimum).
+	// The 2-FF sync adds ~280ns latency (2 fclk @ 7MHz), well within
+	// the 6502 bus cycle. Metastability resolves before the synced value
+	// is used by any fclk-domain logic.
+	// =========================================================================
+	reg [3:0] phase_meta,   phase_sync;
+	reg       motorOn_meta, motorOn_sync;
+	reg       driveSel_meta,driveSel_sync;
+	reg       q6_meta,      q6_sync;
+	reg       q7_meta,      q7_sync;
 
 	always @(posedge fclk or negedge nRES) begin
 		if (~nRES) begin
-			phase                <= 4'b0000;
-			motorOn              <= 1'b0;
-			driveSelect          <= 1'b0;
-			q6                   <= 1'b0;
-			q7                   <= 1'b0;
-			nDEVICE_SELECT_prev  <= 1'b1;
+			phase_meta    <= 4'b0000; phase_sync    <= 4'b0000;
+			motorOn_meta  <= 1'b0;    motorOn_sync  <= 1'b0;
+			driveSel_meta <= 1'b0;    driveSel_sync <= 1'b0;
+			q6_meta       <= 1'b0;    q6_sync       <= 1'b0;
+			q7_meta       <= 1'b0;    q7_sync       <= 1'b0;
 		end
 		else begin
-			nDEVICE_SELECT_prev <= nDEVICE_SELECT;
-
-			if (~nDEVICE_SELECT) begin
-				// Level-detect: phases, motor, drive.
-				// Samples every fclk while /DEV is LOW, which acts as
-				// a self-correcting latch — even if the first fclk
-				// catches an address bus glitch, subsequent cycles
-				// overwrite with the correct stable value.
-				case (addr[3:1])
-					3'h0: phase[0]    <= addr[0];
-					3'h1: phase[1]    <= addr[0];
-					3'h2: phase[2]    <= addr[0];
-					3'h3: phase[3]    <= addr[0];
-					3'h4: motorOn     <= addr[0];
-					3'h5: driveSelect <= addr[0];
-					default: ; // Q6, Q7 use edge-detect below
-				endcase
-			end
-
-			// Edge-detect: Q6, Q7 only.
-			// These share addr[3:1]=11x and differ only in addr[0],
-			// so level-detect could cross-contaminate $C08C↔$C08D
-			// or $C08E↔$C08F. Edge-detect fires once per bus access
-			// when the address is stable.
-			if (nDEVICE_SELECT_prev & ~nDEVICE_SELECT) begin
-				case (addr[3:1])
-					3'h6: q6 <= addr[0];
-					3'h7: q7 <= addr[0];
-					default: ;
-				endcase
-			end
+			phase_meta    <= phase;       phase_sync    <= phase_meta;
+			motorOn_meta  <= motorOn;     motorOn_sync  <= motorOn_meta;
+			driveSel_meta <= driveSelect; driveSel_sync <= driveSel_meta;
+			q6_meta       <= q6;          q6_sync       <= q6_meta;
+			q7_meta       <= q7;          q7_sync       <= q7_meta;
 		end
 	end
 
@@ -198,13 +196,13 @@ module iwm (
 			motorOn_prev <= 0;
 		end
 		else begin
-			motorOn_prev <= motorOn;
-			if (motorOn_prev & ~motorOn) begin
+			motorOn_prev <= motorOn_sync;
+			if (motorOn_prev & ~motorOn_sync) begin
 				// Motor-On falling edge
 				if (~modeTimerOff) begin
 					// Timer enabled — start countdown
 					timerActive   <= 1;
-					timerDriveSel <= driveSelect;
+					timerDriveSel <= driveSel_sync;
 					timerCount    <= 0;
 				end
 			end
@@ -223,8 +221,8 @@ module iwm (
 	// /ENBLx is active (low) when Motor-On=1 OR timer is still running
 	// for that drive.
 	// =========================================================================
-	wire enbl1_motor = motorOn & ~driveSelect;
-	wire enbl2_motor = motorOn &  driveSelect;
+	wire enbl1_motor = motorOn_sync & ~driveSel_sync;
+	wire enbl2_motor = motorOn_sync &  driveSel_sync;
 	wire enbl1_timer = timerActive & ~timerDriveSel;
 	wire enbl2_timer = timerActive &  timerDriveSel;
 
@@ -243,7 +241,7 @@ module iwm (
 	//   - Inter-command gaps (phases briefly at 0000)
 	//
 	// modeLatch=0 (Disk II mode) is unaffected — drives pass through.
-	wire sp_drive_gate = modeLatch & motorOn;
+	wire sp_drive_gate = modeLatch & motorOn_sync;
 
 	assign _enbl1 = sp_drive_gate ? 1'b1 : ~(enbl1_motor | enbl1_timer);
 	assign _enbl2 = sp_drive_gate ? 1'b1 : ~(enbl2_motor | enbl2_timer);
@@ -251,12 +249,11 @@ module iwm (
 	// Enable active flag for status register (spec p9 bit 5)
 	wire enableActive = ~_enbl1 | ~_enbl2;
 
-	// Write request: q7_stable (not raw q7) so glitches don't pull
-	// _wrreq LOW and trigger FujiNet's wrdata sampling during receive.
+	// Write request: uses q7_sync (glitch-free from /DEV-clocked latch).
 	assign _wrreq = ~(q7_stable & _underrun & (~_enbl1 | ~_enbl2));
 
-	assign q7_out = q7;
-	assign q7_stable_out = q7_stable;
+	assign q7_out = q7_sync;
+	assign q7_stable_out = q7_sync;
 
 	// =========================================================================
 	// Read registers (spec p7/p9)
@@ -268,9 +265,12 @@ module iwm (
 	//  1  1     0      (write mode register — no read defined)
 	//  1  1     1      (write data register — no read defined)
 	// =========================================================================
+	// Patent Fig. 3: D7 comes from RR7 (controlled by x7 via hold read
+	// data register logic, block 67), D0-D6 come from the buffer.
+	// x7 is the data-ready flag — it overrides buffer[7] on the bus.
 	always @(*) begin
-		case ({q7, q6})
-			2'b00:   data_out = buffer;
+		case ({q7_sync, q6_sync})
+			2'b00:   data_out = {x7, buffer[6:0]};
 			2'b01:   data_out = {sense, 1'b0, enableActive, modeReg[4:0]};
 			2'b10:   data_out = {writeBufferEmpty, _underrun_delayed, 6'b000000};
 			2'b11:   data_out = 8'hFF;
@@ -308,7 +308,8 @@ module iwm (
 	reg [2:0] bitCounter;
 	reg [5:0] writeBitTimer;     // Separate write bit timer (avoids read↔write crosstalk)
 	reg [2:0] writeBitCounter;   // Separate write bit counter
-	reg [3:0] clearBufferTimer;
+	reg       x7;                // Data-ready flag (patent Fig.3, block 69)
+	reg [3:0] clrX7Timer;        // 14-FCLK clear delay for x7
 	reg       latchSynced;       // 1 = synced, latch every 8 bits
 	reg       q7_prev;           // For detecting Q7 0→1 transition
 
@@ -324,43 +325,48 @@ module iwm (
 			buffer           <= 8'd0;
 			shifter          <= 8'd0;
 			writeShifter     <= 8'd0;
-			clearBufferTimer <= 4'd0;
+			x7               <= 1'b0;
+			clrX7Timer       <= 4'd0;
 			wrdata           <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true
 			latchSynced      <= 1'b0;
 			drain_delay_ctr  <= 11'd0;
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
-			q7_rise_ctr      <= 4'd0;
-			q7_fall_ctr      <= 7'd0;
-			q7_stable        <= 1'b0;
 			writeCondPrev1   <= 1'b0;
 			writeCondPrev2   <= 1'b0;
 		end
 		else begin
 
-			// Clear buffer MSB when CPU reads data register (Q7=0, Q6=0)
-			// Spec p3: after a valid data read, MSB is cleared (14 FCLK
-			// periods in async mode).
-			if (q7 == 0 && q6 == 0) begin
-				if (clearBufferTimer == 0) begin
-					if (nDEVICE_SELECT == 0 && addr[0] == 0 && buffer[7] == 1'b1)
-						clearBufferTimer <= 1;
+			// =============================================================
+			// X7 — data-ready flag (patent Fig. 3, blocks 67/69)
+			//
+			// X7 is a separate flip-flop that controls D7 on the bus.
+			// It is SET when the shift register loads a complete byte
+			// into the read data register (buffer).
+			// It is CLEARED 14 FCLK after a valid data read, defined
+			// by the spec as: /DEV low AND D7 outputting a 1.
+			// (Spec Rev 19 p3; Patent col 8, lines 60-67)
+			//
+			// The clear condition uses /DEV and x7 directly — NOT the
+			// latched q7/q6 state bits. The real IWM's clear X7 logic
+			// (block 69) has inputs: FCLK, /DEV, SYNCH, X7.
+			// =============================================================
+			if (clrX7Timer != 0) begin
+				if (clrX7Timer == 4'd14) begin
+					x7 <= 1'b0;
+					clrX7Timer <= 0;
 				end
-				else begin
-					if (clearBufferTimer == 4'hE) begin
-						buffer[7] <= 0;
-						clearBufferTimer <= 0;
-					end
-					else
-						clearBufferTimer <= clearBufferTimer + 1'b1;
-				end
+				else
+					clrX7Timer <= clrX7Timer + 1'b1;
+			end
+			else if (nDEVICE_SELECT == 0 && x7 == 1'b1) begin
+				// Valid data read: /DEV low and D7=1 (x7 is set)
+				// Start the 14-FCLK clear countdown
+				clrX7Timer <= 4'd1;
 			end
 
 			// =============================================================
-			// READ FROM DISK — shift register runs when q7_stable=0.
-			// Uses q7_stable (FALL=100, ~14µs) so bus glitches during
-			// writing don't let the shift register run and corrupt the
-			// buffer via the MSB=1 latch path.
+			// READ FROM DISK — shift register runs when Q7=0 (read mode).
 			// Q6 must NOT gate this: the real IWM shift register runs
 			// continuously, and SmartPort data arrives while Q6=1 (status
 			// read mode) during the ACK/REQ handshake.
@@ -373,6 +379,7 @@ module iwm (
 						if (latchSynced && modeLatch) begin
 							if (bitCounter == 7) begin
 								buffer <= {shifter[6:0], 1'b1};
+								x7 <= 1'b1;
 								shifter <= 0;
 								bitCounter <= 0;
 							end
@@ -382,6 +389,7 @@ module iwm (
 						else if ({shifter[6:0], 1'b1} == 8'hFF && modeLatch) begin
 							// First $FF sync byte — enter latch-synced mode
 							buffer <= 8'hFF;
+							x7 <= 1'b1;
 							shifter <= 0;
 							bitCounter <= 0;
 							latchSynced <= 1'b1;
@@ -389,6 +397,7 @@ module iwm (
 						else if (shifter[6] == 1) begin
 							// MSB=1 latch (standard GCR behavior)
 							buffer <= {shifter[6:0], 1'b1};
+							x7 <= 1'b1;
 							shifter <= 0;
 						end
 					end
@@ -401,6 +410,7 @@ module iwm (
 						if (latchSynced && modeLatch) begin
 							if (bitCounter == 7) begin
 								buffer <= {shifter[6:0], 1'b0};
+								x7 <= 1'b1;
 								shifter <= 0;
 								bitCounter <= 0;
 							end
@@ -414,6 +424,7 @@ module iwm (
 						// MSB=1 latch (only when not in latch-synced mode)
 						if (!(latchSynced && modeLatch) && shifter[7] == 1) begin
 							buffer <= shifter;
+							x7 <= 1'b1;
 							shifter <= 0;
 						end
 						bitTimer <= bitTimer + 1'b1;
@@ -430,37 +441,13 @@ module iwm (
 			end
 
 			// =============================================================
-			// Q7 STABILITY FILTER
-			// Rising: q7_stable HIGH after Q7 continuously HIGH for 8 fclk.
-			// Falling: q7_stable LOW after Q7 continuously LOW for 100 fclk.
-			// =============================================================
-			if (q7) begin
-				q7_fall_ctr <= 7'd0;
-				if (!q7_stable) begin
-					if (q7_rise_ctr < Q7_RISE_THRESH)
-						q7_rise_ctr <= q7_rise_ctr + 1'b1;
-					else
-						q7_stable <= 1'b1;
-				end
-			end
-			else begin
-				q7_rise_ctr <= 4'd0;
-				if (q7_stable) begin
-					if (q7_fall_ctr < Q7_FALL_THRESH)
-						q7_fall_ctr <= q7_fall_ctr + 1'b1;
-					else
-						q7_stable <= 1'b0;
-				end
-			end
-
-			// =============================================================
 			// WRITE TO DISK (spec p2)
 			// Uses separate writeShifter/writeBitTimer/writeBitCounter
 			// to avoid read-path state corrupting write output.
-			// On q7_stable 0→1 transition, write state is initialized
+			// On q7_sync 0→1 transition, write state is initialized
 			// so the first byte loads immediately with no garbage on
-			// wrdata. The stability filter ensures Q7 glitches never
-			// reach the serializer.
+			// wrdata. The /DEV-clocked state latch ensures Q7 never
+			// glitches.
 			// =============================================================
 			q7_prev <= q7_stable;
 
@@ -507,11 +494,8 @@ module iwm (
 
 					// Toggle wrdata at bit-cell midpoint when MSB=1.
 					// Gate on _underrun: once underrun fires, wrdata
-					// must stop immediately. Without this, the serializer
-					// keeps toggling for up to Q7_FALL_THRESH cycles
-					// (~14µs) while _wrreq is already HIGH — producing
-					// trailing wrdata transitions that corrupt FujiNet's
-					// FM decoder byte alignment.
+					// must stop immediately to avoid trailing transitions
+					// that corrupt FujiNet's FM decoder byte alignment.
 					if (~_underrun)
 						wrdata <= 1'b1; // Idle HIGH immediately on underrun
 					else if (writeBitTimer == 1 && writeShifter[7] == 1)
@@ -520,11 +504,7 @@ module iwm (
 			end
 			else begin
 				_underrun <= 1;
-				wrdata    <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true.
-				                   // FujiNet's iwm_decode_byte initializes prev_level=true.
-				                   // If wrdata is LOW at SPI capture start, prev_level≠current
-				                   // fires a spurious edge at sample 0, resyncing idx to
-				                   // half_samples and shifting the entire decode window by 2µs.
+				wrdata    <= 1'b1; // Idle HIGH matches FujiNet's prev_level=true
 			end
 
 			// =============================================================
@@ -562,7 +542,7 @@ module iwm (
 			writeCondPrev1 <= writeCondNow;
 			writeCondPrev2 <= writeCondPrev1;
 			if (writeCondPrev1 & ~writeCondPrev2) begin
-				if (motorOn) begin
+				if (motorOn_sync) begin
 					// Guard: reject buffer writes after underrun.
 					if (_underrun) begin
 						buffer <= data_in;
