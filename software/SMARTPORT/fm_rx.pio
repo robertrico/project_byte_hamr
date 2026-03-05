@@ -1,0 +1,60 @@
+; fm_rx.pio — FM receiver for SmartPort WRDATA
+;
+; Oversampled pin sampler — 8 samples per 4µs bit cell.
+; ARM groups samples into bit cells and detects edges.
+;
+; At 8x oversampling, a 2% crystal mismatch shifts by
+; 0.16 samples per cell — negligible over an entire packet.
+; Edge detection in the ARM re-syncs on every transition.
+;
+; Sample rate: 2 MHz (500ns per sample, 8 per 4µs cell)
+; PIO clock: 125 MHz / 5 = 25 MHz
+; Cycles per sample: 25MHz × 500ns = 12.5 → use 12 or 13
+;   12 cycles → 480ns → 8.33 samples per cell (close enough)
+;   Actually: use divider to get exactly 2 MHz:
+;   125 MHz / 62.5 = 2 MHz → 1 cycle = 500ns
+;   But fractional dividers... let's use 125/63 ≈ 1.984 MHz.
+;   Or just: 125 MHz / 5 = 25 MHz, delay [11] = 12 cycles = 480ns
+;
+; Simplest: run PIO at 125 MHz / 5 = 25 MHz.
+; Sample every 12 cycles = 480ns ≈ 8.33 samples per 4µs cell.
+
+.program fm_rx
+
+    wait 1 pin 0                ; ensure HIGH
+    wait 0 pin 0                ; falling edge = start
+
+.wrap_target
+    in pins, 1     [10]         ; sample + delay 11 = 12 cycles
+                                ; 12 × 40ns = 480ns per sample
+                                ; ~8.33 samples per 4µs cell
+.wrap
+
+; Autopush at 32 bits → ARM gets 32 raw pin samples per word.
+; ARM decoding:
+;   1. Find edges (XOR consecutive samples)
+;   2. Measure inter-edge distance in samples
+;   3. Edge gap ≤ 10 samples → one "1 bit" cell
+;   4. Edge gap 11-18 → one "0 bit" + one "1 bit"
+;   5. Edge gap 19-26 → two "0 bits" + one "1 bit"
+;   6. etc.
+;   7. Re-sync byte framing on C3 pattern.
+
+% c-sdk {
+static inline void fm_rx_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = fm_rx_program_get_default_config(offset);
+
+    sm_config_set_in_pins(&c, pin);
+
+    // ISR: shift left, autopush at 32 bits
+    sm_config_set_in_shift(&c, false, true, 32);
+
+    // PIO clock = 125 MHz / 5 = 25 MHz → 12 cycles = 480ns/sample
+    sm_config_set_clkdiv(&c, 5.0f);
+
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

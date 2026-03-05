@@ -1,0 +1,77 @@
+; fm_tx.pio — FM transmitter for SmartPort RDDATA
+;
+; FM encoding (per bit, MSB first):
+;   bit=1 → pulse output HIGH for 1µs, then LOW (one falling edge on FPGA rddata)
+;   bit=0 → hold output LOW (no edge)
+;   each bit cell = 4µs
+;
+; FPGA inverts: rddata = ~GPIO. Pin LOW → rddata HIGH (idle).
+; A pulse (LOW→HIGH→LOW) → rddata (HIGH→LOW→HIGH) = one falling edge.
+; The IWM detects falling edges only (iwm.v line 394).
+;
+; Clock: PIO at 125 MHz / 125 = 1 MHz → 1µs/cycle → 4 cycles per 4µs bit
+;
+; This matches FujiNet's SPI TX exactly: 1 MHz clock, 1µs pulse width,
+; 4µs bit cells. Each "1" bit = 1µs HIGH pulse. Each "0" bit = 4µs LOW.
+;
+; Uses side-set for pin control (executes in parallel with instruction,
+; zero cycle cost) and autopull at 8 bits.
+
+.program fm_tx
+.side_set 1
+
+.wrap_target
+bitloop:
+    out x, 1       side 0  ; shift MSB into X, pin LOW                      [1]
+    jmp !x, no_pulse  side 0  ; bit=0? skip pulse, pin stays LOW            [1]
+    nop            side 1  ; HIGH for 1 cycle = 1µs                         [1]
+    jmp bitloop    side 0  ; LOW, back to top                               [1]
+no_pulse:
+    nop            side 0  ; stay LOW                                       [1]
+    nop            side 0  ; stay LOW                                       [1]
+.wrap
+
+; Cycle count per bit cell:
+;
+; Pulse path (bit=1):
+;   out(1) + jmp(1) + nop/HIGH(1) + jmp/LOW(1) = 4 ✓
+;
+; No-pulse path (bit=0):
+;   out(1) + jmp(1) + nop(1) + nop(1) = 4 → wrap to bitloop = 4 ✓
+;
+; At 1 MHz: 4 × 1µs = 4.000µs per bit cell ✓
+; Pulse width: 1 × 1µs = 1.0µs (matches FujiNet SPI exactly)
+;
+; Autopull at 8 bits means the OSR is automatically reloaded from
+; the FIFO every 8 OUT instructions with zero cycle overhead.
+
+% c-sdk {
+static inline void fm_tx_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = fm_tx_program_get_default_config(offset);
+
+    // SIDE-SET pin = RDDATA (1 pin, no optional flag)
+    sm_config_set_sideset_pins(&c, pin);
+
+    // SET pin = same RDDATA pin (used only for initial LOW force)
+    sm_config_set_set_pins(&c, pin, 1);
+
+    // OUT: shift MSB first, autopull at 8 bits
+    sm_config_set_out_shift(&c, false, true, 8);
+
+    // PIO clock = 125 MHz / 125 = 1 MHz → 1µs per cycle
+    sm_config_set_clkdiv(&c, 125.0f);
+
+    // Configure GPIO
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+
+    // Init SM (loads config, resets PC, disables SM)
+    pio_sm_init(pio, sm, offset, &c);
+
+    // Force pin LOW before enabling.
+    // FPGA inverts: rddata = ~GPIO. LOW idle → FPGA rddata HIGH (idle).
+    pio_sm_exec(pio, sm, pio_encode_set(pio_pins, 0));
+
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
