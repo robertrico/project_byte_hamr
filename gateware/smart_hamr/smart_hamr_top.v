@@ -30,7 +30,7 @@
 //   GPIO3:    phase[3]  - SmartPort command bit 3             → ESP32 IO35
 //   GPIO4:    phase[0]  - SmartPort command bit 0             → ESP32 IO32
 //   GPIO5:    phase[1]  - SmartPort command bit 1             → ESP32 IO33
-//   GPIO6:    sig_7M    - Apple II 7 MHz clock (debug probe)    [OUTPUT]
+//   GPIO6:    /DEV      - /Dev Sel - Out
 //   GPIO7:    _wreq     - Write request (active LOW)          → ESP32 IO26
 //   GPIO8:    sense     - Write-protect / ACK (from ESP32)    [INPUT] ← ESP32 IO27
 //   GPIO9:    rddata    - Serial read data (from ESP32)       [INPUT] ← ESP32 IO14
