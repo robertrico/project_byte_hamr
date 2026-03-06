@@ -6,11 +6,14 @@ TEST_ELF    := $(BUILD)/$(TEST_TARGET).elf
 OPENOCD     := openocd
 OCD_CFG     := -f interface/cmsis-dap.cfg -f target/rp2040.cfg
 
+# Disk image — override with: make DISK=Merlin.po flash
+DISK        ?= ProDOS_2_4_1.po
+
 # Serial port — override with: make monitor PORT=/dev/cu.usbmodemXXXX
 PORT     ?= $(shell ls /dev/tty.usbmodem* 2>/dev/null | head -1)
 BAUD     := 115200
 
-.PHONY: all clean flash reset monitor gdb openocd test test-flash
+.PHONY: all clean flash reset monitor gdb openocd test test-flash convert
 
 # Build
 all: $(BUILD)/Makefile
@@ -18,7 +21,7 @@ all: $(BUILD)/Makefile
 
 $(BUILD)/Makefile:
 	@mkdir -p $(BUILD)
-	@cmake -B $(BUILD) -S .
+	@cmake -B $(BUILD) -S . -DDISK_IMAGE=$(DISK)
 
 # Nuke build dir and rebuild
 clean:
@@ -52,3 +55,8 @@ test: $(BUILD)/Makefile
 # Flash test firmware via SWD
 test-flash: test
 	$(OPENOCD) $(OCD_CFG) -c "program $(TEST_ELF) verify reset exit"
+
+# Convert .dsk to .po:  make convert SRC=game.dsk
+convert:
+	@test -n "$(SRC)" || (echo "Usage: make convert SRC=file.dsk"; exit 1)
+	python3 dsk2po.py $(SRC) $(basename $(SRC)).po
