@@ -419,8 +419,12 @@ module iwm (
 							x7 <= 1'b1;
 							shifter <= 0;
 						end
+						bitTimer <= 0;
 					end
-					bitTimer <= 0;
+					// NOTE: If bitTimer < oneThreshold, this is a noise
+					// glitch — do NOT reset bitTimer. Let it keep counting
+					// so the next real edge sees the correct accumulated
+					// gap. This mirrors the fm_decode noise filter logic.
 				end
 				else begin
 					if (bitTimer >= zeroThreshold) begin
