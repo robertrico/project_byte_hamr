@@ -128,7 +128,19 @@ sample_loop:
 
     @ --- Edge detected ---
     @ gap = samples since last edge (in r6)
-    @ Emit floor(gap/8) zero bits, then one 1 bit
+    @ Noise filter: reject glitch edges (gap < 6) but ONLY after
+    @ framing is established.  During sync hunting (state 0,1),
+    @ every edge must be seen or we may miss the $FF/$C3 preamble.
+    @ Min real gap ~8.33 samples (one bit cell at 480ns/sample).
+    @ Threshold 6 catches most noise while preserving real edges.
+    ldr     r7, [sp, #OFF_STATE]
+    cmp     r7, #2
+    bne     edge_accept             @ not framed yet — accept all edges
+    cmp     r6, #6
+    blt     sample_loop             @ framed + short gap = noise, skip
+
+edge_accept:
+    @ Valid edge — emit floor(gap/8) zero bits, then one 1 bit
     @ Reset gap counter
     movs    r7, #0
     str     r7, [sp, #OFF_GAP]
