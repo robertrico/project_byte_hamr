@@ -58,6 +58,7 @@ int main() {
         gpio_init(input_pins[i]);
         gpio_set_dir(input_pins[i], GPIO_IN);
     }
+    gpio_pull_up(SP_ENBL1);  // active-low, needs pull-up
 
     // --- PIO RX: FM receiver on WRDATA (GP11) ---
     PIO pio_rx = pio0;
@@ -65,12 +66,13 @@ int main() {
     g_rx_offset = pio_add_program(pio_rx, &fm_rx_program);
     fm_rx_program_init(pio_rx, sm_rx, g_rx_offset, SP_WRDATA);
 
-    // --- PIO TX: FM transmitter on RDDATA (GP10) ---
+    // --- PIO TX: FM transmitter on RDDATA (GP2) ---
     PIO pio_tx = pio0;
     uint sm_tx = 1;
     g_tx_offset = pio_add_program(pio_tx, &fm_tx_program);
     uint tx_offset = g_tx_offset;
     fm_tx_program_init(pio_tx, sm_tx, tx_offset, SP_RDDATA);
+    gpio_pull_down(SP_RDDATA);  // idle LOW → FPGA rddata HIGH (idle)
 
     // Wait for USB serial to enumerate
     sleep_ms(2000);
