@@ -469,7 +469,10 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
             chk = verify_packet(tx_buf, g_tx_len);
         }
 
-        pio_rx_restart();
+        // Only restart PIO RX if do_handshake_send didn't already do it.
+        // do_handshake_send calls pio_rx_restart() on success (rc==0).
+        if (!handled || rc != 0)
+            pio_rx_restart();
 
         uint8_t flags = 0;
         if (handled) flags |= 1;
