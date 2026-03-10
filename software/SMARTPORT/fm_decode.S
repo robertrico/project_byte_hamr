@@ -73,8 +73,9 @@ fm_decode:
     push    {r4-r7, lr}
     sub     sp, sp, #FRAME_SIZE
 
+    movs    r4, #1
+    str     r4, [sp, #OFF_PREV]     @ wrdata idles HIGH — start at 1
     movs    r4, #0
-    str     r4, [sp, #OFF_PREV]
     str     r4, [sp, #OFF_STATE]
     str     r4, [sp, #OFF_ACC]
     str     r4, [sp, #OFF_BBITS]

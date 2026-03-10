@@ -127,9 +127,9 @@ int main() {
     printf("  GP9    GPIO8   ACK(idle)    %d      1 (hi-Z+PU)   %s\n",
            ack_idle, ack_idle ? "OK" : "WRONG");
 
-    // RDDATA: GP10 → GPIO9 (PIO TX output)
+    // RDDATA: GP21 → GPIO9 (PIO TX output)
     int rddata = (gpio >> SP_RDDATA) & 1;
-    printf("  GP10   GPIO9   rddata       %d      (PIO TX out)\n", rddata);
+    printf("  GP21   GPIO9   rddata       %d      (PIO TX out)\n", rddata);
 
     // WRDATA: GP11 ← GPIO10 (PIO RX input)
     int wrdata = (gpio >> SP_WRDATA) & 1;

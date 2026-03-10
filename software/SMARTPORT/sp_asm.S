@@ -26,8 +26,8 @@
 .equ PIO_FSTAT,         0x004
 .equ PIO_RXF0,          0x020
 
-.equ IDLE_WORDS,        5       @ consecutive no-edge words = end-of-packet
-                                @ 5 × 32 × 480ns ≈ 77µs of silence
+.equ IDLE_WORDS,        8       @ consecutive no-edge words = end-of-packet
+                                @ 8 × 32 × 480ns ≈ 123µs of silence
 .equ SAMPLE_BUF_SIZE,   2048
 
 @ ============================================================

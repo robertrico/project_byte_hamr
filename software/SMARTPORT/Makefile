@@ -30,6 +30,7 @@ clean:
 # Flash via SWD
 flash: all
 	$(OPENOCD) $(OCD_CFG) -c "program $(ELF) verify reset exit"
+	@/Users/hambook/Development/bell/bell
 
 # Reset target without flashing
 reset:
