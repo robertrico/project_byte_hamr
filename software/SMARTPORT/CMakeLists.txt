@@ -15,12 +15,8 @@ set(PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS 0)
 
 pico_sdk_init()
 
-# --- Disk image selection ---
-# Override at build time:  cmake -DDISK_IMAGE=Merlin.po ..
-if(NOT DEFINED DISK_IMAGE)
-    set(DISK_IMAGE "ProDOS_2_4_1.po")
-endif()
-message(STATUS "Disk image: ${DISK_IMAGE}")
+# --- SD Card + FatFS (carlk3 library) ---
+add_subdirectory(lib/sd_fat_spi/FatFs_SPI build_fat)
 
 # --- Common sources ---
 set(COMMON_SRCS fm_decode.S)
@@ -33,7 +29,8 @@ set(SP_SRCS
     sp_encode.c
     sp_decode_pkt.c
     sp_data.c
-    disk_image.S
+    sd_block.c
+    hw_config.c
 )
 
 # === Main firmware ===
@@ -42,8 +39,7 @@ set(TARGET picoport)
 add_executable(${TARGET} main.c ${COMMON_SRCS} ${SP_SRCS})
 pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/fm_tx.pio)
 pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/fm_rx.pio)
-set_source_files_properties(disk_image.S PROPERTIES COMPILE_FLAGS "-Wa,-I${CMAKE_CURRENT_LIST_DIR} -DDISK_IMAGE=${DISK_IMAGE}")
-target_link_libraries(${TARGET} ${COMMON_LIBS})
+target_link_libraries(${TARGET} ${COMMON_LIBS} FatFs_SPI)
 pico_add_extra_outputs(${TARGET})
 pico_enable_stdio_usb(${TARGET} 1)
 pico_enable_stdio_uart(${TARGET} 1)

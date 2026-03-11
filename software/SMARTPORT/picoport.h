@@ -45,6 +45,12 @@
 #define SP_WREQ         8       /* GP8  INPUT — write request (active LOW) */
 #define SP_ENBL2        12      /* GP12 INPUT — drive 2 enable (active LOW) */
 
+/* SPI0 — SD Card daughter board */
+#define SD_PIN_MISO     16      /* GP16 — SPI0 RX  (SD DO)  */
+#define SD_PIN_CS       17      /* GP17 — SPI0 CSn (SD CS)  */
+#define SD_PIN_SCK      18      /* GP18 — SPI0 SCK (SD CLK) */
+#define SD_PIN_MOSI     19      /* GP19 — SPI0 TX  (SD DI)  */
+
 /* Bus state constants (logical phase values after LUT unscramble) */
 #define SP_BUS_COMMAND  0x0B    /* PH3:PH2:PH1:PH0 = 1011 */
 #define SP_BUS_IDLE     0x0A    /* PH3:PH2:PH1:PH0 = 1010 */

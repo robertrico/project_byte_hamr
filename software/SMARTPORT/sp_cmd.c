@@ -7,6 +7,7 @@
 
 #include "picoport.h"
 #include "sp_proto.h"
+#include "sd_block.h"
 
 // PIO RX base — defined in sp_asm.S, shared with capture_samples
 extern pio_hw_t *g_pio_rx_hw;
@@ -321,18 +322,22 @@ static int do_status(cmd_struct_t *cmd)
     return do_handshake_send(g_tx_len);
 }
 
+// Block read buffer — filled from SD card per request
+static uint8_t g_block_buf[512];
+
 static int do_readblock(cmd_struct_t *cmd)
 {
     uint32_t block = cmd->block_lo | ((uint32_t)cmd->block_mid << 8) | ((uint32_t)cmd->block_hi << 16);
-    if (block >= disk_image_blocks) {
-        // Bad block number (likely RX decode corruption).
-        // Send error status so Liron gets a clean response and retries,
-        // instead of silently dropping the request and causing a timeout.
+    if (block >= sd_get_block_count()) {
         g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
         return do_handshake_send(g_tx_len);
     }
-    const uint8_t *blk_data = disk_image + (block * 512);
-    g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_DATA, 0x00, blk_data, 512);
+    if (!sd_read_block(block, g_block_buf)) {
+        // SD read failed — return I/O error
+        g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+        return do_handshake_send(g_tx_len);
+    }
+    g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_DATA, 0x00, g_block_buf, 512);
     return do_handshake_send(g_tx_len);
 }
 
