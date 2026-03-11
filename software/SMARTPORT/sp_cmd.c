@@ -401,8 +401,15 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
 
         int pkt_len = decode_samples(sample_count);
         if (pkt_len == 0) {
-            ack_deassert();
-            pio_rx_restart();
+            // FM decode produced nothing — send error so Liron retries
+            // instead of hanging waiting for RDDATA that never comes.
+            if (g_unit != 0) {
+                g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+                do_handshake_send(g_tx_len);
+            } else {
+                ack_deassert();
+                pio_rx_restart();
+            }
             continue;
         }
 
@@ -429,8 +436,14 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
         cmd_struct_t cmd;
         memset(&cmd, 0, sizeof(cmd));
         if (decode_cmd(pkt_bytes, pkt_len, &cmd) < 0) {
-            ack_deassert();
-            pio_rx_restart();
+            // Garbled packet — send error so Liron retries immediately.
+            if (g_unit != 0) {
+                g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+                do_handshake_send(g_tx_len);
+            } else {
+                ack_deassert();
+                pio_rx_restart();
+            }
             continue;
         }
 
