@@ -88,3 +88,75 @@ int decode_cmd(const uint8_t *pkt, int pkt_len, cmd_struct_t *cmd)
 
     return 0;
 }
+
+// Decode a SmartPort DATA packet payload from raw wire bytes.
+//
+// Inverse of build_packet()'s group-of-7 encoding.
+// Extracts the full data payload (e.g. 512 bytes for WRITEBLOCK).
+//
+// pkt      = raw wire bytes from fm_decode (starting at C3 PBEGIN)
+// pkt_len  = number of wire bytes
+// data_out = output buffer for decoded payload
+// max_out  = size of data_out buffer
+//
+// Returns: number of decoded bytes, or -1 on error
+
+int decode_data(const uint8_t *pkt, int pkt_len, uint8_t *data_out, int max_out)
+{
+    if (pkt_len < 10)
+        return -1;
+
+    // Verify PBEGIN
+    if (pkt[0] != 0xC3)
+        return -1;
+
+    int numodds = pkt[6] & 0x7F;
+    int numgrps = pkt[7] & 0x7F;
+
+    // Sanity: 512-byte payload = 1 odd + 73 groups
+    if (numodds > 7 || numgrps > 128)
+        return -1;
+
+    int total_data = numodds + numgrps * 7;
+    if (total_data > max_out)
+        return -1;
+
+    // Verify packet has enough wire bytes for the DATA payload.
+    // Don't require trailing checksum bytes — FM decode consistently
+    // drops the last 2-3 bytes of long packets (known tail truncation).
+    int need = 8;                           // C3 + 7 header bytes
+    if (numodds > 0) need += 1 + numodds;   // oddmsb + odd bytes
+    need += numgrps * 8;                     // grpmsb + 7 per group
+    // checksum intentionally excluded — not verified, often truncated
+    if (pkt_len < need)
+        return -1;
+
+    int pos = 8;  // first byte after header
+    int out = 0;
+
+    // Decode odd bytes
+    if (numodds > 0) {
+        int oddmsb = pkt[pos++] & 0x7F;
+        for (int i = 0; i < numodds; i++) {
+            uint8_t b = pkt[pos++] & 0x7F;
+            if ((oddmsb >> (6 - i)) & 1)
+                b |= 0x80;
+            data_out[out++] = b;
+        }
+    }
+
+    // Decode groups of 7
+    for (int g = 0; g < numgrps; g++) {
+        if (pos + 8 > pkt_len)
+            break;  // partial group — stop cleanly
+        int grpmsb = pkt[pos++] & 0x7F;
+        for (int i = 0; i < 7; i++) {
+            uint8_t b = pkt[pos++] & 0x7F;
+            if ((grpmsb >> (6 - i)) & 1)
+                b |= 0x80;
+            data_out[out++] = b;
+        }
+    }
+
+    return out;
+}

@@ -65,6 +65,10 @@ int build_packet(uint8_t *tx_buf, uint8_t source, uint8_t ptype,
 // Packet decoder (sp_decode_pkt.c)
 int decode_cmd(const uint8_t *pkt, int pkt_len, cmd_struct_t *cmd);
 
+// Data payload decoder — inverse of build_packet() group-of-7 encoding.
+// Returns decoded byte count (e.g. 512 for WRITEBLOCK), or -1 on error.
+int decode_data(const uint8_t *pkt, int pkt_len, uint8_t *data_out, int max_out);
+
 // PIO restart (main.c)
 void pio_rx_restart(void);
 

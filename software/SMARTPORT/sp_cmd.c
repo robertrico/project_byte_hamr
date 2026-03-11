@@ -96,7 +96,7 @@ static void log_drain(void)
                (e->flags & 1) ? "OK" : "SKIP",
                (e->flags & 4) ? " TX_CHK" : "",
                e->samples, e->pkt_len, e->tx_len);
-        if (e->cmd == 0x01)
+        if (e->cmd == 0x01 || e->cmd == 0x02)
             printf(" blk=%d", e->block);
         printf("]");
         if (e->flags & (4 | 8))
@@ -298,6 +298,31 @@ static int do_handshake_send(int pkt_len)
 }
 
 // ============================================================
+// fix_bit_insertions — Correct spurious 0-bits from Liron timing gaps
+// ============================================================
+// The 6502's timing gaps between IWM writes can stretch FM bit cells,
+// causing the PIO decoder to sample a spurious 0-bit. This shifts
+// all subsequent bytes left by 1 bit to restore framing.
+// All SmartPort wire bytes after PBEGIN must have bit 7 = 1.
+static void fix_bit_insertions(uint8_t *buf, int len, int max_corrections)
+{
+    int corrections = 0;
+    for (int fix = 1; fix < len && corrections < max_corrections; fix++) {
+        if (!(buf[fix] & 0x80)) {
+            for (int j = fix; j < len - 1; j++)
+                buf[j] = (buf[j] << 1) | (buf[j + 1] >> 7);
+            buf[len - 1] <<= 1;
+            corrections++;
+            fix--;  // re-check this position after shift
+        }
+    }
+}
+
+// C-side buffer for receiving DATA packets (WRITEBLOCK).
+// Sized for 512 bytes of group-of-7 encoded data (~603 wire bytes + header).
+static uint8_t rx_data_pkt[700];
+
+// ============================================================
 // Handlers
 // ============================================================
 static int do_init(cmd_struct_t *cmd)
@@ -338,6 +363,152 @@ static int do_readblock(cmd_struct_t *cmd)
         return do_handshake_send(g_tx_len);
     }
     g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_DATA, 0x00, g_block_buf, 512);
+    return do_handshake_send(g_tx_len);
+}
+
+// Consume and discard a WRITEBLOCK DATA packet, then send error STATUS.
+// Used when the CMD packet had a bad checksum — we can't trust the block
+// number, so we must NOT write to SD.  Protocol still requires consuming DATA.
+static int do_writeblock_reject(void)
+{
+    ack_deassert();
+    flush_rx_fifo();
+    pio_rx_restart();
+
+    // Wait for and consume the DATA packet
+    uint32_t timeout = 500000;
+    while (!rx_fifo_has_data()) {
+        if (--timeout == 0) return -1;
+        tight_loop_contents();
+    }
+    int sample_count = capture_samples();
+    if (sample_count == 0) {
+        pio_rx_restart();
+        return -1;
+    }
+
+    // ACK the DATA packet
+    {
+        uint32_t gpio_in = *((volatile uint32_t *)0xD0000004);
+        if (!((gpio_in >> SP_REQ) & 1)) {
+            pio_rx_restart();
+            return -1;
+        }
+    }
+    ack_assert();
+    if (req_wait_fall(5500)) {
+        ack_deassert();
+        pio_rx_restart();
+        return -1;
+    }
+
+    // Send I/O error — host will retry with a fresh command
+    g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+    return do_handshake_send(g_tx_len);
+}
+
+static int do_writeblock(cmd_struct_t *cmd)
+{
+    uint32_t block = cmd->block_lo | ((uint32_t)cmd->block_mid << 8) | ((uint32_t)cmd->block_hi << 16);
+
+    // SmartPort WRITEBLOCK is single-response: CMD → DATA → STATUS.
+    // The host sends DATA immediately after CMD — we MUST always consume
+    // the DATA packet before sending any STATUS reply, even for errors.
+    // sp_main already ACK'd the CMD and REQ has fallen.
+    ack_deassert();
+
+    // Prepare PIO RX for the incoming DATA packet
+    flush_rx_fifo();
+    pio_rx_restart();
+
+    // Wait for host DATA packet to arrive in PIO RX FIFO
+    uint32_t timeout = 500000;  // ~200ms
+    while (!rx_fifo_has_data()) {
+        if (--timeout == 0) {
+            printf("WR: DATA timeout\n");
+            return -1;
+        }
+        tight_loop_contents();
+    }
+
+    int sample_count = capture_samples();
+    if (sample_count == 0) {
+        printf("WR: no samples\n");
+        pio_rx_restart();
+        return -1;
+    }
+
+    // ACK the DATA packet (same fast-ACK pattern as command reception)
+    {
+        uint32_t gpio_in = *((volatile uint32_t *)0xD0000004);
+        if (!((gpio_in >> SP_REQ) & 1)) {
+            printf("WR: REQ not high after DATA\n");
+            pio_rx_restart();
+            return -1;
+        }
+    }
+    ack_assert();
+    if (req_wait_fall(5500)) {
+        printf("WR: REQ fall timeout after DATA ACK\n");
+        ack_deassert();
+        pio_rx_restart();
+        return -1;
+    }
+
+    // Block range check — after DATA consumed
+    if (block >= sd_get_block_count()) {
+        printf("WR: blk %lu >= count %lu\n",
+               (unsigned long)block, (unsigned long)sd_get_block_count());
+        g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+        return do_handshake_send(g_tx_len);
+    }
+
+    // FM decode into C-side buffer (not the 64-byte pkt_bytes in ASM)
+    int data_pkt_len = fm_decode(sample_buf, sample_count, rx_data_pkt, 700);
+
+    if (data_pkt_len == 0) {
+        printf("WR: fm_decode=0 (samp=%d)\n", sample_count);
+        g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+        return do_handshake_send(g_tx_len);
+    }
+
+    // Smart trim for DATA packets: parse header to find declared payload
+    // length so we never trim valid wire bytes that fm_decode corrupted to 0x00.
+    // All valid SmartPort wire bytes have bit 7 set (>= 0x80).
+    int min_keep = 8;  // at least keep the header
+    if (data_pkt_len > 8) {
+        int numodds_h = rx_data_pkt[6] & 0x7F;
+        int numgrps_h = rx_data_pkt[7] & 0x7F;
+        if (numodds_h <= 7 && numgrps_h <= 128)
+            min_keep = 8 + (numodds_h > 0 ? 1 + numodds_h : 0) + numgrps_h * 8;
+    }
+    while (data_pkt_len > min_keep && rx_data_pkt[data_pkt_len - 1] == 0)
+        data_pkt_len--;
+
+    // Fix 1-bit insertions in the body only — tail bytes may have FM decode
+    // noise (0x00) that would waste the correction budget doing nothing.
+    int fix_len = data_pkt_len > 8 ? data_pkt_len - 4 : data_pkt_len;
+    fix_bit_insertions(rx_data_pkt, fix_len, 4);
+
+    // Decode 512-byte payload from group-of-7 encoding
+    int payload_len = decode_data(rx_data_pkt, data_pkt_len, g_block_buf, 512);
+    if (payload_len != 512) {
+        printf("WR: decode_data=%d (pktlen=%d)\n", payload_len, data_pkt_len);
+        g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+        return do_handshake_send(g_tx_len);
+    }
+
+    // Write to SD card
+    if (!sd_write_block(block, g_block_buf)) {
+        printf("WR: sd_write_block(%lu) failed\n", (unsigned long)block);
+        g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x27, NULL, 0);
+        return do_handshake_send(g_tx_len);
+    }
+
+    printf("WR: blk %lu OK\n", (unsigned long)block);
+
+    // Send final success STATUS — the only device response for WRITEBLOCK
+    g_tx_len = build_packet(tx_buf, g_unit, SP_PTYPE_STATUS, 0x00, NULL, 0);
     return do_handshake_send(g_tx_len);
 }
 
@@ -418,25 +589,7 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
             continue;
         }
 
-        // Fix 1-bit insertion from Liron inter-byte pauses.
-        // The 6502's timing gaps between IWM writes can stretch FM
-        // bit cells, causing the PIO decoder to sample a spurious 0-bit.
-        // This shifts all subsequent bytes right by 1 bit, clearing bit 7.
-        // All SmartPort wire bytes after PBEGIN must have bit 7 = 1.
-        // Scan the entire packet (not just byte 9+) and allow up to 2
-        // corrections, since insertions can occur at bytes 3, 5, or 9.
-        {
-            int corrections = 0;
-            for (int fix = 1; fix < pkt_len && corrections < 2; fix++) {
-                if (!(pkt_bytes[fix] & 0x80)) {
-                    for (int j = fix; j < pkt_len - 1; j++)
-                        pkt_bytes[j] = (pkt_bytes[j] << 1) | (pkt_bytes[j + 1] >> 7);
-                    pkt_bytes[pkt_len - 1] <<= 1;
-                    corrections++;
-                    fix--;  // re-check this position after shift
-                }
-            }
-        }
+        fix_bit_insertions(pkt_bytes, pkt_len, 2);
 
         cmd_struct_t cmd;
         memset(&cmd, 0, sizeof(cmd));
@@ -452,9 +605,9 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
             continue;
         }
 
-        // Verify RX packet checksum — log for diagnostics, don't reject.
-        // FM decode has consistent tail corruption (last ~5 bytes) but
-        // command fields in early bytes are reliable.  Host retries if needed.
+        // Verify RX packet checksum.  Reads tolerate checksum failures
+        // (host retries on bad data), but WRITEBLOCK with a garbled block
+        // number would silently corrupt the disk image — reject those.
         int rx_chk = verify_packet(pkt_bytes, pkt_len);
 
         int rc = -99;
@@ -469,11 +622,17 @@ void sp_main(PIO pio_rx, uint sm_rx, PIO pio_tx, uint sm_tx)
         } else if (cmd.dest != g_unit) {
             ack_deassert();
             handled = 0;
+        } else if (cmd.cmd == SP_CMD_WRITEBLOCK && rx_chk != 0) {
+            // WRITEBLOCK with bad checksum — must still consume DATA
+            // packet from bus, then send I/O error so host retries.
+            printf("WR: REJECT rx_chk=%d\n", rx_chk);
+            rc = do_writeblock_reject();
         } else {
             switch (cmd.cmd) {
             case SP_CMD_INIT:      rc = do_init(&cmd);      break;
             case SP_CMD_STATUS:    rc = do_status(&cmd);     break;
-            case SP_CMD_READBLOCK: rc = do_readblock(&cmd);  break;
+            case SP_CMD_READBLOCK:  rc = do_readblock(&cmd);   break;
+            case SP_CMD_WRITEBLOCK: rc = do_writeblock(&cmd);  break;
             default:
                 ack_deassert();
                 handled = 0;

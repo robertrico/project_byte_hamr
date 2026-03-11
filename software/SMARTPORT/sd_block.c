@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "pico/stdlib.h"
 #include "sd_block.h"
 #include "picoport.h"
 #include "f_util.h"
@@ -37,7 +38,7 @@ bool sd_init(void) {
     printf("SD: filesystem mounted\n");
 
     // Open disk image
-    fr = f_open(&g_fil, IMAGE_FILENAME, FA_READ);
+    fr = f_open(&g_fil, IMAGE_FILENAME, FA_READ | FA_WRITE);
     if (fr != FR_OK) {
         printf("SD: cannot open %s: %s (%d)\n",
                IMAGE_FILENAME, FRESULT_str(fr), fr);
@@ -78,13 +79,51 @@ bool sd_read_block(uint32_t block_num, uint8_t *buf) {
         return false;
 
     FSIZE_t offset = (FSIZE_t)g_data_offset + (FSIZE_t)block_num * 512;
-    FRESULT fr = f_lseek(&g_fil, offset);
-    if (fr != FR_OK)
+
+    // Retry on transient SD busy — card may still be programming
+    // after a write.  5 attempts with escalating back-off.
+    for (int try = 0; try < 5; try++) {
+        FRESULT fr = f_lseek(&g_fil, offset);
+        if (fr == FR_OK) {
+            UINT br;
+            fr = f_read(&g_fil, buf, 512, &br);
+            if (fr == FR_OK && br == 512)
+                return true;
+        }
+        sleep_ms(20 + try * 40);  // 20, 60, 100, 140, 180ms
+    }
+    return false;
+}
+
+bool sd_write_block(uint32_t block_num, const uint8_t *buf) {
+    if (!g_mounted || block_num >= g_block_count)
         return false;
 
-    UINT br;
-    fr = f_read(&g_fil, buf, 512, &br);
-    return (fr == FR_OK && br == 512);
+    FSIZE_t offset = (FSIZE_t)g_data_offset + (FSIZE_t)block_num * 512;
+
+    for (int try = 0; try < 5; try++) {
+        FRESULT fr = f_lseek(&g_fil, offset);
+        if (fr != FR_OK) {
+            sleep_ms(20 + try * 40);
+            continue;
+        }
+        UINT bw;
+        fr = f_write(&g_fil, buf, 512, &bw);
+        if (fr != FR_OK || bw != 512) {
+            sleep_ms(20 + try * 40);
+            continue;
+        }
+        fr = f_sync(&g_fil);
+        if (fr == FR_OK) {
+            // Give card time to finish internal programming before
+            // the next bus operation hits.  Without this, the very next
+            // READ/WRITE finds the card still busy and fails.
+            sleep_ms(10);
+            return true;
+        }
+        sleep_ms(20 + try * 40);
+    }
+    return false;
 }
 
 uint32_t sd_get_block_count(void) {
