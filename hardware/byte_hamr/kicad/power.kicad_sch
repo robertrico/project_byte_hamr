@@ -8923,7 +8923,7 @@
 		(uuid "f83ca9c3-917f-4601-b0f4-fe798a9661b3")
 	)
 	(junction
-		(at 24.13 48.26)
+		(at 29.21 48.26)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "04626e1f-3862-43e3-aaaa-be6435848ecf")
@@ -10906,7 +10906,7 @@
 	)
 	(wire
 		(pts
-			(xy 24.13 48.26) (xy 24.13 53.34)
+			(xy 29.21 48.26) (xy 29.21 53.34)
 		)
 		(stroke
 			(width 0)
@@ -12206,7 +12206,7 @@
 	)
 	(wire
 		(pts
-			(xy 24.13 44.45) (xy 24.13 48.26)
+			(xy 29.21 44.45) (xy 29.21 48.26)
 		)
 		(stroke
 			(width 0)
@@ -13026,7 +13026,7 @@
 	)
 	(wire
 		(pts
-			(xy 24.13 48.26) (xy 30.48 48.26)
+			(xy 29.21 48.26) (xy 35.56 48.26)
 		)
 		(stroke
 			(width 0)
@@ -13666,7 +13666,7 @@
 	)
 	(global_label "CARD5V"
 		(shape input)
-		(at 24.13 58.42 270)
+		(at 29.21 58.42 270)
 		(effects
 			(font
 				(size 1.524 1.524)
@@ -13675,7 +13675,7 @@
 		)
 		(uuid "0cb24dd1-6857-469a-9a88-65cee32963f1")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 24.13 58.42 0)
+			(at 29.21 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -13686,7 +13686,7 @@
 	)
 	(global_label "USB5V"
 		(shape input)
-		(at 24.13 39.37 90)
+		(at 29.21 39.37 90)
 		(effects
 			(font
 				(size 1.524 1.524)
@@ -13695,7 +13695,7 @@
 		)
 		(uuid "ed25c576-8f66-408a-9ad8-8bf232c7bfd9")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 24.13 39.37 90)
+			(at 29.21 39.37 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21871,7 +21871,7 @@
 	)
 	(symbol
 		(lib_id "Device:D_Schottky_Small")
-		(at 24.13 41.91 270)
+		(at 29.21 41.91 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -21879,7 +21879,7 @@
 		(dnp no)
 		(uuid "731ad5ac-05f3-4d0c-9050-cdb1fa5b3083")
 		(property "Reference" "D1"
-			(at 19.812 40.64 90)
+			(at 33.528 43.18 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21888,7 +21888,7 @@
 			)
 		)
 		(property "Value" "STPS2L40AF"
-			(at 25.654 40.64 90)
+			(at 27.686 43.18 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21897,7 +21897,7 @@
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SMA"
-			(at 24.13 41.91 90)
+			(at 29.21 41.91 90)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -21906,7 +21906,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 24.13 41.91 90)
+			(at 29.21 41.91 90)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -21914,7 +21914,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21922,7 +21922,7 @@
 			)
 		)
 		(property "MNF1_URL" "www.st.com"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21931,7 +21931,7 @@
 			)
 		)
 		(property "MPN" "STPS2L30AF"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -21940,7 +21940,7 @@
 			)
 		)
 		(property "Mouser" "511-STPS2L40AF"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -21949,7 +21949,7 @@
 			)
 		)
 		(property "Digikey" "497-12310-1-ND"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21958,7 +21958,7 @@
 			)
 		)
 		(property "Newark" "69AH2828"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21967,7 +21967,7 @@
 			)
 		)
 		(property "AvnetEU" "STPS2L30AF"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21976,7 +21976,7 @@
 			)
 		)
 		(property "LCSC" "C111630"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21985,7 +21985,7 @@
 			)
 		)
 		(property "price100_AvnetEU" "0.22121$"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21994,7 +21994,7 @@
 			)
 		)
 		(property "Koncar" "FV008"
-			(at 24.13 41.91 0)
+			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22081,7 +22081,7 @@
 	)
 	(symbol
 		(lib_id "power:+5V")
-		(at 30.48 48.26 270)
+		(at 35.56 48.26 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -22089,7 +22089,7 @@
 		(dnp no)
 		(uuid "a4fc728d-e750-421d-bc05-bc1bbb8dbd14")
 		(property "Reference" "#PWR01"
-			(at 26.67 48.26 0)
+			(at 31.75 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22098,7 +22098,7 @@
 			)
 		)
 		(property "Value" "+5V"
-			(at 34.29 46.736 90)
+			(at 39.37 46.736 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22106,7 +22106,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 30.48 48.26 0)
+			(at 35.56 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22114,7 +22114,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 30.48 48.26 0)
+			(at 35.56 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22122,7 +22122,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 30.48 48.26 0)
+			(at 35.56 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22205,7 +22205,7 @@
 	)
 	(symbol
 		(lib_id "Device:D_Schottky_Small")
-		(at 24.13 55.88 90)
+		(at 29.21 55.88 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -22213,7 +22213,7 @@
 		(dnp no)
 		(uuid "f066c760-d18b-47df-b56b-a221357ad70e")
 		(property "Reference" "D2"
-			(at 22.098 56.134 90)
+			(at 31.242 55.626 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22222,7 +22222,7 @@
 			)
 		)
 		(property "Value" "STPS2L40AF"
-			(at 37.338 55.88 90)
+			(at 16.002 55.88 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22231,7 +22231,7 @@
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SMA"
-			(at 24.13 55.88 90)
+			(at 29.21 55.88 90)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -22240,7 +22240,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 24.13 55.88 90)
+			(at 29.21 55.88 90)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -22248,7 +22248,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22256,7 +22256,7 @@
 			)
 		)
 		(property "MNF1_URL" "www.st.com"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22265,7 +22265,7 @@
 			)
 		)
 		(property "MPN" "STPS2L30AF"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -22274,7 +22274,7 @@
 			)
 		)
 		(property "Mouser" "511-STPS2L40AF"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.524 1.524)
@@ -22283,7 +22283,7 @@
 			)
 		)
 		(property "Digikey" "497-12310-1-ND"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22292,7 +22292,7 @@
 			)
 		)
 		(property "Newark" "69AH2828"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22301,7 +22301,7 @@
 			)
 		)
 		(property "AvnetEU" "STPS2L30AF"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22310,7 +22310,7 @@
 			)
 		)
 		(property "LCSC" "C111630"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22319,7 +22319,7 @@
 			)
 		)
 		(property "price100_AvnetEU" "0.22121$"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22328,7 +22328,7 @@
 			)
 		)
 		(property "Koncar" "FV008"
-			(at 24.13 55.88 0)
+			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)

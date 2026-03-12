@@ -60,76 +60,92 @@
       ],
       "drc_exclusions": [
         [
-          "clearance|205523750|105282500|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc|8e9154e3-0741-46f0-82b8-69ff4aede047",
-          "zero ohm jumper"
+          "lib_footprint_issues|146858270|63024423|2fa5a443-288c-4c4b-a357-8ef7acfdd7f1|00000000-0000-0000-0000-000000000000",
+          ""
         ],
         [
-          "clearance|205523750|106082500|508c7a8a-2370-409d-880f-3d19c5cc8a2b|8e9154e3-0741-46f0-82b8-69ff4aede047",
-          "zero ohm jumper"
+          "shorting_items|168123750|105282500|8e9154e3-0741-46f0-82b8-69ff4aede047|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc",
+          "0Ω"
         ],
         [
-          "clearance|221073750|70667500|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3|be62903b-02b5-47df-b1bb-dbc7cd00045d",
-          "zero ohm jumper"
+          "shorting_items|168123750|106082500|508c7a8a-2370-409d-880f-3d19c5cc8a2b|8e9154e3-0741-46f0-82b8-69ff4aede047",
+          "0Ω"
         ],
         [
-          "clearance|221073750|71467500|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0|be62903b-02b5-47df-b1bb-dbc7cd00045d",
-          "zero ohm jumper"
+          "shorting_items|183673750|70667500|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3|be62903b-02b5-47df-b1bb-dbc7cd00045d",
+          "0Ω"
         ],
         [
-          "clearance|224623750|67032500|ecb27069-cd61-4390-aacd-e82a09b83f89|ec119279-0e19-4af2-863f-c902878b93cb",
-          "zero ohm jumper"
+          "shorting_items|183673750|71467500|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0|be62903b-02b5-47df-b1bb-dbc7cd00045d",
+          "0Ω"
         ],
         [
-          "clearance|224623750|67832500|9741c5e3-bb92-4198-b96a-ed9e9ce40a35|ec119279-0e19-4af2-863f-c902878b93cb",
-          "zero ohm jumper"
+          "shorting_items|187223750|67032500|ec119279-0e19-4af2-863f-c902878b93cb|ecb27069-cd61-4390-aacd-e82a09b83f89",
+          "0Ω"
         ],
         [
-          "solder_mask_bridge|205523750|105282500|8e9154e3-0741-46f0-82b8-69ff4aede047|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc",
-          "zero ohm jumper"
+          "shorting_items|187223750|67832500|9741c5e3-bb92-4198-b96a-ed9e9ce40a35|ec119279-0e19-4af2-863f-c902878b93cb",
+          "0Ω"
         ],
         [
-          "solder_mask_bridge|205523750|106082500|8e9154e3-0741-46f0-82b8-69ff4aede047|508c7a8a-2370-409d-880f-3d19c5cc8a2b",
-          "zero ohm jumper"
+          "solder_mask_bridge|168123750|105282500|8e9154e3-0741-46f0-82b8-69ff4aede047|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc",
+          ""
         ],
         [
-          "solder_mask_bridge|205900000|106082500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
-          "zero ohm jumper"
+          "solder_mask_bridge|168123750|106082500|8e9154e3-0741-46f0-82b8-69ff4aede047|508c7a8a-2370-409d-880f-3d19c5cc8a2b",
+          ""
         ],
         [
-          "solder_mask_bridge|205900000|106650000|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
-          "zero ohm jumper"
+          "solder_mask_bridge|168500000|106082500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          ""
         ],
         [
-          "solder_mask_bridge|205900000|106682500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
-          "zero ohm jumper"
+          "solder_mask_bridge|168500000|106650000|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          ""
         ],
         [
-          "solder_mask_bridge|221073750|70667500|be62903b-02b5-47df-b1bb-dbc7cd00045d|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3",
-          "zero ohm jumper"
+          "solder_mask_bridge|168500000|106682500|cbd0e034-a164-4597-8cf7-8799f5145813|59c96dd4-6e1c-4a7c-a2ee-75933603beef",
+          ""
         ],
         [
-          "solder_mask_bridge|221073750|71467500|be62903b-02b5-47df-b1bb-dbc7cd00045d|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0",
-          "zero ohm jumper"
+          "solder_mask_bridge|183673750|70667500|be62903b-02b5-47df-b1bb-dbc7cd00045d|b6e9f6d4-f294-465c-b1ee-b780ea3fb4f3",
+          ""
         ],
         [
-          "solder_mask_bridge|224623750|67032500|ec119279-0e19-4af2-863f-c902878b93cb|ecb27069-cd61-4390-aacd-e82a09b83f89",
-          "zero ohm jumper"
+          "solder_mask_bridge|183673750|71467500|be62903b-02b5-47df-b1bb-dbc7cd00045d|5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0",
+          ""
         ],
         [
-          "solder_mask_bridge|224623750|67832500|ec119279-0e19-4af2-863f-c902878b93cb|9741c5e3-bb92-4198-b96a-ed9e9ce40a35",
-          "zero ohm jumper"
+          "solder_mask_bridge|184050000|71467500|3eff3c8c-3f91-4430-984e-e6751a0adfab|116af5fe-672d-410c-9592-ee05222a1a87",
+          ""
         ],
         [
-          "solder_mask_bridge|225000000|67832500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
-          "zero ohm jumper"
+          "solder_mask_bridge|184050000|72035000|3eff3c8c-3f91-4430-984e-e6751a0adfab|116af5fe-672d-410c-9592-ee05222a1a87",
+          ""
         ],
         [
-          "solder_mask_bridge|225000000|68400000|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
-          "zero ohm jumper"
+          "solder_mask_bridge|184050000|72067500|3eff3c8c-3f91-4430-984e-e6751a0adfab|116af5fe-672d-410c-9592-ee05222a1a87",
+          ""
         ],
         [
-          "solder_mask_bridge|225000000|68432500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
-          "zero ohm jumper"
+          "solder_mask_bridge|187223750|67032500|ec119279-0e19-4af2-863f-c902878b93cb|ecb27069-cd61-4390-aacd-e82a09b83f89",
+          ""
+        ],
+        [
+          "solder_mask_bridge|187223750|67832500|ec119279-0e19-4af2-863f-c902878b93cb|9741c5e3-bb92-4198-b96a-ed9e9ce40a35",
+          ""
+        ],
+        [
+          "solder_mask_bridge|187600000|67832500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          ""
+        ],
+        [
+          "solder_mask_bridge|187600000|68400000|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          ""
+        ],
+        [
+          "solder_mask_bridge|187600000|68432500|9ab882d7-41bb-4bba-9dd5-97907d7f38b9|d605a08f-5bd3-4057-bdef-d0cd30270137",
+          ""
         ]
       ],
       "meta": {

@@ -7987,6 +7987,22 @@
 		(at 220.98 107.95)
 		(uuid "04249d29-fc0d-4e32-99ac-dd56663692d7")
 	)
+	(no_connect
+		(at 182.88 95.25)
+		(uuid "16b2dc38-3644-4a1c-a650-572cd38c3e2b")
+	)
+	(no_connect
+		(at 182.88 97.79)
+		(uuid "a36d4bf1-2738-4aff-89da-240de4b72f63")
+	)
+	(no_connect
+		(at 220.98 95.25)
+		(uuid "ba8fab03-cce6-4dbe-8145-75eabe95149a")
+	)
+	(no_connect
+		(at 220.98 97.79)
+		(uuid "f6d94a0b-4ba3-4e58-9c8c-8a7571d19002")
+	)
 	(wire
 		(pts
 			(xy 114.3 68.58) (xy 114.3 86.36)
