@@ -310,6 +310,7 @@ prog: $(BIT)
 prog-flash: $(BIT)
 	@echo "=== Programming SPI Flash ==="
 	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) -f $(BIT)
+	@/Users/hambook/Development/bell/bell
 
 prog-detect:
 	@echo "=== Detecting FPGA ==="

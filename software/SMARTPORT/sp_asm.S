@@ -26,9 +26,10 @@
 .equ PIO_FSTAT,         0x004
 .equ PIO_RXF0,          0x020
 
-.equ IDLE_WORDS,        5       @ consecutive no-edge words = end-of-packet
-                                @ 5 × 32 × 480ns ≈ 77µs of silence
+.equ IDLE_WORDS,        8       @ consecutive no-edge words = end-of-packet
+                                @ 8 × 32 × 480ns ≈ 123µs of silence
 .equ SAMPLE_BUF_SIZE,   2048
+.equ POLL_TIMEOUT,      50000   @ cap_poll spins before giving up (~2ms at ~40ns/iter)
 
 @ ============================================================
 @ ack_assert — Drive ACK LOW (set GP9 as output, value=0)
@@ -145,12 +146,16 @@ rwf_ok:
     .thumb_func
 capture_samples:
     push    {r4-r7, lr}
+    mov     r7, r8                  @ save r8 on stack (M0+ trick)
+    push    {r7}
 
     ldr     r0, =g_pio_rx_hw
     ldr     r4, [r0]                @ r4 = PIO RX base (pio_hw_t *)
     movs    r5, #0                  @ sample count
     ldr     r6, =sample_buf
     movs    r7, #0                  @ consecutive idle word count
+    ldr     r0, =POLL_TIMEOUT
+    mov     r8, r0                  @ r8 = poll timeout counter
 
 cap_poll:
     @ Wait for FIFO data (bit 8 = RXEMPTY for SM0)
@@ -158,7 +163,19 @@ cap_poll:
     movs    r1, #1
     lsls    r1, r1, #8
     tst     r0, r1
-    bne     cap_poll
+    beq     cap_read                @ FIFO has data → read it
+
+    @ FIFO empty — decrement timeout
+    mov     r0, r8
+    subs    r0, r0, #1
+    mov     r8, r0
+    bne     cap_poll                @ keep waiting
+    b       cap_done                @ timeout — return what we have
+
+cap_read:
+    @ Reset timeout on every successful FIFO read
+    ldr     r0, =POLL_TIMEOUT
+    mov     r8, r0
 
     @ Read sample word
     ldr     r0, [r4, #PIO_RXF0]
@@ -189,6 +206,8 @@ cap_store:
 
 cap_done:
     mov     r0, r5                  @ return sample count
+    pop     {r7}
+    mov     r8, r7                  @ restore r8
     pop     {r4-r7, pc}
 
     .ltorg

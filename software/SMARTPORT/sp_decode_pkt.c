@@ -37,6 +37,17 @@ int decode_cmd(const uint8_t *pkt, int pkt_len, cmd_struct_t *cmd)
     int numgrps = pkt[7] & 0x7F;
     int oddmsb  = pkt[8] & 0x7F;
 
+    // Sanity check: SmartPort commands have at most 2 odd bytes and 1 group.
+    // Garbled FM decode can produce wild values (e.g. ODDCNT=66 from
+    // a bit-6 flip of 0x82→0xC2), causing out-of-bounds reads.
+    if (numodds > 6 || numgrps > 4)
+        return -1;
+
+    // Verify packet is long enough for the declared payload
+    int expected = 9 + numodds + numgrps * 8 + 2;  // hdr + odds + groups + chksum
+    if (pkt_len < expected)
+        return -1;
+
     // Decode payload into temp buffer (odd bytes + group bytes)
     uint8_t decoded[16];
 

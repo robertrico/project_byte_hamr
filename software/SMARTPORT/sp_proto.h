@@ -68,14 +68,15 @@ int decode_cmd(const uint8_t *pkt, int pkt_len, cmd_struct_t *cmd);
 // PIO restart (main.c)
 void pio_rx_restart(void);
 
-// --- External data (sp_data.c / disk_image.S) ---
+// --- External data (sp_data.c) ---
 extern const uint8_t sync_bytes[];
-extern const uint8_t dib_data[];
+extern uint8_t dib_data[];
 extern const uint8_t dib_data_len;
-extern const uint8_t gen_status_data[];
+extern uint8_t gen_status_data[];
 extern const uint8_t gen_status_len;
-extern const uint8_t disk_image[];
-extern const uint32_t disk_image_blocks;
+
+// Patch block count into DIB and general status (call after .2mg header parse)
+void sp_data_set_blocks(uint32_t blocks);
 
 // --- Shared buffers (sp_asm.S) ---
 extern uint32_t sample_buf[];

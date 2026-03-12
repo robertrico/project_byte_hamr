@@ -4,6 +4,7 @@
 #include "hardware/structs/sio.h"
 #include "picoport.h"
 #include "sp_proto.h"
+#include "sd_block.h"
 #include "fm_rx.pio.h"
 #include "fm_tx.pio.h"
 
@@ -127,9 +128,9 @@ int main() {
     printf("  GP9    GPIO8   ACK(idle)    %d      1 (hi-Z+PU)   %s\n",
            ack_idle, ack_idle ? "OK" : "WRONG");
 
-    // RDDATA: GP10 → GPIO9 (PIO TX output)
+    // RDDATA: GP21 → GPIO9 (PIO TX output)
     int rddata = (gpio >> SP_RDDATA) & 1;
-    printf("  GP10   GPIO9   rddata       %d      (PIO TX out)\n", rddata);
+    printf("  GP21   GPIO9   rddata       %d      (PIO TX out)\n", rddata);
 
     // WRDATA: GP11 ← GPIO10 (PIO RX input)
     int wrdata = (gpio >> SP_WRDATA) & 1;
@@ -177,6 +178,16 @@ int main() {
     else printf(" -- idle (no IWM access)\n");
 
     printf("--- End Diagnostic ---\n\n");
+
+    // --- Mount SD card and open disk image ---
+    printf("Initializing SD card...\n");
+    if (!sd_init()) {
+        printf("*** SD init failed — halting ***\n");
+        for (;;) sleep_ms(1000);
+    }
+    sp_data_set_blocks(sd_get_block_count());
+    printf("Image mounted: %u blocks (%u KB)\n",
+           sd_get_block_count(), sd_get_block_count() / 2);
 
     printf("Entering sp_main...\n");
 

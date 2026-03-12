@@ -35,8 +35,13 @@ int build_packet(uint8_t *tx_buf, uint8_t source, uint8_t ptype,
     for (int i = 0; i < data_len; i++)
         checksum ^= data[i];
 
-    // Sync bytes (standard SmartPort sync pattern)
+    // Preamble FFs for IWM clock recovery + standard sync pattern
     int pos = 0;
+    tx_buf[pos++] = 0xFF;
+    tx_buf[pos++] = 0xFF;
+    tx_buf[pos++] = 0xFF;
+    tx_buf[pos++] = 0xFF;
+    tx_buf[pos++] = 0xFF;
     tx_buf[pos++] = 0xFF;
     tx_buf[pos++] = 0x3F;
     tx_buf[pos++] = 0xCF;
