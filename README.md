@@ -2,7 +2,7 @@
 
 An open-source FPGA expansion card for the Apple II family of computers.
 
-![Byte Hamr](docs/project_byte_hamr.jpg)
+![Byte Hamr](docs/project_byte_hamr_rev_2.jpg)
 
 ## Overview
 
@@ -14,13 +14,13 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 
 - Lattice ECP5-85F FPGA (85K LUTs, BGA381 package)
 - 64MB SDRAM (AS4C32M16SB-7TCNTR)
-- 16MB SPI Flash for bitstream storage
+- 128MB SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
 - JTAG header for development/debugging
-- 13-pin GPIO header for FPGA and peripheral expansion
+- 20-pin GPIO header for FPGA and peripheral expansion
 - Full Apple II bus interface with bidirectional level shifting
 - Dual power input (USB or Apple II bus) with automatic switching
-- On-board 25MHz oscillator
+- On-board 100MHz oscillator
 - Open-source hardware and gateware
 
 ## Specifications
@@ -31,9 +31,9 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 | Logic Elements | 84K LUTs |
 | Block RAM | 3744 Kbit |
 | SDRAM | 64MB, 16-bit bus |
-| Flash | 16MB SPI |
+| Flash | 128MB SPI |
 | USB | Full-speed via FT231XQ |
-| GPIO | 13 pins, 3.3V |
+| GPIO | 20 pins, 3.3V |
 | Power | +5V from USB or Apple II slot |
 | Dimensions | Standard Apple II card form factor |
 
@@ -214,7 +214,7 @@ Bringup sequence for new boards:
 2. Power rail verification (+5V, +3.3V, +2.5V, +1.1V)
 3. USB enumeration (FTDI detection)
 4. FPGA configuration with [signal_check](gateware/signal_check/SIGNAL_CHECK.md)
-5. Oscillator verification (25MHz on scope)
+5. Oscillator verification (100MHz on scope)
 6. Apple II bus communication (PEEK/POKE test)
 7. Full system integration
 
