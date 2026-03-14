@@ -506,7 +506,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://ftdichip.com/wp-content/uploads/2025/06/DS_FT231X.pdf"
+		(property "Datasheet" "https://www.ftdichip.com/Support/Documents/DataSheets/ICs/DS_FT231X.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -518,7 +518,7 @@
 				)
 			)
 		)
-		(property "Description" "USB Bridge, USB to UART USB 2.0 UART Interface 20-QFN (4x4)"
+		(property "Description" "Full Speed USB to Full Handshake UART, QFN-20"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -673,7 +673,7 @@
 				)
 			)
 		)
-		(property ki_fp_filters "QFN*")
+		(property ki_fp_filters "QFN*4x4mm*P0.5mm*")
 		(path "/f5fc8b61-abb6-4157-b906-4734563f1ca7/00000000-0000-0000-0000-000058eb61c6")
 		(sheetname "/usb/")
 		(sheetfile "usb.kicad_sch")
@@ -925,7 +925,7 @@
 			(roundrect_rratio 0.25)
 			(net 60 "JTAG_TCK")
 			(pinfunction "~{DSR}")
-			(pintype "output")
+			(pintype "input")
 			(uuid "0cf09934-abea-4a5f-b54e-5027d93acdc1")
 		)
 		(pad "5" smd roundrect
@@ -1075,7 +1075,7 @@
 			(roundrect_rratio 0.25)
 			(net 255 "unconnected-(U6-~{RTS}-Pad19)")
 			(pinfunction "~{RTS}")
-			(pintype "input+no_connect")
+			(pintype "output+no_connect")
 			(uuid "57111f06-bb31-4cce-b6d9-4f43683fa6ff")
 		)
 		(pad "20" smd roundrect
@@ -1159,6 +1159,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "DFE322520FD-2R2M=P2"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a5495d55-c49c-4d63-8303-7c1802d430bf")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -1607,6 +1620,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "AF0603FR-0710KL "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "44f7aabc-ea29-4502-9098-44187d7dbf91")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -5608,6 +5634,19 @@
 				)
 			)
 		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e5c3739f-e33c-42ea-b946-9be889f404a2")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/918e9909-3a8a-4471-9da8-88449b287653/c85454a7-6cc7-41af-8a8f-44cb8169a0f1")
 		(sheetname "/card_fpga/")
@@ -8785,6 +8824,19 @@
 				)
 			)
 		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a1a50bbb-96aa-4be5-a49d-0063a0a9e44f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000058d5aeb3")
 		(sheetname "/power/")
@@ -9236,6 +9288,19 @@
 				)
 			)
 		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "05d43c8e-768e-44c8-bbed-d79638bb129b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059246e14")
 		(sheetname "/power/")
@@ -9373,6 +9438,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e0cb058a-f389-49e3-985d-1c5102df05f7")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -9515,6 +9593,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "91bced4e-a187-41f0-8a19-5e9de8900f32")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -12017,6 +12108,19 @@
 				)
 			)
 		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ceceb52b-0832-448e-b3fe-f58e12f5cd0f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/89936dea-7763-426a-9b9a-8f6c4ef8c06d/00000000-0000-0000-0000-000059131f17")
 		(sheetname "/ram/")
@@ -12155,6 +12259,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "55d091d7-4ddb-4ee8-b898-63d5b949047a")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -14397,6 +14514,19 @@
 				)
 			)
 		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2809aa32-10a7-4683-ac35-15985158dcb9")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059d56eaa")
 		(sheetname "/power/")
@@ -14535,6 +14665,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b42d0be3-d21c-40a0-b223-5d79a0a2f6e9")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -15378,7 +15521,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15390,7 +15533,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15402,7 +15545,7 @@
 				)
 			)
 		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -15708,6 +15851,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e835b2c9-44a4-40bd-bb28-6de74d49fad0")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -18609,7 +18765,7 @@
 		(property "Reference" "U2"
 			(at 4.2 -12.8 90)
 			(layer "F.SilkS")
-			(uuid "2a7ee38f-5688-430e-94e8-d2de49e055cd")
+			(uuid "07729b14-422e-463b-82cb-fc6a0bf80b10")
 			(effects
 				(font
 					(size 1 1)
@@ -18621,7 +18777,7 @@
 			(at -2 0.127 0)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "575e8481-a265-42bf-9484-f2f810e4c54b")
+			(uuid "423e9c3b-1a31-492b-b217-ab42fe1428f5")
 			(effects
 				(font
 					(size 1 1)
@@ -18633,7 +18789,7 @@
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "754d04bd-86e4-4e44-a00a-a13ef1bcf0bc")
+			(uuid "0c270724-1d55-4756-8507-a014b8d9820f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18645,7 +18801,7 @@
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
-			(uuid "5ffc166a-d17f-4189-be13-080ed4570f08")
+			(uuid "19e8c5b4-b89a-4226-8d6e-f35293f658f9")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -23267,7 +23423,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C22764.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23279,7 +23435,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "1.1kΩ ±1% 100mW 0603 Thick Film Resistor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23287,6 +23443,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1101T5E"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5a0a1d4e-a161-48f0-ab13-3aed2476fcdd")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -24432,6 +24601,19 @@
 				)
 			)
 		)
+		(property "MPN" "AF0603FR-0710KL "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "26078cbb-27e5-46fe-9b10-510866d321a0")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/ccf97c39-1e18-440a-8249-fc50fb09aced/00000000-0000-0000-0000-000058ec0efe")
 		(sheetname "/flash/")
@@ -24570,6 +24752,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3447cfb3-46da-4ab5-9c6e-b3ec09cbbf1a")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -29283,6 +29478,19 @@
 				)
 			)
 		)
+		(property "MPN" "AF0603FR-0710KL "
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a63f7f09-7edd-4942-87ea-9298f0e8aa70")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/ccf97c39-1e18-440a-8249-fc50fb09aced/00000000-0000-0000-0000-000058ec0f8e")
 		(sheetname "/flash/")
@@ -29835,6 +30043,19 @@
 				)
 			)
 		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a0dd77d4-8311-4707-bf7a-1ce2ba8222cf")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/83a52f73-8fcd-4378-9d92-72587b4762e9/00000000-0000-0000-0000-000059246a2a")
 		(sheetname "/power/")
@@ -29973,6 +30194,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e715eed5-38d9-4ef9-8bba-7ab3f146e492")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -31778,7 +32012,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/FNETHE025.pdf"
+		(property "Datasheet" "https://www.digikey.com/en/products/detail/connor-winfield/CWX813-100-0M/695541"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -31790,7 +32024,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "100 MHz XO (Standard) LVCMOS Oscillator 3.3V Enable/Disable 4-SMD, No Lead"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -31815,7 +32049,7 @@
 				)
 			)
 		)
-		(property "MPN" "FNETHE025"
+		(property "MPN" "CWX813-100.0M"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -32292,6 +32526,19 @@
 				)
 			)
 		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b3f92de8-2a19-4546-a332-6a3b592fabe8")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "R_*")
 		(path "/918e9909-3a8a-4471-9da8-88449b287653/ab23a3be-c9ca-42b4-96c6-52a1cdd722cb")
 		(sheetname "/card_fpga/")
@@ -32430,6 +32677,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "DFE322520FD-2R2M=P2"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b36905ff-b828-4139-87d6-973b73d063de")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
