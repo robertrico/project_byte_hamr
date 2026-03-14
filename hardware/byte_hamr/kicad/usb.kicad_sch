@@ -9820,7 +9820,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm"
+		(property "Footprint" "ft231x:FT231X-QFN-20-1EP_4x4mm_P0.5mm_EP2x2mm"
 			(at 101.6 120.65 0)
 			(effects
 				(font
