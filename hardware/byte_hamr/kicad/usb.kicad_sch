@@ -396,10 +396,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "ftdi:FT231XQ"
-			(pin_names
-				(offset 1.016)
-			)
+		(symbol "Interface_USB:FT231XQ"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -421,8 +418,8 @@
 					(justify left)
 				)
 			)
-			(property "Footprint" "QFN-20"
-				(at 0 0 0)
+			(property "Footprint" "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm"
+				(at 34.29 -20.32 0)
 				(effects
 					(font
 						(size 1.27 1.27)
@@ -430,7 +427,7 @@
 					(hide yes)
 				)
 			)
-			(property "Datasheet" "http://www.ftdichip.com/Products/ICs/FT231X.html"
+			(property "Datasheet" "https://www.ftdichip.com/Support/Documents/DataSheets/ICs/DS_FT231X.pdf"
 				(at 0 0 0)
 				(effects
 					(font
@@ -457,7 +454,7 @@
 					(hide yes)
 				)
 			)
-			(property "ki_fp_filters" "QFN*"
+			(property "ki_fp_filters" "QFN*4x4mm*P0.5mm*"
 				(at 0 0 0)
 				(effects
 					(font
@@ -472,7 +469,7 @@
 					(end 13.97 -19.05)
 					(stroke
 						(width 0.254)
-						(type solid)
+						(type default)
 					)
 					(fill
 						(type background)
@@ -678,7 +675,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at 17.78 10.16 180)
 					(length 3.81)
 					(name "~{RTS}"
@@ -732,7 +729,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin input line
 					(at 17.78 2.54 180)
 					(length 3.81)
 					(name "~{DSR}"
@@ -9556,7 +9553,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://portal.fciconnect.com/Comergent/fci/drawing/10118192.pdf"
+		(property "Datasheet" "https://cdn.amphenol-cs.com/media/wysiwyg/files/documentation/datasheet/inputoutput/io_usb_micro.pdf"
 			(at 48.26 34.29 0)
 			(effects
 				(font
@@ -9565,28 +9562,11 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "USB - micro B USB 2.0 Receptacle Connector 5 Position Surface Mount, Right Angle"
 			(at 45.72 35.56 0)
 			(effects
 				(font
 					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MFG1" "FCI"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF1_URL" "www.fciconnect.com"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.524 1.524)
 				)
 				(hide yes)
 			)
@@ -9596,141 +9576,6 @@
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet2" "https://www.molex.com/pdm_docs/sd/473460001_sd.pdf"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MFG2" "Molex"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF2_URL" "www.molex.com"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN2" "47346-0001"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "649-10118192-0001LF "
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "538-47346-0001"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "490-UJ2-MIBH-G-SMTTR"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "609-4613-1-ND"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey2" "WM17141CT-ND"
-			(at 45.72 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "47M0505"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C132564"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "FreelanceElec" "10118192-0001LF"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price200_FreelanceElec" "0.12487$"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FU010"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Side" "T"
-			(at 45.72 35.56 90)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)
@@ -9949,7 +9794,7 @@
 		)
 	)
 	(symbol
-		(lib_id "ftdi:FT231XQ")
+		(lib_id "Interface_USB:FT231XQ")
 		(at 67.31 100.33 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -9975,7 +9820,16 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "ft231x:FT231X-QFN-20-1EP_4x4mm_P0.5mm_EP2x2mm"
+		(property "Footprint" "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.5x2.5mm"
+			(at 101.6 120.65 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://www.ftdichip.com/Support/Documents/DataSheets/ICs/DS_FT231X.pdf"
 			(at 67.31 100.33 0)
 			(effects
 				(font
@@ -9984,7 +9838,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "www.ftdichip.com/Documents/DataSheets/ICs/DS_FT231X.pdf"
+		(property "Description" "Full Speed USB to Full Handshake UART, QFN-20"
 			(at 67.31 100.33 0)
 			(effects
 				(font
@@ -9993,109 +9847,11 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.ftdichip.com"
+		(property "MPN" "FT231XQ-R"
 			(at 67.31 100.33 0)
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "FT231XQ"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "895-FT231XQ-R"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "895-FT231XQ-T"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "768-1128-1-ND"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Dikike_y2" "768-1155-ND"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C132159"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "RS" "7570032"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "83T7088"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price100_RS" "1.86$"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FU002"
-			(at 67.31 100.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)
@@ -10206,24 +9962,17 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 41.91 105.41 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 41.91 105.41 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 41.91 105.41 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10232,87 +9981,6 @@
 			)
 		)
 		(property "MPN" "RC0603FR-0715KL"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "603-AC0603FR-1015KL"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "603-RC0603FR-0715KL"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "603-RC0603FR-1015KL"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "603-RC0603FR-1315KL"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "YAG3569CT-ND"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "94X1443"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C217750"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price1500_Mouser" "8.4$"
-			(at 41.91 105.41 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FR005"
 			(at 41.91 105.41 90)
 			(effects
 				(font
@@ -10391,15 +10059,6 @@
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Side" "T"
-			(at 175.26 82.55 0)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)
@@ -10589,77 +10248,25 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 66.04 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "GENERAL PURPOSE CHIP RESISTORSRC_L series"
 			(at 66.04 33.02 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
 				(hide yes)
 			)
 		)
-		(property "MPN" "AC0603JR-0727RL"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "603-AC0603JR-0727RL"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "311-27.0HRCT-ND"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "08AH8595"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C325726"
-			(at 66.04 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FR008"
+		(property "MPN" "RC0603FR-0727RL"
 			(at 66.04 33.02 90)
 			(effects
 				(font
@@ -10717,24 +10324,8 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 66.04 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 66.04 35.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 66.04 35.56 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10742,7 +10333,16 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "AC0603JR-0727RL"
+		(property "Description" "GENERAL PURPOSE CHIP RESISTORSRC_L series"
+			(at 66.04 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-0727RL"
 			(at 66.04 35.56 90)
 			(effects
 				(font
@@ -10801,7 +10401,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 138.43 34.29 0)
 			(effects
 				(font
@@ -10810,12 +10410,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 111.76 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"

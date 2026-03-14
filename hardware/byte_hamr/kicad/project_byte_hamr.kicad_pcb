@@ -506,7 +506,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "www.ftdichip.com/Documents/DataSheets/ICs/DS_FT231X.pdf"
+		(property "Datasheet" "https://ftdichip.com/wp-content/uploads/2025/06/DS_FT231X.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -518,7 +518,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "USB Bridge, USB to UART USB 2.0 UART Interface 20-QFN (4x4)"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -543,7 +543,7 @@
 				)
 			)
 		)
-		(property "MPN" "FT231XQ"
+		(property "MPN" "FT231XQ-R"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -1139,7 +1139,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1151,7 +1151,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1587,7 +1587,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.mouser.com/datasheet/3/508/1/PYu-AF_51_RoHS_L_9.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1599,7 +1599,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ANTI-SULFURATED CHIP RESISTORS AUTOMOTIVE GRADE"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1729,7 +1729,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1741,7 +1741,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1759,6 +1759,19 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "f847b488-a452-42bb-a407-0f22cff65cbc")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0805W8F0000T5E"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "56228b7b-e731-4e76-b7c3-02a23d1cae49")
 			(effects
 				(font
 					(size 1 1)
@@ -1934,7 +1947,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1946,7 +1959,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -1954,6 +1967,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "156da4e5-78cf-42cc-856a-f6c6c3b5017b")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2074,7 +2100,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -2086,7 +2112,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -2553,7 +2579,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -2565,7 +2591,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -2573,6 +2599,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "077a6aee-0759-4d89-aea9-2ec74c672fab")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -4289,7 +4328,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -4301,7 +4340,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5212,7 +5251,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5224,7 +5263,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5367,7 +5406,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5379,7 +5418,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5404,7 +5443,7 @@
 				)
 			)
 		)
-		(property "MPN" "RC0603FR-1015KL"
+		(property "MPN" "RC0603FR-0715KL"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -5534,7 +5573,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5546,7 +5585,7 @@
 				)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5674,7 +5713,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5686,7 +5725,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -5931,7 +5970,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5943,7 +5982,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5951,6 +5990,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "FH 0603CG101J500NT"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "39f3f1bf-7192-42de-95b4-b608add16538")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -6074,7 +6126,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -6086,7 +6138,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -6094,6 +6146,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d06991fd-9bc5-4e12-b8a2-c5219e68d487")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -7577,7 +7642,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.st.com/content/ccc/resource/technical/document/datasheet/ca/8a/ee/ed/5b/ef/47/60/CD00002299.pdf/files/CD00002299.pdf/jcr:content/translations/en.CD00002299.pdf"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -7590,7 +7655,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "40 V, 2 A low drop power Schottky rectifier"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -7616,7 +7681,7 @@
 				)
 			)
 		)
-		(property "MPN" "STPS2L30AF"
+		(property "MPN" "STPS2L40AF"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -7968,7 +8033,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -7980,7 +8045,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -8674,7 +8739,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -8686,7 +8751,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -8816,7 +8881,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -8828,7 +8893,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -8836,6 +8901,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a4dd6bbd-1538-45de-a3ba-bb525a47ea99")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -8957,7 +9035,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -8969,7 +9047,7 @@
 				)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -8977,6 +9055,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "6c63d653-66a7-4490-be64-190277324397")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -9099,7 +9190,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9111,7 +9202,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9240,7 +9331,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -9252,7 +9343,7 @@
 				)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -9382,7 +9473,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9394,7 +9485,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9523,7 +9614,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -9535,7 +9626,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -9679,7 +9770,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9691,7 +9782,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -9699,6 +9790,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5a8b716f-2a7f-415a-b054-1adb9599ab09")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -11497,7 +11601,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -11509,7 +11613,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -11517,6 +11621,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3ea2405d-327f-4b2b-b8e0-5060d20d6fe5")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -11639,7 +11756,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -11651,7 +11768,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -11663,7 +11780,7 @@
 				)
 			)
 		)
-		(property "Note" "Leave empty"
+		(property "MPN" "0805W8F0000T5E"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11843,7 +11960,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -11855,7 +11972,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -11985,7 +12102,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -11997,7 +12114,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -12127,7 +12244,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -12139,7 +12256,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -12282,7 +12399,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -12294,7 +12411,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -12320,7 +12437,7 @@
 			)
 		)
 		(property ki_fp_filters "C_*")
-		(path "/89936dea-7763-426a-9b9a-8f6c4ef8c06d/00000000-0000-0000-0000-00005a5fd26f")
+		(path "/89936dea-7763-426a-9b9a-8f6c4ef8c06d/cd9f8e0b-86ad-474b-9329-abe7b69da199")
 		(sheetname "/ram/")
 		(sheetfile "ram.kicad_sch")
 		(attr smd)
@@ -12438,7 +12555,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.issi.com/WW/pdf/25LP-WP128F.pdf"
+		(property "Datasheet" "https://www.issi.com/WW/pdf/25LP-WP128F.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -12450,7 +12567,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "FLASH - NOR Memory IC 128Mbit SPI - Quad I/O, QPI, DTR 133 MHz 8-SOIC"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -13007,7 +13124,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13019,7 +13136,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13027,6 +13144,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "FH 0603CG101J500NT"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a6e5248b-c772-42a2-b68a-86a3beb59e48")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -13149,7 +13279,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13161,7 +13291,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13169,6 +13299,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d49458e3-c527-4600-bc25-8a61a97a0ca8")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -13953,7 +14096,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.mouser.com/datasheet/3/508/1/PYu-AF_51_RoHS_L_9.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13965,7 +14108,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ANTI-SULFURATED CHIP RESISTORS AUTOMOTIVE GRADE"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -13990,7 +14133,7 @@
 				)
 			)
 		)
-		(property "MPN" "RC0603FR-0710KL"
+		(property "MPN" "AF0603FR-0710KL "
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -14186,7 +14329,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -14198,7 +14341,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -14328,7 +14471,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -14340,7 +14483,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -14625,7 +14768,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -14637,7 +14780,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -14675,7 +14818,7 @@
 				)
 			)
 		)
-		(property "MPN" "DFE322512F-2R2M=P2"
+		(property "MPN" "DFE322520FD-2R2M=P2"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -15346,7 +15489,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15358,7 +15501,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15366,6 +15509,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ca9aef81-9dae-40cd-a75f-ff01dc296dbb")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -15488,7 +15644,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15500,7 +15656,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15630,7 +15786,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15642,7 +15798,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15786,7 +15942,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15798,7 +15954,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -15806,6 +15962,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "97f5f04d-e2a4-440a-a18c-230aa944e586")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -17289,7 +17458,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -17301,7 +17470,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -17574,7 +17743,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -17586,7 +17755,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -17594,6 +17763,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "583989f3-3349-4b88-b515-e5d8408d8c69")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -17716,7 +17898,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -17728,7 +17910,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "GENERAL PURPOSE CHIP RESISTORSRC_L series"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -17753,7 +17935,7 @@
 				)
 			)
 		)
-		(property "MPN" "AC0603JR-0727RL"
+		(property "MPN" "RC0603FR-0727RL"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -18237,7 +18419,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -18249,7 +18431,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -18275,7 +18457,7 @@
 			)
 		)
 		(property ki_fp_filters "C_*")
-		(path "/89936dea-7763-426a-9b9a-8f6c4ef8c06d/00000000-0000-0000-0000-00005ac202c5")
+		(path "/89936dea-7763-426a-9b9a-8f6c4ef8c06d/e3c11050-ba1a-459e-bcf4-609d3d7004c4")
 		(sheetname "/ram/")
 		(sheetfile "ram.kicad_sch")
 		(attr smd)
@@ -18392,7 +18574,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.micron.com/~/media/Documents/Products/Data%20Sheet/DRAM/256Mb_sdr.pdf"
+		(property "Datasheet" "https://www.alliancememory.com/wp-content/uploads/Alliance_Selection_Guide_Print_02042026.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -18404,7 +18586,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "SDRAM Memory IC 512Mbit Parallel 143 MHz 5.4 ns 54-TSOP II"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -18442,7 +18624,7 @@
 				)
 			)
 		)
-		(property "MPN" "MT48LC16M16A2TG-6A"
+		(property "MPN" "AS4C32M16SB-7TCNTR"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -19494,7 +19676,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -19506,7 +19688,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -19649,7 +19831,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -19661,7 +19843,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -19770,6 +19952,19 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "d224ce6f-33f2-4131-b631-b2ece20f49b3")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0805W8F0000T5E"
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4d833058-e3b6-4b3a-9630-6230af748547")
 			(effects
 				(font
 					(size 1 1)
@@ -19945,7 +20140,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -19957,7 +20152,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -20100,7 +20295,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -20112,7 +20307,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -20255,7 +20450,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -20267,7 +20462,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "GENERAL PURPOSE CHIP RESISTORSRC_L series"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -20292,7 +20487,7 @@
 				)
 			)
 		)
-		(property "MPN" "AC0603JR-0727RL"
+		(property "MPN" "RC0603FR-0727RL"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -20423,7 +20618,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -20435,7 +20630,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -20443,6 +20638,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4e3b4578-3722-4ac2-9d0c-544c6af52118")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -20563,7 +20771,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://portal.fciconnect.com/Comergent/fci/drawing/10118192.pdf"
+		(property "Datasheet" "https://cdn.amphenol-cs.com/media/wysiwyg/files/documentation/datasheet/inputoutput/io_usb_micro.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -20575,7 +20783,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "USB - micro B USB 2.0 Receptacle Connector 5 Position Surface Mount, Right Angle"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -21154,7 +21362,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -21166,7 +21374,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -21191,7 +21399,7 @@
 				)
 			)
 		)
-		(property "MPN" "CS0603KRX7R9BB471"
+		(property "MPN" "FH 0603CG101J500NT"
 			(at 0 0 180)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -21466,7 +21674,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -21478,7 +21686,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -21486,6 +21694,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "d93652d9-6724-49ab-bfa3-4ee972ef7634")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -23111,7 +23332,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23123,7 +23344,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23135,7 +23356,7 @@
 				)
 			)
 		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23396,7 +23617,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23408,7 +23629,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -23551,7 +23772,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.st.com/content/ccc/resource/technical/document/datasheet/ca/8a/ee/ed/5b/ef/47/60/CD00002299.pdf/files/CD00002299.pdf/jcr:content/translations/en.CD00002299.pdf"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23564,7 +23785,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "40 V, 2 A low drop power Schottky rectifier"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -23590,7 +23811,7 @@
 				)
 			)
 		)
-		(property "MPN" "STPS2L30AF"
+		(property "MPN" "STPS2L40AF"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24110,7 +24331,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.mouser.com/datasheet/3/508/1/PYu-AF_51_RoHS_L_9.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -24122,7 +24343,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ANTI-SULFURATED CHIP RESISTORS AUTOMOTIVE GRADE"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -24252,7 +24473,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -24264,7 +24485,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -24392,7 +24613,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -24404,7 +24625,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -28961,7 +29182,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.mouser.com/datasheet/3/508/1/PYu-AF_51_RoHS_L_9.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -28973,7 +29194,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ANTI-SULFURATED CHIP RESISTORS AUTOMOTIVE GRADE"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29103,7 +29324,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29115,7 +29336,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29256,7 +29477,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29268,7 +29489,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29513,7 +29734,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -29525,7 +29746,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -29655,7 +29876,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29667,7 +29888,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29798,7 +30019,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29810,7 +30031,7 @@
 				)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -29818,6 +30039,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2aaaa701-1ccd-4d86-9848-6ac2aa6db652")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -31301,7 +31535,7 @@
 				)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -31313,7 +31547,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -31325,7 +31559,7 @@
 				)
 			)
 		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -31914,7 +32148,7 @@
 		(descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "resistor")
 		(property "Reference" "R6"
-			(at 3.85 -1.43 0)
+			(at 0 -2.15 0)
 			(layer "F.SilkS")
 			(uuid "70cae9fb-fcc9-48a3-8353-848e88329b87")
 			(effects
@@ -31935,7 +32169,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -31947,7 +32181,7 @@
 				)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -32077,7 +32311,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -32089,7 +32323,7 @@
 				)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -32280,7 +32514,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32293,7 +32527,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32441,7 +32675,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32454,7 +32688,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32616,7 +32850,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32629,7 +32863,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32642,7 +32876,7 @@
 				(justify mirror)
 			)
 		)
-		(property "MPN" "CC0603JRX7R8BB223"
+		(property "MPN" "CX0603MRX7R8BB223"
 			(at 0 0 0)
 			(unlocked yes)
 			(layer "B.Fab")
@@ -32917,7 +33151,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -32930,7 +33164,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33078,7 +33312,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33091,7 +33325,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33239,7 +33473,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33252,7 +33486,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33399,7 +33633,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33412,7 +33646,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33574,7 +33808,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33587,7 +33821,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -33735,7 +33969,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g04.pdf?ts=1753305682684&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FSN74LVC1G04"
 			(at 0 0 90)
 			(layer "B.Fab")
 			(hide yes)
@@ -33748,7 +33982,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" "Single NOT Gate, Low-Voltage CMOS"
+		(property "Description" "Inverter IC 1 Channel SOT-23-5"
 			(at 0 0 90)
 			(layer "B.Fab")
 			(hide yes)
@@ -33756,6 +33990,20 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+				(justify mirror)
+			)
+		)
+		(property "MPN" "SN74LVC1G04DBVR"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "B.Fab")
+			(hide yes)
+			(uuid "dcfcd774-b171-4cb7-846c-e0a8b2f1750c")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 				(justify mirror)
@@ -34005,7 +34253,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -34018,7 +34266,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -34166,7 +34414,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -34179,7 +34427,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -35090,22 +35338,6 @@
 		(uuid "082824dc-d8c4-49fa-86ef-793c84910cd0")
 	)
 	(segment
-		(start 191.797384 84.253526)
-		(end 191.853526 84.253526)
-		(width 0.1525)
-		(layer "F.Cu")
-		(net 1)
-		(uuid "09b9931b-1323-4cf4-a9e1-c690e43cb218")
-	)
-	(segment
-		(start 191.45091 84.6)
-		(end 191.797384 84.253526)
-		(width 0.1525)
-		(layer "F.Cu")
-		(net 1)
-		(uuid "09c7d0cf-cb50-4346-a902-6cf2f3f780aa")
-	)
-	(segment
 		(start 190.995058 81.738911)
 		(end 190.995058 81.795058)
 		(width 0.1525)
@@ -35170,6 +35402,14 @@
 		(uuid "0cfeb0d0-d6f4-4adb-947c-4b8229bc42fc")
 	)
 	(segment
+		(start 192.2 84.6)
+		(end 192.197384 84.6)
+		(width 0.1525)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "0d343816-b48d-408d-b1f6-6b3faacd8c2d")
+	)
+	(segment
 		(start 196.2 78.983383)
 		(end 195.815581 78.598964)
 		(width 0.1525)
@@ -35208,6 +35448,14 @@
 		(layer "F.Cu")
 		(net 1)
 		(uuid "12e3edc9-2dec-480b-ba42-995ba856f3e6")
+	)
+	(segment
+		(start 191.4 84.6)
+		(end 191.4 84.602616)
+		(width 0.1525)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "1330f962-6a47-40e6-a03e-7d8a41375b6a")
 	)
 	(segment
 		(start 189.8 79.792316)
@@ -35368,6 +35616,14 @@
 		(layer "F.Cu")
 		(net 1)
 		(uuid "2366ddd6-c308-4431-8292-4466779dc643")
+	)
+	(segment
+		(start 191.4 84.602616)
+		(end 191.797384 85)
+		(width 0.1525)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "2472f023-b1b6-4b9a-bb1c-0dda71c1e83a")
 	)
 	(segment
 		(start 196.2 85.4)
@@ -35944,6 +36200,14 @@
 		(layer "F.Cu")
 		(net 1)
 		(uuid "52e31d09-794d-42e1-a9b5-7e73f2f3acba")
+	)
+	(segment
+		(start 192.2 84.6)
+		(end 192.2 83.8)
+		(width 0.1525)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "53294793-0f69-48c8-88fe-92ca4eccf14e")
 	)
 	(segment
 		(start 192.605106 88.169176)
@@ -36744,6 +37008,14 @@
 		(layer "F.Cu")
 		(net 1)
 		(uuid "a0715a79-cbd9-4ae3-92a0-184d0aa3bbfb")
+	)
+	(segment
+		(start 192.197384 84.6)
+		(end 191.797384 85)
+		(width 0.1525)
+		(layer "F.Cu")
+		(net 1)
+		(uuid "a0e702a0-819b-4e00-910a-431345e5bb0e")
 	)
 	(segment
 		(start 190.6 79)
@@ -37754,14 +38026,6 @@
 		(uuid "fa47b984-ba56-413d-8ece-c66bc0f8270e")
 	)
 	(segment
-		(start 191.853526 84.253526)
-		(end 192.2 84.6)
-		(width 0.1525)
-		(layer "F.Cu")
-		(net 1)
-		(uuid "fab6a2bd-18d0-4450-869d-aed07c4e00c3")
-	)
-	(segment
 		(start 179.0925 112.3442)
 		(end 178.2117 113.225)
 		(width 0.3)
@@ -38042,7 +38306,7 @@
 		(uuid "52cc9993-4ba0-4c3a-abd8-34832aa6e6b9")
 	)
 	(via
-		(at 191.797384 84.253526)
+		(at 191.797384 85)
 		(size 0.35)
 		(drill 0.2)
 		(layers "F.Cu" "B.Cu")
@@ -55083,80 +55347,74 @@
 				(xy 192.944762 82.95215) (xy 192.851052 82.898046) (xy 192.813533 82.876384) (xy 192.740347 82.856774)
 				(xy 192.667163 82.837165) (xy 192.515631 82.837165) (xy 192.36926 82.876384) (xy 192.238032 82.95215)
 				(xy 192.238029 82.952152) (xy 192.130884 83.059297) (xy 192.130882 83.0593) (xy 192.055116 83.190528)
-				(xy 192.015897 83.336899) (xy 192.015897 83.488432) (xy 192.026082 83.526444) (xy 192.024419 83.596294)
-				(xy 191.985255 83.654156) (xy 191.921026 83.681659) (xy 191.881241 83.678814) (xy 191.881206 83.679087)
-				(xy 191.876627 83.678484) (xy 191.87422 83.678312) (xy 191.873156 83.678027) (xy 191.873151 83.678026)
-				(xy 191.87315 83.678026) (xy 191.721618 83.678026) (xy 191.721616 83.678026) (xy 191.663276 83.693658)
-				(xy 191.593426 83.691995) (xy 191.535564 83.652831) (xy 191.508061 83.588603) (xy 191.511408 83.541793)
-				(xy 191.540204 83.434327) (xy 191.540204 83.282795) (xy 191.500985 83.136426) (xy 191.425219 83.005196)
-				(xy 191.318069 82.898046) (xy 191.252454 82.860163) (xy 191.18684 82.82228) (xy 191.100064 82.799029)
-				(xy 191.04047 82.783061) (xy 190.888938 82.783061) (xy 190.742567 82.82228) (xy 190.611339 82.898046)
-				(xy 190.611336 82.898048) (xy 190.504191 83.005193) (xy 190.504189 83.005196) (xy 190.428423 83.136424)
-				(xy 190.389204 83.282795) (xy 190.389204 83.434326) (xy 190.428423 83.580697) (xy 190.45966 83.6348)
-				(xy 190.504189 83.711926) (xy 190.611339 83.819076) (xy 190.742569 83.894842) (xy 190.888938 83.934061)
-				(xy 190.88894 83.934061) (xy 191.040467 83.934061) (xy 191.04047 83.934061) (xy 191.098813 83.918428)
-				(xy 191.168659 83.920091) (xy 191.226521 83.959253) (xy 191.254026 84.023481) (xy 191.250678 84.070295)
-				(xy 191.221884 84.177758) (xy 191.221884 84.329291) (xy 191.261103 84.475662) (xy 191.292808 84.530576)
-				(xy 191.336869 84.606891) (xy 191.444019 84.714041) (xy 191.575249 84.789807) (xy 191.721618 84.829026)
-				(xy 191.72162 84.829026) (xy 191.873148 84.829026) (xy 191.87315 84.829026) (xy 192.019519 84.789807)
-				(xy 192.150749 84.714041) (xy 192.257899 84.606891) (xy 192.333665 84.475661) (xy 192.372884 84.329292)
-				(xy 192.372884 84.17776) (xy 192.362698 84.139745) (xy 192.364361 84.069898) (xy 192.403523 84.012035)
-				(xy 192.467752 83.984531) (xy 192.482668 83.983654) (xy 192.49889 83.983679) (xy 192.515631 83.988165)
-				(xy 192.667163 83.988165) (xy 192.682822 83.983969) (xy 192.699242 83.983995) (xy 192.717629 83.989425)
-				(xy 192.736795 83.98988) (xy 192.750444 83.999116) (xy 192.766251 84.003785) (xy 192.778782 84.018293)
-				(xy 192.79466 84.029038) (xy 192.801149 84.044188) (xy 192.811922 84.056661) (xy 192.81462 84.075641)
-				(xy 192.822169 84.093265) (xy 192.823047 84.107995) (xy 192.823047 84.197091) (xy 192.829274 84.220331)
-				(xy 192.862266 84.343461) (xy 192.885074 84.382964) (xy 192.938032 84.47469) (xy 193.045182 84.58184)
-				(xy 193.176412 84.657606) (xy 193.322781 84.696825) (xy 193.322783 84.696825) (xy 193.474311 84.696825)
-				(xy 193.474313 84.696825) (xy 193.479873 84.695335) (xy 193.549722 84.696996) (xy 193.607585 84.736158)
-				(xy 193.635091 84.800386) (xy 193.631743 84.847201) (xy 193.6245 84.874232) (xy 193.6245 85.025767)
-				(xy 193.633067 85.05774) (xy 193.631404 85.12759) (xy 193.59224 85.185452) (xy 193.528012 85.212955)
-				(xy 193.507292 85.212831) (xy 193.507292 85.213042) (xy 193.347633 85.213042) (xy 193.201262 85.252261)
-				(xy 193.070034 85.328027) (xy 193.070031 85.328029) (xy 192.962886 85.435174) (xy 192.962884 85.435177)
-				(xy 192.887118 85.566405) (xy 192.856466 85.680803) (xy 192.847899 85.712776) (xy 192.847899 85.864308)
-				(xy 192.850483 85.873952) (xy 192.887118 86.010678) (xy 192.911348 86.052644) (xy 192.962884 86.141907)
-				(xy 193.070034 86.249057) (xy 193.201264 86.324823) (xy 193.347633 86.364042) (xy 193.347635 86.364042)
-				(xy 193.499163 86.364042) (xy 193.499165 86.364042) (xy 193.645534 86.324823) (xy 193.776764 86.249057)
-				(xy 193.883914 86.141907) (xy 193.95968 86.010677) (xy 193.998899 85.864308) (xy 193.998899 85.712776)
-				(xy 193.990331 85.680799) (xy 193.991994 85.610953) (xy 194.031156 85.553091) (xy 194.095384 85.525586)
-				(xy 194.116107 85.52571) (xy 194.116107 85.5255) (xy 194.275764 85.5255) (xy 194.275766 85.5255)
-				(xy 194.422135 85.486281) (xy 194.553365 85.410515) (xy 194.558997 85.404882) (xy 194.620317 85.371396)
-				(xy 194.690008 85.376377) (xy 194.745944 85.418246) (xy 194.754061 85.430552) (xy 194.761458 85.443363)
-				(xy 194.808489 85.524825) (xy 195.163181 85.879517) (xy 195.196666 85.94084) (xy 195.1995 85.967198)
-				(xy 195.1995 87.512341) (xy 195.179815 87.57938) (xy 195.127011 87.625135) (xy 195.0755 87.636341)
-				(xy 194.917087 87.636341) (xy 194.770716 87.67556) (xy 194.639488 87.751326) (xy 194.639485 87.751328)
-				(xy 194.628828 87.761986) (xy 194.567505 87.795471) (xy 194.541147 87.798305) (xy 193.099477 87.798305)
-				(xy 193.032438 87.77862) (xy 193.011796 87.761986) (xy 192.958473 87.708663) (xy 192.958471 87.708661)
-				(xy 192.892856 87.670778) (xy 192.827242 87.632895) (xy 192.754056 87.613285) (xy 192.680872 87.593676)
-				(xy 192.52934 87.593676) (xy 192.382969 87.632895) (xy 192.251741 87.708661) (xy 192.251738 87.708663)
-				(xy 192.198416 87.761986) (xy 192.137093 87.795471) (xy 192.110735 87.798305) (xy 190.640628 87.798305)
-				(xy 190.573589 87.77862) (xy 190.552947 87.761986) (xy 190.549535 87.758574) (xy 190.549533 87.758572)
-				(xy 190.483918 87.720689) (xy 190.418304 87.682806) (xy 190.345118 87.663196) (xy 190.271934 87.643587)
-				(xy 190.120402 87.643587) (xy 189.974033 87.682806) (xy 189.974032 87.682806) (xy 189.97403 87.682807)
-				(xy 189.966519 87.685918) (xy 189.965362 87.683124) (xy 189.911441 87.696188) (xy 189.845422 87.673314)
-				(xy 189.802249 87.618379) (xy 189.793381 87.57233) (xy 189.793381 85.720962) (xy 190.441367 85.720962)
-				(xy 190.441367 85.872494) (xy 190.443249 85.879517) (xy 190.480586 86.018864) (xy 190.518469 86.084478)
-				(xy 190.556352 86.150093) (xy 190.663502 86.257243) (xy 190.794732 86.333009) (xy 190.941101 86.372228)
-				(xy 190.941103 86.372228) (xy 191.092631 86.372228) (xy 191.092633 86.372228) (xy 191.239002 86.333009)
-				(xy 191.369587 86.257615) (xy 191.437484 86.241143) (xy 191.493583 86.257615) (xy 191.588724 86.312545)
-				(xy 191.735093 86.351764) (xy 191.735095 86.351764) (xy 191.886623 86.351764) (xy 191.886625 86.351764)
-				(xy 192.032994 86.312545) (xy 192.164224 86.236779) (xy 192.271374 86.129629) (xy 192.34714 85.998399)
-				(xy 192.386359 85.85203) (xy 192.386359 85.700498) (xy 192.34714 85.554129) (xy 192.271374 85.422899)
-				(xy 192.164224 85.315749) (xy 192.068439 85.260447) (xy 192.032995 85.239983) (xy 191.959809 85.220373)
-				(xy 191.886625 85.200764) (xy 191.735093 85.200764) (xy 191.588724 85.239983) (xy 191.588723 85.239983)
-				(xy 191.588721 85.239984) (xy 191.58872 85.239984) (xy 191.45814 85.315375) (xy 191.39024 85.331848)
-				(xy 191.33414 85.315375) (xy 191.281075 85.284738) (xy 191.239003 85.260447) (xy 191.153634 85.237573)
-				(xy 191.092633 85.221228) (xy 190.941101 85.221228) (xy 190.79473 85.260447) (xy 190.663502 85.336213)
-				(xy 190.663499 85.336215) (xy 190.556354 85.44336) (xy 190.556352 85.443363) (xy 190.480586 85.574591)
-				(xy 190.476776 85.588811) (xy 190.441367 85.720962) (xy 189.793381 85.720962) (xy 189.793381 85.499537)
-				(xy 189.813066 85.432498) (xy 189.8297 85.411856) (xy 189.836672 85.404884) (xy 189.850588 85.390968)
-				(xy 189.926354 85.259738) (xy 189.965573 85.113369) (xy 189.965573 84.961837) (xy 189.926354 84.815468)
-				(xy 189.850588 84.684238) (xy 189.8297 84.66335) (xy 189.796215 84.602027) (xy 189.793381 84.575669)
-				(xy 189.793381 82.142449) (xy 189.813066 82.07541) (xy 189.855381 82.035062) (xy 189.955355 81.977342)
-				(xy 190.062505 81.870192) (xy 190.138271 81.738962) (xy 190.17749 81.592593) (xy 190.17749 81.441061)
-				(xy 190.138271 81.294692) (xy 190.062505 81.163462) (xy 189.955355 81.056312) (xy 189.85538 80.998591)
-				(xy 189.807165 80.948023) (xy 189.793381 80.891204) (xy 189.793381 80.202521) (xy 189.813066 80.135482)
-				(xy 189.86587 80.089727) (xy 189.917381 80.078521) (xy 192.476 80.078521)
+				(xy 192.030394 83.282795) (xy 192.015897 83.336899) (xy 192.015897 83.488431) (xy 192.032382 83.549954)
+				(xy 192.055116 83.634801) (xy 192.068445 83.657887) (xy 192.130882 83.76603) (xy 192.238032 83.87318)
+				(xy 192.369262 83.948946) (xy 192.515631 83.988165) (xy 192.515633 83.988165) (xy 192.667161 83.988165)
+				(xy 192.667163 83.988165) (xy 192.667164 83.988164) (xy 192.675219 83.987104) (xy 192.675392 83.988423)
+				(xy 192.736795 83.98988) (xy 192.79466 84.029038) (xy 192.822169 84.093265) (xy 192.823047 84.107995)
+				(xy 192.823047 84.197091) (xy 192.829274 84.220331) (xy 192.862266 84.343461) (xy 192.885074 84.382964)
+				(xy 192.938032 84.47469) (xy 193.045182 84.58184) (xy 193.176412 84.657606) (xy 193.322781 84.696825)
+				(xy 193.322783 84.696825) (xy 193.474311 84.696825) (xy 193.474313 84.696825) (xy 193.479873 84.695335)
+				(xy 193.549722 84.696996) (xy 193.607585 84.736158) (xy 193.635091 84.800386) (xy 193.631743 84.847201)
+				(xy 193.6245 84.874232) (xy 193.6245 85.025767) (xy 193.633067 85.05774) (xy 193.631404 85.12759)
+				(xy 193.59224 85.185452) (xy 193.528012 85.212955) (xy 193.507292 85.212831) (xy 193.507292 85.213042)
+				(xy 193.347633 85.213042) (xy 193.201262 85.252261) (xy 193.070034 85.328027) (xy 193.070031 85.328029)
+				(xy 192.962886 85.435174) (xy 192.962884 85.435177) (xy 192.887118 85.566405) (xy 192.856466 85.680803)
+				(xy 192.847899 85.712776) (xy 192.847899 85.864308) (xy 192.850483 85.873952) (xy 192.887118 86.010678)
+				(xy 192.911348 86.052644) (xy 192.962884 86.141907) (xy 193.070034 86.249057) (xy 193.201264 86.324823)
+				(xy 193.347633 86.364042) (xy 193.347635 86.364042) (xy 193.499163 86.364042) (xy 193.499165 86.364042)
+				(xy 193.645534 86.324823) (xy 193.776764 86.249057) (xy 193.883914 86.141907) (xy 193.95968 86.010677)
+				(xy 193.998899 85.864308) (xy 193.998899 85.712776) (xy 193.990331 85.680799) (xy 193.991994 85.610953)
+				(xy 194.031156 85.553091) (xy 194.095384 85.525586) (xy 194.116107 85.52571) (xy 194.116107 85.5255)
+				(xy 194.275764 85.5255) (xy 194.275766 85.5255) (xy 194.422135 85.486281) (xy 194.553365 85.410515)
+				(xy 194.558997 85.404882) (xy 194.620317 85.371396) (xy 194.690008 85.376377) (xy 194.745944 85.418246)
+				(xy 194.754061 85.430552) (xy 194.761458 85.443363) (xy 194.808489 85.524825) (xy 195.163181 85.879517)
+				(xy 195.196666 85.94084) (xy 195.1995 85.967198) (xy 195.1995 87.512341) (xy 195.179815 87.57938)
+				(xy 195.127011 87.625135) (xy 195.0755 87.636341) (xy 194.917087 87.636341) (xy 194.770716 87.67556)
+				(xy 194.639488 87.751326) (xy 194.639485 87.751328) (xy 194.628828 87.761986) (xy 194.567505 87.795471)
+				(xy 194.541147 87.798305) (xy 193.099477 87.798305) (xy 193.032438 87.77862) (xy 193.011796 87.761986)
+				(xy 192.958473 87.708663) (xy 192.958471 87.708661) (xy 192.892856 87.670778) (xy 192.827242 87.632895)
+				(xy 192.754056 87.613285) (xy 192.680872 87.593676) (xy 192.52934 87.593676) (xy 192.382969 87.632895)
+				(xy 192.251741 87.708661) (xy 192.251738 87.708663) (xy 192.198416 87.761986) (xy 192.137093 87.795471)
+				(xy 192.110735 87.798305) (xy 190.640628 87.798305) (xy 190.573589 87.77862) (xy 190.552947 87.761986)
+				(xy 190.549535 87.758574) (xy 190.549533 87.758572) (xy 190.483918 87.720689) (xy 190.418304 87.682806)
+				(xy 190.345118 87.663196) (xy 190.271934 87.643587) (xy 190.120402 87.643587) (xy 189.974033 87.682806)
+				(xy 189.974032 87.682806) (xy 189.97403 87.682807) (xy 189.966519 87.685918) (xy 189.965362 87.683124)
+				(xy 189.911441 87.696188) (xy 189.845422 87.673314) (xy 189.802249 87.618379) (xy 189.793381 87.57233)
+				(xy 189.793381 85.720962) (xy 190.441367 85.720962) (xy 190.441367 85.872494) (xy 190.443249 85.879517)
+				(xy 190.480586 86.018864) (xy 190.518469 86.084478) (xy 190.556352 86.150093) (xy 190.663502 86.257243)
+				(xy 190.794732 86.333009) (xy 190.941101 86.372228) (xy 190.941103 86.372228) (xy 191.092631 86.372228)
+				(xy 191.092633 86.372228) (xy 191.239002 86.333009) (xy 191.369587 86.257615) (xy 191.437484 86.241143)
+				(xy 191.493583 86.257615) (xy 191.588724 86.312545) (xy 191.735093 86.351764) (xy 191.735095 86.351764)
+				(xy 191.886623 86.351764) (xy 191.886625 86.351764) (xy 192.032994 86.312545) (xy 192.164224 86.236779)
+				(xy 192.271374 86.129629) (xy 192.34714 85.998399) (xy 192.386359 85.85203) (xy 192.386359 85.700498)
+				(xy 192.34714 85.554129) (xy 192.280358 85.43846) (xy 192.263886 85.370563) (xy 192.28036 85.314461)
+				(xy 192.286767 85.303365) (xy 192.333665 85.222135) (xy 192.372884 85.075766) (xy 192.372884 84.924234)
+				(xy 192.333665 84.777865) (xy 192.257899 84.646635) (xy 192.150749 84.539485) (xy 192.038525 84.474692)
+				(xy 192.01952 84.463719) (xy 191.946334 84.444109) (xy 191.87315 84.4245) (xy 191.721618 84.4245)
+				(xy 191.575247 84.463719) (xy 191.444019 84.539485) (xy 191.444016 84.539487) (xy 191.336871 84.646632)
+				(xy 191.336869 84.646635) (xy 191.261103 84.777863) (xy 191.226667 84.906383) (xy 191.221884 84.924234)
+				(xy 191.221884 85.075766) (xy 191.221885 85.07577) (xy 191.222579 85.081039) (xy 191.211815 85.150075)
+				(xy 191.165437 85.202332) (xy 191.09964 85.221228) (xy 190.941101 85.221228) (xy 190.79473 85.260447)
+				(xy 190.663502 85.336213) (xy 190.663499 85.336215) (xy 190.556354 85.44336) (xy 190.556352 85.443363)
+				(xy 190.480586 85.574591) (xy 190.476776 85.588811) (xy 190.441367 85.720962) (xy 189.793381 85.720962)
+				(xy 189.793381 85.499537) (xy 189.813066 85.432498) (xy 189.8297 85.411856) (xy 189.836672 85.404884)
+				(xy 189.850588 85.390968) (xy 189.926354 85.259738) (xy 189.965573 85.113369) (xy 189.965573 84.961837)
+				(xy 189.926354 84.815468) (xy 189.850588 84.684238) (xy 189.8297 84.66335) (xy 189.796215 84.602027)
+				(xy 189.793381 84.575669) (xy 189.793381 83.282795) (xy 190.389204 83.282795) (xy 190.389204 83.434326)
+				(xy 190.428423 83.580697) (xy 190.45966 83.6348) (xy 190.504189 83.711926) (xy 190.611339 83.819076)
+				(xy 190.742569 83.894842) (xy 190.888938 83.934061) (xy 190.88894 83.934061) (xy 191.040468 83.934061)
+				(xy 191.04047 83.934061) (xy 191.186839 83.894842) (xy 191.318069 83.819076) (xy 191.425219 83.711926)
+				(xy 191.500985 83.580696) (xy 191.540204 83.434327) (xy 191.540204 83.282795) (xy 191.500985 83.136426)
+				(xy 191.425219 83.005196) (xy 191.318069 82.898046) (xy 191.252454 82.860163) (xy 191.18684 82.82228)
+				(xy 191.100064 82.799029) (xy 191.04047 82.783061) (xy 190.888938 82.783061) (xy 190.742567 82.82228)
+				(xy 190.611339 82.898046) (xy 190.611336 82.898048) (xy 190.504191 83.005193) (xy 190.504189 83.005196)
+				(xy 190.428423 83.136424) (xy 190.389204 83.282795) (xy 189.793381 83.282795) (xy 189.793381 82.142449)
+				(xy 189.813066 82.07541) (xy 189.855381 82.035062) (xy 189.955355 81.977342) (xy 190.062505 81.870192)
+				(xy 190.138271 81.738962) (xy 190.17749 81.592593) (xy 190.17749 81.441061) (xy 190.138271 81.294692)
+				(xy 190.062505 81.163462) (xy 189.955355 81.056312) (xy 189.85538 80.998591) (xy 189.807165 80.948023)
+				(xy 189.793381 80.891204) (xy 189.793381 80.202521) (xy 189.813066 80.135482) (xy 189.86587 80.089727)
+				(xy 189.917381 80.078521) (xy 192.476 80.078521)
 			)
 		)
 	)

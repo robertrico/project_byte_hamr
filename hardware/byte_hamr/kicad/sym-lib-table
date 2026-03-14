@@ -1,4 +1,6 @@
 (sym_lib_table
   (version 7)
-  (lib (name "RCS08050000Z0EA")(type "KiCad")(uri "${KIPRJMOD}/RCS08050000Z0EA/RCS08050000Z0EA.kicad_sym")(options "")(descr ""))
+  (lib (name "lfe5bg381")(type "Legacy")(uri "${KIPRJMOD}/footprints/lattice/lfe5bg381.lib")(options "")(descr ""))
+  (lib (name "mt48lc16m16a2tg")(type "Legacy")(uri "${KIPRJMOD}/footprints/sdram/mt48lc16m16a2tg.lib")(options "")(descr ""))
+  (lib (name "usb_otg")(type "Legacy")(uri "${KIPRJMOD}/footprints/usb_otg/usb_otg.lib")(options "")(descr ""))
 )

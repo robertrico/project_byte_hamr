@@ -12477,7 +12477,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/FNETHE025.pdf"
+		(property "Datasheet" "https://www.digikey.com/en/products/detail/connor-winfield/CWX813-100-0M/695541"
 			(at 22.86 143.51 0)
 			(effects
 				(font
@@ -12486,15 +12486,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet-100" "https://www.digikey.com/en/products/detail/connor-winfield/CWX813-100-0M/695541"
+		(property "Description" "100 MHz XO (Standard) LVCMOS Oscillator 3.3V Enable/Disable 4-SMD, No Lead"
 			(at 22.86 143.51 0)
 			(effects
 				(font
@@ -12503,133 +12495,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN-100" "CWX813-100.0M"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF1_URL" "www.diodes.com"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "FNETHE025"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN2" "SiT8008BC-81-33E-25.000000X"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF3_URL" "https://datasheet.lcsc.com/szlcsc/1912111437_Shenzhen-SCTF-Elec-S7D25-000000D20F30T_C387026.pdf"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN3" "S7D25.000000D20F30T"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "729-FNETHE025"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "788-8008BC8133E25X "
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "3305-7050XOM2500BMD13CCC-CT-ND"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y1" "FNETHE025CT-ND"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "80AC8624"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C390569"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price100_Digikey" "0.7942$"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FQ001"
-			(at 22.86 143.51 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Side" "T"
+		(property "MPN" "CWX813-100.0M"
 			(at 22.86 143.51 0)
 			(effects
 				(font
@@ -12822,7 +12688,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 238.76 39.37 0)
 			(effects
 				(font
@@ -12831,8 +12697,17 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 238.76 39.37 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 238.76 39.37 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -13022,7 +12897,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 26.67 19.05 0)
 			(effects
 				(font
@@ -13031,12 +12906,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 53.34 43.18 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"
@@ -14228,7 +14104,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 26.67 78.74 0)
 			(effects
 				(font
@@ -14237,12 +14113,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 53.34 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"
@@ -15434,7 +15311,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 229.87 107.95 0)
 			(effects
 				(font
@@ -15443,12 +15320,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 256.54 132.08 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"
@@ -16823,7 +16701,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 238.76 64.77 0)
 			(effects
 				(font
@@ -16832,8 +16710,17 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 238.76 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 238.76 64.77 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16891,7 +16778,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 238.76 77.47 0)
 			(effects
 				(font
@@ -16900,8 +16787,17 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 238.76 77.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 238.76 77.47 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16958,7 +16854,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 105.41 19.05 0)
 			(effects
 				(font
@@ -16967,12 +16863,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 132.08 43.18 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"
@@ -18245,7 +18142,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "~"
+		(property "Datasheet" "https://www.royalohm.com/assets/pdf/products/smd/1.pdf"
 			(at 238.76 52.07 0)
 			(effects
 				(font
@@ -18254,8 +18151,17 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Resistor, small symbol"
+		(property "Description" "Thick Film Resistors - SMD RMC 0603 1/10W 1% T/R-5000"
 			(at 238.76 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF330JT5E"
+			(at 238.76 52.07 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18312,7 +18218,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 106.68 80.01 0)
 			(effects
 				(font
@@ -18321,12 +18227,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 133.35 104.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"

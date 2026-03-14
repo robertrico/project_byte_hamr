@@ -14135,23 +14135,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 53.34 99.06 0)
 			(effects
 				(font
@@ -14160,7 +14144,7 @@
 				(hide yes)
 			)
 		)
-		(property "Mouser" "81-GRM21BR61A226ME1L"
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 53.34 99.06 0)
 			(effects
 				(font
@@ -14169,79 +14153,7 @@
 				(hide yes)
 			)
 		)
-		(property "Mouse_r2" "81-GRM21BR61A226ME1K"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "81-GRM219R61C226ME5L"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r4" "81-GRM188C60J226ME0J"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r5" "963-LMK212BBJ226MG-T"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "1276-2413-1-ND"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y2" "1276-2412-1-ND"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "08P5169"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C29277"
-			(at 53.34 99.06 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FC004"
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 53.34 99.06 0)
 			(effects
 				(font
@@ -14301,23 +14213,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 96.52 88.9 0)
 			(effects
 				(font
@@ -14326,7 +14222,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CS0603KRX7R9BB471"
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 96.52 88.9 0)
 			(effects
 				(font
@@ -14335,97 +14231,7 @@
 				(hide yes)
 			)
 		)
-		(property "Mouser" "581-06035A101JAT4A"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "710-885012206081"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "603-CS0603KRX79BB471"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "603-CC603JRNPO9BN101"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r4" "603-CC603KRX7R9BB471 "
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "311-4078-1-ND"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y2" "399-9086-1-ND"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "38K9273"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C14665"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCS_C2" "C22396"
-			(at 96.52 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FC006"
+		(property "MPN" "FH 0603CG101J500NT"
 			(at 96.52 88.9 0)
 			(effects
 				(font
@@ -14483,24 +14289,8 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 104.14 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 104.14 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 104.14 88.9 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14508,7 +14298,16 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "RC0603FR-1015KL"
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
+			(at 104.14 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
 			(at 104.14 88.9 90)
 			(effects
 				(font
@@ -14582,61 +14381,7 @@
 				)
 			)
 		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(property "MPN" "RC0603FR-1018KL"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "71-CRCW060318K0FKEAC"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" " 311-18.0KHRCT-ND"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "94X1474"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C425614"
-			(at 109.22 93.98 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FR006"
 			(at 109.22 93.98 90)
 			(effects
 				(font
@@ -14758,20 +14503,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 114.3 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 114.3 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 114.3 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -14825,20 +14581,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 123.19 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 123.19 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 123.19 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -15140,23 +14907,25 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 100.33 137.16 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 100.33 137.16 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 100.33 137.16 0)
 			(effects
 				(font
@@ -15216,20 +14985,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 143.51 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 143.51 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "FH 0603CG101J500NT"
+			(at 143.51 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -15281,20 +15061,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 151.13 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 151.13 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 151.13 127 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -15362,70 +15153,7 @@
 				)
 			)
 		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(property "MPN" "RT0603FRE073K3L"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "603-RC0603FR-073K3L"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "603-RC0603FR-103K3L"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "YAG3605CT-ND"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "94X1577"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C425629"
-			(at 156.21 132.08 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FR009"
 			(at 156.21 132.08 90)
 			(effects
 				(font
@@ -15547,20 +15275,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 161.29 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 161.29 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 161.29 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -15614,20 +15353,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 170.18 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 170.18 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 170.18 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -15929,23 +15679,25 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 176.53 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 176.53 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "MPN" "CC0805ZKY5V5BB226 "
+		(property "MPN" "CL21A226MQQNNNE"
 			(at 176.53 99.06 0)
 			(effects
 				(font
@@ -16003,7 +15755,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 214.63 83.82 0)
 			(effects
 				(font
@@ -16012,12 +15764,22 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 214.63 83.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "DFE322520FD-2R2M=P2"
+			(at 214.63 83.82 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16071,20 +15833,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C1635.pdf"
 			(at 219.71 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "General Series Multi-layer Ceramic Capacitors"
 			(at 219.71 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "FH 0603CG101J500NT"
+			(at 219.71 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16136,20 +15909,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/PYU-RC_GROUP_51_ROHS_L"
 			(at 227.33 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "15 kOhms ±1% 0.1W, 1/10W Chip Resistor 0603 (1608 Metric) Moisture Resistant Thick Film"
 			(at 227.33 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "RC0603FR-0715KL"
+			(at 227.33 88.9 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16339,20 +16123,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 237.49 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 237.49 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 237.49 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16406,20 +16201,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C5674.pdf"
 			(at 246.38 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 246.38 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MQQNNNE"
+			(at 246.38 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16659,20 +16465,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 140.97 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 140.97 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 140.97 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16726,20 +16543,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 264.16 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 264.16 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 264.16 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16793,20 +16621,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 187.96 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 187.96 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 187.96 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16860,20 +16699,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 132.08 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 132.08 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 132.08 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16927,20 +16777,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 255.27 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 255.27 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 255.27 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -16994,20 +16855,31 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C28234.pdf"
 			(at 179.07 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Multilayer Ceramic Capacitor"
 			(at 179.07 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21B225KOFNNNE"
+			(at 179.07 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -17059,7 +16931,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 137.16 83.82 0)
 			(effects
 				(font
@@ -17068,82 +16940,20 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 137.16 83.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Mouser_URL" "www.mouser.com"
+		(property "MPN" "0805W8F0000T5E"
 			(at 137.16 83.82 0)
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "EMPTY_MPN" "RC0805JR-070RL"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "71-RCG08050000Z0EA"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "603-RC0805JR-070RL"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "652-CR0805-J/-000ELF"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y1" "YAG1327CT-ND"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Note" "Leave empty"
-			(at 137.16 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)
@@ -17197,7 +17007,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 260.35 83.82 0)
 			(effects
 				(font
@@ -17206,15 +17016,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 260.35 83.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Note" "Leave empty"
+		(property "MPN" "0805W8F0000T5E"
 			(at 260.35 83.82 0)
 			(effects
 				(font
@@ -17272,7 +17083,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
 			(at 184.15 121.92 0)
 			(effects
 				(font
@@ -17281,15 +17092,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "0Ω ±1% 125mW 0805 Thick Film Resistor"
 			(at 184.15 121.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Note" "Leave empty"
+		(property "MPN" "0805W8F0000T5E"
 			(at 184.15 121.92 0)
 			(effects
 				(font
@@ -17477,23 +17289,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MPN" "CC0603JRX7R8BB223"
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 58.42 182.88 0)
 			(effects
 				(font
@@ -17502,7 +17298,7 @@
 				(hide yes)
 			)
 		)
-		(property "Mouser" "603-CC603KRX7R7BB223"
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 58.42 182.88 0)
 			(effects
 				(font
@@ -17511,79 +17307,7 @@
 				(hide yes)
 			)
 		)
-		(property "Mouse_r1" "603-CC603JRX7R8BB223"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "603-AC603KRX7R7BB223"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "710-885012206091"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price1500_Mouser" "35.7$"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "587-1238-1-ND"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y2" "1276-2000-1-ND"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "82AC9346"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C107137"
-			(at 58.42 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FC003"
+		(property "MPN" "CX0603MRX7R8BB223"
 			(at 58.42 182.88 0)
 			(effects
 				(font
@@ -17767,20 +17491,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 82.55 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 82.55 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -17905,23 +17631,16 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 121.92 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 121.92 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 121.92 182.88 0)
 			(effects
 				(font
@@ -18052,23 +17771,16 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 128.27 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 128.27 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.yageo.com"
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 128.27 182.88 0)
 			(effects
 				(font
@@ -18327,20 +18039,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 101.6 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 101.6 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -18465,20 +18179,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 107.95 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 107.95 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -18851,20 +18567,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 71.12 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 71.12 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -18927,20 +18645,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 64.77 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 64.77 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -19125,7 +18845,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 91.44 83.82 0)
 			(effects
 				(font
@@ -19134,258 +18854,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 91.44 83.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "MFG1" "Murata"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
 				(hide yes)
 			)
 		)
-		(property "MNF1_URL" "www.murata.com"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "DFE322512F-2R2M=P2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MFG2" "Murata"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF2_URL" "www.murata.com"
-			(at 91.44 83.82 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP_N2" "DFE252012P-2R2M=P2"
-			(at 91.44 83.82 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "MFG3" "Bourns"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF3_URL" "www.bourns.com"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP_N3" "SRP2512A-2R2M"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MFG4" "Chilisin Elec"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP_N4" "HEI322512A-2R2M-Q8"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MP_N5" "81-LQH32PB2R2NN0L"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "81-DFE322512F-2R2MP2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "710-74479299222"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "810-TFM322512ALMA2R2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "81-DFE322520FD2R2MP2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "445-TFM322512ALMA2R2MTAACT-ND"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y1" "490-18405-1-ND"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digike_y2" "490-10649-1-ND"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "57AC6667"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Vertical" "DFE322512F-2R2M=P2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price300_Vertical" "0.48360$"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C285758"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCS_C2" "C285914"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price300_LCSC" "0.1082$"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "DatasheetLC" "https://datasheet.octopart.com/LQH32PB2R2NN0L-Murata-datasheet-20916646.pdf"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LowCost" "81-DFE252012P-2R2MP2"
-			(at 91.44 83.82 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FL001"
+		(property "MPN" "DFE322520FD-2R2M=P2"
 			(at 91.44 83.82 90)
 			(effects
 				(font
@@ -19443,7 +18921,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://psearch.en.murata.com/inductor/product/DFE252012PD-2R2M%23.pdf"
+		(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/P02/J(E)TE243A-9104.pdf"
 			(at 138.43 121.92 0)
 			(effects
 				(font
@@ -19452,12 +18930,22 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "(1210 ) CHIP COIL (CHIP INDUCTOR) for Automotive infotainment/comfort equipment"
 			(at 138.43 121.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "DFE322520FD-2R2M=P2"
+			(at 138.43 121.92 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -19511,20 +18999,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 39.37 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 39.37 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -19773,20 +19263,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 26.67 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 26.67 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -19973,20 +19465,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 45.72 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 45.72 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -20111,20 +19605,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 33.02 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 33.02 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -20249,20 +19745,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 88.9 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 88.9 182.88 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -20323,7 +19821,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 69.85 91.44 0)
 			(effects
 				(font
@@ -20332,24 +19830,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MFG1" "TI"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF1_URL" "www.ti.com"
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 69.85 91.44 0)
 			(effects
 				(font
@@ -20359,159 +19840,6 @@
 			)
 		)
 		(property "MPN" "TLV62569DBVR"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MFG2" "DIOO"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MNF2_URL" "www.dioo.com"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN2" "DIO6015BCST5"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "453-DIO6015BCST5"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r0" "595-TLV62569DBVT"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r1" "595-TLV62569DBVR"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r2" "595-TLV62566DBVR"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r3" "595-TLV62565DBVR"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r4" "453-DIO6012BCST6"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouse_r5" "453-DIO6015BCST5"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "296-47360-1-ND"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "54AH1585"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C141836"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price100_LCSC" "0.1843$"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "DatasheetLC" "http://www.dioo.com/attachments/files/20161031180022_361.pdf"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LowCost" "453-DIO6015BCST5"
-			(at 69.85 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FU009"
 			(at 69.85 91.44 0)
 			(effects
 				(font
@@ -20578,7 +19906,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 193.04 91.44 0)
 			(effects
 				(font
@@ -20587,15 +19915,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 193.04 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.ti.com"
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 193.04 91.44 0)
 			(effects
 				(font
@@ -20605,15 +19925,6 @@
 			)
 		)
 		(property "MPN" "TLV62569DBVR"
-			(at 193.04 91.44 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "595-TLV62569DBVR"
 			(at 193.04 91.44 0)
 			(effects
 				(font
@@ -20680,7 +19991,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tlv62569.pdf"
+		(property "Datasheet" "https://www.ti.com/general/docs/suppproductinfo.tsp?distId=10&gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Ftlv62569"
 			(at 116.84 129.54 0)
 			(effects
 				(font
@@ -20689,15 +20000,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 116.84 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.ti.com"
+		(property "Description" "Buck Switching Regulator IC Positive Adjustable 0.6V Output 2A SC-74A, SOT-753"
 			(at 116.84 129.54 0)
 			(effects
 				(font
@@ -20707,15 +20010,6 @@
 			)
 		)
 		(property "MPN" "TLV62569DBVR"
-			(at 116.84 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "595-TLV62569DBVR"
 			(at 116.84 129.54 0)
 			(effects
 				(font
@@ -20910,7 +20204,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.latticesemi.com/~/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012.pdf"
+		(property "Datasheet" "https://www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/ECP5/FPGA-DS-02012-2-2-ECP5-ECP5G-Family-Data-Sheet.ashx?document_id=50461"
 			(at 130.81 24.13 0)
 			(effects
 				(font
@@ -20919,12 +20213,13 @@
 				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "ECP5 Field Programmable Gate Array (FPGA) IC 205 3833856 84000 381-FBGA"
 			(at 157.48 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "LFE5U-85F-8BG381I"
@@ -22118,23 +21413,16 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.st.com/content/ccc/resource/technical/document/datasheet/ca/8a/ee/ed/5b/ef/47/60/CD00002299.pdf/files/CD00002299.pdf/jcr:content/translations/en.CD00002299.pdf"
 			(at 29.21 41.91 90)
 			(effects
 				(font
 					(size 1.524 1.524)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.st.com"
+		(property "Description" "40 V, 2 A low drop power Schottky rectifier"
 			(at 29.21 41.91 0)
 			(effects
 				(font
@@ -22143,74 +21431,11 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "STPS2L30AF"
+		(property "MPN" "STPS2L40AF"
 			(at 29.21 41.91 0)
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "511-STPS2L40AF"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "497-12310-1-ND"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "69AH2828"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "AvnetEU" "STPS2L30AF"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C111630"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price100_AvnetEU" "0.22121$"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FV008"
-			(at 29.21 41.91 0)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)
@@ -22567,12 +21792,12 @@
 			)
 		)
 		(property "Value" "STPS2L40AF"
-			(at 16.002 55.88 90)
+			(at 27.178 55.372 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
+				(justify right)
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SMA"
@@ -22584,23 +21809,16 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://www.st.com/content/ccc/resource/technical/document/datasheet/ca/8a/ee/ed/5b/ef/47/60/CD00002299.pdf/files/CD00002299.pdf/jcr:content/translations/en.CD00002299.pdf"
 			(at 29.21 55.88 90)
 			(effects
 				(font
 					(size 1.524 1.524)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MNF1_URL" "www.st.com"
+		(property "Description" "40 V, 2 A low drop power Schottky rectifier"
 			(at 29.21 55.88 0)
 			(effects
 				(font
@@ -22609,74 +21827,11 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "STPS2L30AF"
+		(property "MPN" "STPS2L40AF"
 			(at 29.21 55.88 0)
 			(effects
 				(font
 					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Mouser" "511-STPS2L40AF"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-				(hide yes)
-			)
-		)
-		(property "Digikey" "497-12310-1-ND"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Newark" "69AH2828"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "AvnetEU" "STPS2L30AF"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C111630"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "price100_AvnetEU" "0.22121$"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Koncar" "FV008"
-			(at 29.21 55.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
 				)
 				(hide yes)
 			)

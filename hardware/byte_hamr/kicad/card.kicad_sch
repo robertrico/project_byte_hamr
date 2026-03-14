@@ -6027,7 +6027,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 173.99 88.9 0)
 			(effects
 				(font
@@ -6036,7 +6036,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 173.99 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 173.99 53.34 0)
 			(effects
 				(font
@@ -6294,20 +6303,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 21.59 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 21.59 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -6370,20 +6381,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 30.48 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 30.48 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -6856,20 +6869,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 66.04 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 66.04 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -7059,7 +7074,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g04.pdf?ts=1753305682684&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FSN74LVC1G04"
 			(at 46.99 148.59 0)
 			(effects
 				(font
@@ -7068,7 +7083,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Single NOT Gate, Low-Voltage CMOS"
+		(property "Description" "Inverter IC 1 Channel SOT-23-5"
+			(at 46.99 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC1G04DBVR"
 			(at 46.99 148.59 0)
 			(effects
 				(font
@@ -7138,7 +7162,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 237.49 86.36 0)
 			(effects
 				(font
@@ -7147,7 +7171,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 237.49 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 237.49 50.8 0)
 			(effects
 				(font
@@ -7336,7 +7369,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 237.49 162.56 0)
 			(effects
 				(font
@@ -7345,7 +7378,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 237.49 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 237.49 127 0)
 			(effects
 				(font
@@ -7600,7 +7642,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 102.87 167.64 0)
 			(effects
 				(font
@@ -7609,7 +7651,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 102.87 132.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 102.87 132.08 0)
 			(effects
 				(font
@@ -7801,20 +7852,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 57.15 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 57.15 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -8951,7 +9004,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 172.72 165.1 0)
 			(effects
 				(font
@@ -8960,7 +9013,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 172.72 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 172.72 129.54 0)
 			(effects
 				(font
@@ -9149,7 +9211,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc8t245.pdf"
+		(property "Datasheet" "https://www.ti.com/lit/ds/sces584c/sces584c.pdf?ts=1773424004893"
 			(at 101.6 88.9 0)
 			(effects
 				(font
@@ -9158,7 +9220,16 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "8-Bit Dual-Supply Bus Transceiver With Configurable Voltage Translation and 3-State Outputs"
+		(property "Description" "Translation Transceiver 1 Element 8 Bit per Element 3-State Output 24-SSOP"
+			(at 101.6 53.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC8T245DBQR"
 			(at 101.6 53.34 0)
 			(effects
 				(font
@@ -9412,20 +9483,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 39.37 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 39.37 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
@@ -9992,20 +10065,22 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" ""
+		(property "Datasheet" "https://yageogroup.com/content/datasheet/asset/file/DATASHEET_X2Y_SERIES_6-3V_TO_100V"
 			(at 48.26 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Surface-mount ceramicEMI filter capacitors"
 			(at 48.26 186.69 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
 		(property "MPN" "CX0603MRX7R8BB223"
