@@ -598,8 +598,8 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "../gerbers/gerbers/",
-      "pos_files": "",
+      "plot": "pcbway_production/2026_03_14_11_00_00/gerbers/",
+      "pos_files": "pcbway_production/2026_03_14_11_00_00/",
       "specctra_dsn": "",
       "step": "",
       "svg": "",
@@ -609,7 +609,7 @@
   },
   "schematic": {
     "annotate_start_num": 0,
-    "bom_export_filename": "project_byte_hamr.csv",
+    "bom_export_filename": "pcbway_production/2026_03_14_11_00_00/project_byte_hamr.csv",
     "bom_fmt_presets": [],
     "bom_fmt_settings": {
       "field_delimiter": ",",
