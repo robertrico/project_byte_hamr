@@ -1906,7 +1906,7 @@
 			(uuid "5a7073e9-7ccb-44a8-bd99-5d829a3b2cd0")
 		)
 		(embedded_fonts no)
-		(model "${KISYS3DMOD}/Resistor_SMD.3dshapes/R_0805_2012Metric.wrl_disabled"
+		(model "${KICAD9_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0603_1608Metric.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -4065,6 +4065,17 @@
 			(uuid "5e59b646-9c1a-4b1b-822b-8ec5a6ada5f3")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Resistor_SMD:R_0603_1608Metric"
 		(layer "F.Cu")
@@ -7612,6 +7623,17 @@
 			(uuid "a946382d-2d5e-4b0e-9995-4369e456210e")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Diode_SMD:D_SMA"
 		(layer "F.Cu")
@@ -11256,6 +11278,17 @@
 			(uuid "6c7b820a-afbc-4fe5-b7a9-a121bee82fde")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical"
 		(layer "F.Cu")
@@ -11920,7 +11953,7 @@
 			(uuid "508c7a8a-2370-409d-880f-3d19c5cc8a2b")
 		)
 		(embedded_fonts no)
-		(model "${KISYS3DMOD}/Resistor_SMD.3dshapes/R_0805_2012Metric.wrl_disabled"
+		(model "${KICAD9_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0603_1608Metric.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -13084,6 +13117,17 @@
 			)
 		)
 		(model "${KISYS3DMOD}/Package_SO.3dshapes/SOIJ-8_5.3x5.3mm_P1.27mm.wrl_disabled"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
+		(model "${KIPRJMOD}/3d_models/SOIC8_208MIL_JB_ISI.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -17428,6 +17472,17 @@
 			(uuid "7c8e2289-6d4d-42ff-be7b-d58584806e58")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Resistor_SMD:R_0603_1608Metric"
 		(layer "F.Cu")
@@ -19646,6 +19701,17 @@
 				(xyz 0 0 90)
 			)
 		)
+		(model "${KIPRJMOD}/3d_models/AS4C32M16SB-7TCNTR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Capacitor_SMD:C_0603_1608Metric"
 		(layer "F.Cu")
@@ -20099,7 +20165,7 @@
 			(uuid "9741c5e3-bb92-4198-b96a-ed9e9ce40a35")
 		)
 		(embedded_fonts no)
-		(model "${KISYS3DMOD}/Resistor_SMD.3dshapes/R_0805_2012Metric.wrl_disabled"
+		(model "${KICAD9_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0603_1608Metric.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -23160,6 +23226,17 @@
 			(uuid "ec8d275f-092e-4800-ab87-105d349fe409")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Resistor_SMD:R_0603_1608Metric"
 		(layer "F.Cu")
@@ -31505,6 +31582,17 @@
 			(uuid "cb49d8bc-9da9-4ec9-9791-79d556140658")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3d_models/SN74LVC8T245DWR.STEP"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 0.5 0.5 0.5)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Capacitor_SMD:C_0805_2012Metric"
 		(layer "F.Cu")
@@ -32135,6 +32223,17 @@
 			)
 			(scale
 				(xyz 0.3937 0.3937 0.3937)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
+		(model "${KIPRJMOD}/3d_models/CWX813-100_0M_CNW.step"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
 			)
 			(rotate
 				(xyz 0 0 0)
@@ -34211,6 +34310,17 @@
 		)
 		(embedded_fonts no)
 		(model "SN74LVC1G04DBVR.stp"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
+		(model "${KIPRJMOD}/3d_models/DBV0005A.stp"
 			(offset
 				(xyz 0 0 0)
 			)
