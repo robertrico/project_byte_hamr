@@ -60,7 +60,7 @@
       ],
       "drc_exclusions": [
         [
-          "lib_footprint_issues|146858270|63024423|2fa5a443-288c-4c4b-a357-8ef7acfdd7f1|00000000-0000-0000-0000-000000000000",
+          "lib_footprint_issues|150992689|63024423|2fa5a443-288c-4c4b-a357-8ef7acfdd7f1|00000000-0000-0000-0000-000000000000",
           ""
         ],
         [
@@ -598,7 +598,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "pcbway_production/2026_03_14_11_00_00/gerbers/",
+      "plot": "../fabrication/rev2/2026_03_17_09_30_00/",
       "pos_files": "pcbway_production/2026_03_14_11_00_00/",
       "specctra_dsn": "",
       "step": "",
