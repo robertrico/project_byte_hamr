@@ -60,10 +60,6 @@
       ],
       "drc_exclusions": [
         [
-          "lib_footprint_issues|150992689|63024423|2fa5a443-288c-4c4b-a357-8ef7acfdd7f1|00000000-0000-0000-0000-000000000000",
-          ""
-        ],
-        [
           "shorting_items|168123750|105282500|8e9154e3-0741-46f0-82b8-69ff4aede047|e5f2d6d9-e088-48dc-a9f2-bbea987a56cc",
           "0Ω"
         ],

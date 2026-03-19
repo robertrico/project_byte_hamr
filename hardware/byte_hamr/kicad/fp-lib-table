@@ -14,4 +14,6 @@
   (lib (name "abs07")(type "KiCad")(uri "${KIPRJMOD}/footprints/crystal/abs07.pretty")(options "")(descr ""))
   (lib (name "footprints")(type "KiCad")(uri "${KIPRJMOD}/footprints/footprints.pretty")(options "")(descr ""))
   (lib (name "project_byte_hamr")(type "KiCad")(uri "${KIPRJMOD}/footprints")(options "")(descr ""))
+  (lib (name "SN74LVC1G04DBVR")(type "KiCad")(uri "${KIPRJMOD}/footprints/SN74LVC1G04DBVR")(options "")(descr ""))
+  (lib (name "com_github_markadev_KiCad-AppleII")(type "KiCad")(uri "${KIPRJMOD}/footprints/com_github_markadev_KiCad-AppleII/MA_Connector_AppleII.pretty")(options "")(descr ""))
 )

@@ -14,7 +14,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 
 - Lattice ECP5-85F FPGA (85K LUTs, BGA381 package)
 - 64MB SDRAM (AS4C32M16SB-7TCNTR)
-- 128MB SPI Flash for bitstream storage
+- 128Mb SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
 - JTAG header for development/debugging
 - 20-pin GPIO header for FPGA and peripheral expansion
@@ -31,7 +31,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 | Logic Elements | 84K LUTs |
 | Block RAM | 3744 Kbit |
 | SDRAM | 64MB, 16-bit bus |
-| Flash | 128MB SPI |
+| Flash | 128Mb SPI |
 | USB | Full-speed via FT231XQ |
 | GPIO | 20 pins, 3.3V |
 | Power | +5V from USB or Apple II slot |
