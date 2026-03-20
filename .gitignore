@@ -62,6 +62,10 @@ __pycache__/
 *.log
 *.rpt
 
+# Simulation artifacts (Icarus Verilog / GTKWave)
+*.vvp
+*.vcd
+
 # Reporting
 /reporting/*.txt
 /reporting/*.json

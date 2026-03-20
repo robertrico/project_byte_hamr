@@ -39,7 +39,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave unit unit-wave assemble extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -76,6 +76,7 @@ help:
 	@echo "Simulation:"
 	@echo "  make sim          - Run simulation"
 	@echo "  make wave         - Run simulation and open waveform viewer"
+	@echo "  make gtk VCD=file.vcd - Open a VCD file in GTKWave"
 	@echo ""
 	@echo "Unit Testing:"
 	@echo "  make unit MODULE=xxx DESIGN=yyy - Run unit test for a module"
@@ -153,7 +154,7 @@ $(JSON): $(VERILOG_SRC) $(MEM_FILES) | $(BUILD_DIR) $(REPORT_DIR)
 	@# Copy any .mem files to build directory for synthesis
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
 	cd $(BUILD_DIR) && $(YOSYS) -p "\
-		read_verilog $(addprefix ../,$(VERILOG_SRC)); \
+		read_verilog -DSYNTHESIS $(addprefix ../,$(VERILOG_SRC)); \
 		synth_ecp5 -top $(TOP) -json $(DESIGN).json; \
 		stat -top $(TOP)" 2>&1 | tee -a ../$(SYNTH_LOG)
 	@echo "" >> $(SYNTH_LOG)
@@ -236,9 +237,11 @@ report:
 ifneq ($(wildcard $(OSS_CAD_SUITE)/iverilog),)
     IVERILOG := $(OSS_CAD_SUITE)/iverilog
     VVP      := $(OSS_CAD_SUITE)/vvp
+    GTKWAVE  := $(OSS_CAD_SUITE)/gtkwave
 else
     IVERILOG := iverilog
     VVP      := vvp
+    GTKWAVE  := gtkwave
 endif
 
 # Simulation files - main design testbench
@@ -260,10 +263,20 @@ $(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(MEM_FILES) | $(BUILD_DIR)
 wave: sim
 	@echo "=== Opening Waveform Viewer ==="
 	@if [ -f $(VCD) ]; then \
-		gtkwave $(VCD) & \
+		$(GTKWAVE) $(VCD) & \
 	else \
 		echo "No VCD file found. Run 'make sim' first."; \
 	fi
+
+# Open any VCD file in GTKWave
+# Usage: make gtk VCD=path/to/file.vcd
+gtk:
+ifndef VCD
+	@echo "Usage: make gtk VCD=path/to/file.vcd"
+	@exit 1
+endif
+	@echo "=== Opening $(VCD) in GTKWave ==="
+	$(GTKWAVE) $(VCD) &
 
 # =============================================================================
 # Unit Testing (for individual modules)
@@ -287,7 +300,7 @@ $(UNIT_OUT): $(VERILOG_SRC) $(UNIT_TB) | $(BUILD_DIR)
 unit-wave: unit
 	@echo "=== Opening Unit Test Waveform ==="
 	@if [ -f $(UNIT_VCD) ]; then \
-		gtkwave $(UNIT_VCD) & \
+		$(GTKWAVE) $(UNIT_VCD) & \
 	else \
 		echo "No VCD file found."; \
 	fi
@@ -310,6 +323,17 @@ prog: $(BIT)
 prog-flash: $(BIT)
 	@echo "=== Programming SPI Flash ==="
 	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) -f $(BIT)
+	@/Users/hambook/Development/bell/bell
+
+DISK_IMAGE ?= software/SMARTPORT/ProDOS_2_4_1.po
+FLASH_IMG_OFFSET ?= 0x400000
+
+prog-flash-with-image: $(BIT)
+	@echo "=== Programming SPI Flash (bitstream + disk image) ==="
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) -f $(BIT)
+	@echo "=== Writing disk image at offset $(FLASH_IMG_OFFSET) ==="
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) --offset $(FLASH_IMG_OFFSET) -f $(DISK_IMAGE)
+	@echo "=== Done ==="
 	@/Users/hambook/Development/bell/bell
 
 prog-detect:
