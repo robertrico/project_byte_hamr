@@ -8,7 +8,9 @@
 // Test 1: Decode INIT command (no payload)
 // Test 2: Decode STATUS command (no payload)
 // Test 3: Encode STATUS response (no payload)
+//         Now expects 12-byte preamble and $AA checksum format
 // Test 4: Encode READBLOCK response (4-byte payload, oddcnt=4)
+//         Now expects 12-byte preamble and $AA checksum format
 // Test 5: Round-trip (encode then decode, verify fields match)
 // ===================================================================
 
@@ -36,13 +38,13 @@ module sp_codec_tb;
     wire        decode_done;
     wire        decode_error;
 
-    // Encode interface
+    // Encode interface — encode_payload_len is [9:0] now
     reg         encode_start;
     reg  [6:0]  encode_dest;
     reg  [6:0]  encode_source;
     reg  [6:0]  encode_ptype;
     reg  [6:0]  encode_stat;
-    reg  [8:0]  encode_payload_len;
+    reg  [9:0]  encode_payload_len;
     wire [7:0]  encode_byte_out;
     wire        encode_byte_valid;
     reg         encode_byte_ready;
@@ -145,7 +147,7 @@ module sp_codec_tb;
             encode_source      = 7'd0;
             encode_ptype       = 7'd0;
             encode_stat        = 7'd0;
-            encode_payload_len = 9'd0;
+            encode_payload_len = 10'd0;
             encode_byte_ready  = 1;
             enc_capture_cnt    = 0;
             dec_payload_cnt    = 0;
@@ -189,12 +191,6 @@ module sp_codec_tb;
     endtask
 
     // -----------------------------------------------------------
-    // Helper: compute expected checksum for a sequence of bytes
-    // XOR all bytes, then split into two 7-bit halves with bit7=1
-    // -----------------------------------------------------------
-    // (Used in verification only)
-
-    // -----------------------------------------------------------
     // Main test sequence
     // -----------------------------------------------------------
     integer i;
@@ -214,7 +210,7 @@ module sp_codec_tb;
         // Wire bytes (after sync+C3 which are handled by FM decoder):
         //   $81 $82 $81 $80 $81  (header: dest|80, src|80, type|80, aux|80, stat|80)
         //   $80 $80              (oddcnt=0|80, grp7cnt=0|80)
-        //   $xx $xx              (checksum — we skip verification)
+        //   $xx $xx              (checksum -- we skip verification)
         // =======================================================
         do_reset;
         $display("\n--- Test 1: Decode INIT command ---");
@@ -252,14 +248,10 @@ module sp_codec_tb;
         // Wait for decode_done
         repeat (4) @(posedge clk);
 
-        if (!decode_done && !test_pass) begin
-            // Already failed
-        end
-
         // Give it a cycle to settle
         @(posedge clk);
 
-        // Verify fields (they should be latched from when header_valid fired)
+        // Verify fields
         if (decode_dest !== 7'd1) begin
             $display("  ERROR: decode_dest = %0d, expected 1", decode_dest);
             test_pass = 0;
@@ -278,10 +270,10 @@ module sp_codec_tb;
         end
 
         if (test_pass) begin
-            $display("PASS: Test 1 — Decode INIT command");
+            $display("PASS: Test 1 -- Decode INIT command");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 1 — Decode INIT command");
+            $display("FAIL: Test 1 -- Decode INIT command");
             tests_failed = tests_failed + 1;
         end
 
@@ -339,10 +331,10 @@ module sp_codec_tb;
         end
 
         if (test_pass) begin
-            $display("PASS: Test 2 — Decode STATUS command");
+            $display("PASS: Test 2 -- Decode STATUS command");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 2 — Decode STATUS command");
+            $display("FAIL: Test 2 -- Decode STATUS command");
             tests_failed = tests_failed + 1;
         end
 
@@ -351,12 +343,22 @@ module sp_codec_tb;
         // =======================================================
         // Encode: dest=3, source=1, type=2(response), stat=0(OK)
         // payload_len=0
-        // Expected wire bytes:
-        //   FF FF FF FF FF C3
+        //
+        // Expected 12-byte preamble:
+        //   FF FF FF FF FF FF 3F CF F3 FC FF C3
+        // Header:
         //   83 81 82 80 80     (dest=3|80, src=1|80, type=2|80, aux=0|80, stat=0|80)
+        // Counts:
         //   80 80              (oddcnt=0|80, grp7cnt=0|80)
-        //   xx xx              (checksum)
-        //   C8                 (PEND)
+        // Checksum (even/odd $AA interleave):
+        //   chksum = XOR of header wire bytes + count wire bytes
+        //          = $83 ^ $81 ^ $82 ^ $80 ^ $80 ^ $80 ^ $80 = $00
+        //   chk_even = $00 | $AA = $AA
+        //   chk_odd  = ($00 >> 1) | $AA = $AA
+        // PEND:
+        //   C8
+        //
+        // Total: 12 + 5 + 2 + 2 + 1 = 22 bytes
         // =======================================================
         do_reset;
         $display("\n--- Test 3: Encode STATUS response (no payload) ---");
@@ -367,7 +369,7 @@ module sp_codec_tb;
         encode_source      = 7'd1;
         encode_ptype       = 7'd2;
         encode_stat        = 7'd0;
-        encode_payload_len = 9'd0;
+        encode_payload_len = 10'd0;
         encode_byte_ready  = 1;
 
         @(posedge clk);
@@ -379,89 +381,104 @@ module sp_codec_tb;
 
         $display("  Encoded %0d bytes", enc_capture_cnt);
 
-        // Expected: 5 sync + 1 PBEGIN + 5 header + 2 counts + 2 checksum + 1 PEND = 16
-        if (enc_capture_cnt != 16) begin
-            $display("  ERROR: expected 16 bytes, got %0d", enc_capture_cnt);
+        // Expected: 12 preamble + 5 header + 2 counts + 2 checksum + 1 PEND = 22
+        if (enc_capture_cnt != 22) begin
+            $display("  ERROR: expected 22 bytes, got %0d", enc_capture_cnt);
             test_pass = 0;
         end
 
-        // Verify sync bytes
-        for (i = 0; i < 5; i = i + 1) begin
+        // Verify preamble: 6x$FF + $3F $CF $F3 $FC $FF + $C3
+        for (i = 0; i < 6; i = i + 1) begin
             if (enc_capture[i] !== 8'hFF) begin
-                $display("  ERROR: sync[%0d] = %02h, expected FF", i, enc_capture[i]);
+                $display("  ERROR: preamble[%0d] = %02h, expected FF", i, enc_capture[i]);
                 test_pass = 0;
             end
         end
-
-        // Verify PBEGIN
-        if (enc_capture[5] !== 8'hC3) begin
-            $display("  ERROR: PBEGIN = %02h, expected C3", enc_capture[5]);
+        if (enc_capture[6] !== 8'h3F) begin
+            $display("  ERROR: preamble[6] = %02h, expected 3F", enc_capture[6]);
+            test_pass = 0;
+        end
+        if (enc_capture[7] !== 8'hCF) begin
+            $display("  ERROR: preamble[7] = %02h, expected CF", enc_capture[7]);
+            test_pass = 0;
+        end
+        if (enc_capture[8] !== 8'hF3) begin
+            $display("  ERROR: preamble[8] = %02h, expected F3", enc_capture[8]);
+            test_pass = 0;
+        end
+        if (enc_capture[9] !== 8'hFC) begin
+            $display("  ERROR: preamble[9] = %02h, expected FC", enc_capture[9]);
+            test_pass = 0;
+        end
+        if (enc_capture[10] !== 8'hFF) begin
+            $display("  ERROR: preamble[10] = %02h, expected FF", enc_capture[10]);
             test_pass = 0;
         end
 
-        // Verify header
-        if (enc_capture[6] !== 8'h83) begin // dest=3|80
-            $display("  ERROR: DEST = %02h, expected 83", enc_capture[6]);
-            test_pass = 0;
-        end
-        if (enc_capture[7] !== 8'h81) begin // source=1|80
-            $display("  ERROR: SOURCE = %02h, expected 81", enc_capture[7]);
-            test_pass = 0;
-        end
-        if (enc_capture[8] !== 8'h82) begin // type=2|80
-            $display("  ERROR: TYPE = %02h, expected 82", enc_capture[8]);
-            test_pass = 0;
-        end
-        if (enc_capture[9] !== 8'h80) begin // aux=0|80
-            $display("  ERROR: AUX = %02h, expected 80", enc_capture[9]);
-            test_pass = 0;
-        end
-        if (enc_capture[10] !== 8'h80) begin // stat=0|80
-            $display("  ERROR: STAT = %02h, expected 80", enc_capture[10]);
+        // Verify PBEGIN ($C3) at index 11
+        if (enc_capture[11] !== 8'hC3) begin
+            $display("  ERROR: PBEGIN = %02h, expected C3", enc_capture[11]);
             test_pass = 0;
         end
 
-        // Verify counts
-        if (enc_capture[11] !== 8'h80) begin // oddcnt=0|80
-            $display("  ERROR: ODDCNT = %02h, expected 80", enc_capture[11]);
+        // Verify header (indices 12..16)
+        if (enc_capture[12] !== 8'h83) begin // dest=3|80
+            $display("  ERROR: DEST = %02h, expected 83", enc_capture[12]);
             test_pass = 0;
         end
-        if (enc_capture[12] !== 8'h80) begin // grp7cnt=0|80
-            $display("  ERROR: GRP7CNT = %02h, expected 80", enc_capture[12]);
+        if (enc_capture[13] !== 8'h81) begin // source=1|80
+            $display("  ERROR: SOURCE = %02h, expected 81", enc_capture[13]);
+            test_pass = 0;
+        end
+        if (enc_capture[14] !== 8'h82) begin // type=2|80
+            $display("  ERROR: TYPE = %02h, expected 82", enc_capture[14]);
+            test_pass = 0;
+        end
+        if (enc_capture[15] !== 8'h80) begin // aux=0|80
+            $display("  ERROR: AUX = %02h, expected 80", enc_capture[15]);
+            test_pass = 0;
+        end
+        if (enc_capture[16] !== 8'h80) begin // stat=0|80
+            $display("  ERROR: STAT = %02h, expected 80", enc_capture[16]);
             test_pass = 0;
         end
 
-        // Verify PEND
-        if (enc_capture[15] !== 8'hC8) begin
-            $display("  ERROR: PEND = %02h, expected C8", enc_capture[15]);
+        // Verify counts (indices 17..18)
+        if (enc_capture[17] !== 8'h80) begin // oddcnt=0|80
+            $display("  ERROR: ODDCNT = %02h, expected 80", enc_capture[17]);
+            test_pass = 0;
+        end
+        if (enc_capture[18] !== 8'h80) begin // grp7cnt=0|80
+            $display("  ERROR: GRP7CNT = %02h, expected 80", enc_capture[18]);
             test_pass = 0;
         end
 
-        // Verify checksum: XOR of header bytes + count bytes
-        // $83 ^ $81 ^ $82 ^ $80 ^ $80 ^ $80 ^ $80 = ?
-        begin : chk3
-            reg [7:0] xor_sum;
-            xor_sum = 8'h83 ^ 8'h81 ^ 8'h82 ^ 8'h80 ^ 8'h80 ^ 8'h80 ^ 8'h80;
-            $display("  Checksum XOR = %02h", xor_sum);
-            $display("  Expected chk_lo = %02h, chk_hi = %02h",
-                     {1'b1, xor_sum[6:0]}, {1'b1, 6'b0, xor_sum[7]});
-            if (enc_capture[13] !== {1'b1, xor_sum[6:0]}) begin
-                $display("  ERROR: CHK_LO = %02h, expected %02h",
-                         enc_capture[13], {1'b1, xor_sum[6:0]});
-                test_pass = 0;
-            end
-            if (enc_capture[14] !== {1'b1, 6'b0, xor_sum[7]}) begin
-                $display("  ERROR: CHK_HI = %02h, expected %02h",
-                         enc_capture[14], {1'b1, 6'b0, xor_sum[7]});
-                test_pass = 0;
-            end
+        // Verify checksum (even/odd $AA interleave, indices 19..20)
+        // chksum = $83 ^ $81 ^ $82 ^ $80 ^ $80 ^ $80 ^ $80
+        //   $83^$81=$02, ^$82=$80, ^$80=$00, ^$80=$80, ^$80=$00, ^$80=$80
+        // chksum = $80
+        // chk_even = $80 | $AA = $AA
+        // chk_odd  = ($80 >> 1) | $AA = $40 | $AA = $EA
+        if (enc_capture[19] !== 8'hAA) begin
+            $display("  ERROR: CHK_EVEN = %02h, expected AA", enc_capture[19]);
+            test_pass = 0;
+        end
+        if (enc_capture[20] !== 8'hEA) begin
+            $display("  ERROR: CHK_ODD = %02h, expected EA", enc_capture[20]);
+            test_pass = 0;
+        end
+
+        // Verify PEND (index 21)
+        if (enc_capture[21] !== 8'hC8) begin
+            $display("  ERROR: PEND = %02h, expected C8", enc_capture[21]);
+            test_pass = 0;
         end
 
         if (test_pass) begin
-            $display("PASS: Test 3 — Encode STATUS response (no payload)");
+            $display("PASS: Test 3 -- Encode STATUS response (no payload)");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 3 — Encode STATUS response");
+            $display("FAIL: Test 3 -- Encode STATUS response");
             tests_failed = tests_failed + 1;
         end
 
@@ -471,44 +488,50 @@ module sp_codec_tb;
         // 4 bytes: $DE $AD $BE $EF
         // oddcnt = 4 % 7 = 4, grp7cnt = 4 / 7 = 0
         //
-        // ODDMSB byte:
-        //   bit 6 = MSB of byte 0 ($DE -> bit7=1) -> 1
-        //   bit 5 = MSB of byte 1 ($AD -> bit7=1) -> 1
-        //   bit 4 = MSB of byte 2 ($BE -> bit7=1) -> 1
-        //   bit 3 = MSB of byte 3 ($EF -> bit7=1) -> 1
+        // Expected 12-byte preamble:
+        //   FF FF FF FF FF FF 3F CF F3 FC FF C3
+        // Header (indices 12..16):
+        //   83 81 82 80 80
+        // Counts (indices 17..18):
+        //   84 80  (oddcnt=4|$80, grp7cnt=0|$80)
+        // ODDMSB (index 19):
+        //   bit 6 = MSB of $DE (1) -> 1
+        //   bit 5 = MSB of $AD (1) -> 1
+        //   bit 4 = MSB of $BE (1) -> 1
+        //   bit 3 = MSB of $EF (1) -> 1
         //   bits 2..0 = 0
-        //   ODDMSB = 1_1111_000 -> 0x78 -> wire: $78 | $80 = $F8
+        //   = 0_1111_000 = $78 -> wire: $78 | $80 = $F8
+        // Odd data bytes (indices 20..23):
+        //   $DE, $AD, $BE, $EF (bit7 stripped then |$80 = same for these)
+        // Checksum (indices 24..25):
+        //   chksum = XOR(header wire bytes + count wire bytes + raw data bytes)
+        //          = $83^$81^$82^$80^$80 ^ $84^$80 ^ $DE^$AD^$BE^$EF
+        //   Header+counts: $83^$81=$02, ^$82=$80, ^$80=$00, ^$80=$80, ^$84=$04, ^$80=$84
+        //   Data: $DE^$AD=$73, ^$BE=$CD, ^$EF=$22
+        //   Total: $84 ^ $22 = $A6
+        //   chk_even = $A6 | $AA = $AE
+        //   chk_odd  = ($A6 >> 1) | $AA = $53 | $AA = $FB
+        // PEND (index 26):
+        //   C8
         //
-        // Odd data bytes (MSB stripped, | $80):
-        //   $DE -> $5E | $80 = $DE... no. Strip bit7: $DE & $7F = $5E, then |$80 = $DE.
-        //   Wait. $DE = 1101_1110. Strip bit7 -> 0101_1110 = $5E. |$80 -> $DE. Same!
-        //   $AD = 1010_1101. Strip bit7 -> $2D. |$80 -> $AD. Same!
-        //   $BE = 1011_1110. Strip bit7 -> $3E. |$80 -> $BE. Same!
-        //   $EF = 1110_1111. Strip bit7 -> $6F. |$80 -> $EF. Same!
-        //
-        // When all data bytes have bit7=1, the wire bytes equal the originals
-        // (since strip+reapply $80 is identity for bytes with bit7 set).
-        //
-        // Expected output:
-        //   FF FF FF FF FF C3
-        //   83 81 82 80 80       (header: dest=3, src=1, type=2, aux=0, stat=0)
-        //   84 80                (oddcnt=4|$80, grp7cnt=0|$80)
-        //   F8                   (ODDMSB)
-        //   DE AD BE EF          (odd data bytes)
-        //   xx xx                (checksum)
-        //   C8                   (PEND)
-        // Total: 5+1+5+2+1+4+2+1 = 21 bytes
+        // Total: 12 + 5 + 2 + 1 + 4 + 2 + 1 = 27 bytes
         // =======================================================
         do_reset;
         $display("\n--- Test 4: Encode READBLOCK response (4-byte payload) ---");
         total_tests = total_tests + 1;
         test_pass = 1;
 
+        // Restore test buffer data
+        test_buf[0] = 8'hDE;
+        test_buf[1] = 8'hAD;
+        test_buf[2] = 8'hBE;
+        test_buf[3] = 8'hEF;
+
         encode_dest        = 7'd3;
         encode_source      = 7'd1;
         encode_ptype       = 7'd2;
         encode_stat        = 7'd0;
-        encode_payload_len = 9'd4;
+        encode_payload_len = 10'd4;
         encode_byte_ready  = 1;
 
         @(posedge clk);
@@ -520,64 +543,77 @@ module sp_codec_tb;
 
         $display("  Encoded %0d bytes", enc_capture_cnt);
 
-        if (enc_capture_cnt != 21) begin
-            $display("  ERROR: expected 21 bytes, got %0d", enc_capture_cnt);
+        if (enc_capture_cnt != 27) begin
+            $display("  ERROR: expected 27 bytes, got %0d", enc_capture_cnt);
             test_pass = 0;
         end
 
-        // Verify ODDCNT and GRP7CNT
-        if (enc_capture_cnt >= 13) begin
-            if (enc_capture[11] !== 8'h84) begin
-                $display("  ERROR: ODDCNT = %02h, expected 84", enc_capture[11]);
+        // Verify ODDCNT and GRP7CNT (indices 17, 18)
+        if (enc_capture_cnt >= 19) begin
+            if (enc_capture[17] !== 8'h84) begin
+                $display("  ERROR: ODDCNT = %02h, expected 84", enc_capture[17]);
                 test_pass = 0;
             end
-            if (enc_capture[12] !== 8'h80) begin
-                $display("  ERROR: GRP7CNT = %02h, expected 80", enc_capture[12]);
-                test_pass = 0;
-            end
-        end
-
-        // Verify ODDMSB
-        if (enc_capture_cnt >= 14) begin
-            if (enc_capture[13] !== 8'hF8) begin
-                $display("  ERROR: ODDMSB = %02h, expected F8", enc_capture[13]);
+            if (enc_capture[18] !== 8'h80) begin
+                $display("  ERROR: GRP7CNT = %02h, expected 80", enc_capture[18]);
                 test_pass = 0;
             end
         end
 
-        // Verify odd data bytes
-        if (enc_capture_cnt >= 18) begin
-            if (enc_capture[14] !== 8'hDE) begin
-                $display("  ERROR: ODD[0] = %02h, expected DE", enc_capture[14]);
-                test_pass = 0;
-            end
-            if (enc_capture[15] !== 8'hAD) begin
-                $display("  ERROR: ODD[1] = %02h, expected AD", enc_capture[15]);
-                test_pass = 0;
-            end
-            if (enc_capture[16] !== 8'hBE) begin
-                $display("  ERROR: ODD[2] = %02h, expected BE", enc_capture[16]);
-                test_pass = 0;
-            end
-            if (enc_capture[17] !== 8'hEF) begin
-                $display("  ERROR: ODD[3] = %02h, expected EF", enc_capture[17]);
+        // Verify ODDMSB (index 19)
+        if (enc_capture_cnt >= 20) begin
+            if (enc_capture[19] !== 8'hF8) begin
+                $display("  ERROR: ODDMSB = %02h, expected F8", enc_capture[19]);
                 test_pass = 0;
             end
         end
 
-        // Verify PEND
-        if (enc_capture_cnt >= 21) begin
-            if (enc_capture[20] !== 8'hC8) begin
-                $display("  ERROR: PEND = %02h, expected C8", enc_capture[20]);
+        // Verify odd data bytes (indices 20..23)
+        if (enc_capture_cnt >= 24) begin
+            if (enc_capture[20] !== 8'hDE) begin
+                $display("  ERROR: ODD[0] = %02h, expected DE", enc_capture[20]);
+                test_pass = 0;
+            end
+            if (enc_capture[21] !== 8'hAD) begin
+                $display("  ERROR: ODD[1] = %02h, expected AD", enc_capture[21]);
+                test_pass = 0;
+            end
+            if (enc_capture[22] !== 8'hBE) begin
+                $display("  ERROR: ODD[2] = %02h, expected BE", enc_capture[22]);
+                test_pass = 0;
+            end
+            if (enc_capture[23] !== 8'hEF) begin
+                $display("  ERROR: ODD[3] = %02h, expected EF", enc_capture[23]);
+                test_pass = 0;
+            end
+        end
+
+        // Verify checksum (indices 24..25)
+        // chk_even = $AE, chk_odd = $FB
+        if (enc_capture_cnt >= 26) begin
+            if (enc_capture[24] !== 8'hAE) begin
+                $display("  ERROR: CHK_EVEN = %02h, expected AE", enc_capture[24]);
+                test_pass = 0;
+            end
+            if (enc_capture[25] !== 8'hFB) begin
+                $display("  ERROR: CHK_ODD = %02h, expected FB", enc_capture[25]);
+                test_pass = 0;
+            end
+        end
+
+        // Verify PEND (index 26)
+        if (enc_capture_cnt >= 27) begin
+            if (enc_capture[26] !== 8'hC8) begin
+                $display("  ERROR: PEND = %02h, expected C8", enc_capture[26]);
                 test_pass = 0;
             end
         end
 
         if (test_pass) begin
-            $display("PASS: Test 4 — Encode READBLOCK response (4-byte payload)");
+            $display("PASS: Test 4 -- Encode READBLOCK response (4-byte payload)");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 4 — Encode READBLOCK response");
+            $display("FAIL: Test 4 -- Encode READBLOCK response");
             tests_failed = tests_failed + 1;
         end
 
@@ -587,6 +623,9 @@ module sp_codec_tb;
         // Encode a packet with 4-byte payload, then decode the
         // captured wire bytes. Verify decoded fields and payload
         // match the original inputs.
+        //
+        // With 12-byte preamble, PBEGIN ($C3) is at index 11.
+        // Post-C3 payload starts at index 12.
         // =======================================================
         do_reset;
         $display("\n--- Test 5: Round-trip (encode then decode) ---");
@@ -598,7 +637,7 @@ module sp_codec_tb;
         encode_source      = 7'd2;
         encode_ptype       = 7'd2;
         encode_stat        = 7'd0;
-        encode_payload_len = 9'd4;
+        encode_payload_len = 10'd4;
         encode_byte_ready  = 1;
 
         // Set up test buffer with known values
@@ -616,8 +655,8 @@ module sp_codec_tb;
 
         $display("  Encoded %0d bytes for round-trip", enc_capture_cnt);
 
-        // Now decode: skip sync (5x FF) and PBEGIN ($C3),
-        // feed bytes starting after $C3 (index 6 onward),
+        // Now decode: skip 12-byte preamble (indices 0..11 = 6xFF + 3F CF F3 FC FF C3),
+        // feed bytes starting after $C3 (index 12 onward),
         // and excluding PEND $C8 at the end.
         saved_enc_cnt = enc_capture_cnt;
         do_reset;
@@ -628,16 +667,13 @@ module sp_codec_tb;
         @(posedge clk);
         decode_start = 0;
 
-        // Feed all bytes after C3, excluding final PEND.
-        // After presenting each byte, wait one cycle for the DUT
-        // to process, then check for payload output.
-        for (i = 6; i < saved_enc_cnt - 1; i = i + 1) begin
+        // Feed all bytes after C3 (index 12), excluding final PEND.
+        for (i = 12; i < saved_enc_cnt - 1; i = i + 1) begin
             @(posedge clk);
             decode_byte_in       = enc_capture[i];
             decode_byte_in_valid = 1;
             @(posedge clk);
             decode_byte_in_valid = 0;
-            // decode_payload_valid NBA from this posedge is now resolved
             if (decode_payload_valid) begin
                 dec_payload_capture[dec_payload_cnt] = decode_payload_out;
                 $display("    decoded payload[%0d] (addr=%0d) = %02h",
@@ -691,10 +727,10 @@ module sp_codec_tb;
         end
 
         if (test_pass) begin
-            $display("PASS: Test 5 — Round-trip encode/decode");
+            $display("PASS: Test 5 -- Round-trip encode/decode");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 5 — Round-trip encode/decode");
+            $display("FAIL: Test 5 -- Round-trip encode/decode");
             tests_failed = tests_failed + 1;
         end
 

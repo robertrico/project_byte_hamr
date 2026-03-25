@@ -2,7 +2,11 @@
 // Tests sync detection, byte decoding, multi-byte packets, PEND, enable gating.
 // Uses FM waveform generator tasks to produce wrdata edges with correct timing.
 //
-// Each test sends a complete packet: sync(5) + $C3 + payload [+ $C8].
+// TOGGLE encoding: The IWM write serializer TOGGLES wrdata for each "1" bit.
+// Each transition (rising or falling) = one "1" bit. For "0" bits, no
+// transition. The decoder uses XOR edge detection to catch both edges.
+//
+// Each test sends a complete packet: sync(5+) + $C3 + payload [+ $C8].
 // Between tests, enable is toggled to reset decoder state.
 
 `timescale 1ns / 1ps
@@ -48,89 +52,58 @@ module fm_decoder_tb;
     );
 
     // =========================================================================
-    // FM waveform generation
+    // FM waveform generation — TOGGLE encoding
     // =========================================================================
     //
-    // FM encoding at ~7 MHz fclk:
+    // IWM TOGGLE encoding at ~7 MHz fclk:
     //   Bit cell = 28 fclk cycles (~4 us)
-    //   "1" bit = falling edge at cell midpoint
-    //   "0" bit = no edge during cell
+    //   "1" bit = TOGGLE wrdata (rising or falling edge)
+    //   "0" bit = no transition during cell
     //
-    // The decoder measures the interval between consecutive falling edges:
-    //   ~28 fclk  = consecutive "1" bits (1 bit cell apart)
-    //   ~56 fclk  = "1","0","1" (2 bit cells apart)
-    //   ~84 fclk  = "1","0","0","1" (3 bit cells apart)
-    //   etc.
+    // The decoder uses XOR edge detection: wrdata_edge = wrdata_r2 ^ wrdata_r1
+    // which catches BOTH rising and falling edges.
     //
-    // The generator scans bits MSB-first. For each "1" bit, it produces
-    // a falling edge after the appropriate delay. "0" bits accumulate
-    // delay between edges. A pulse (LOW for PULSE_LEN clocks, then HIGH)
-    // models each wrdata falling edge.
+    // For consecutive "1" bits, wrdata alternates: 1->0->1->0->...
+    // Each transition is one "1" bit.
 
-    localparam integer BIT_CELL   = 28;  // fclk cycles per bit cell
-    localparam integer PULSE_LEN  = 4;   // fclk cycles wrdata stays LOW
+    localparam integer BIT_CELL  = 28;  // fclk cycles per bit cell
 
-    // fm_send_byte: generate FM-encoded wrdata for one byte (MSB first).
+    // fm_send_byte: generate FM TOGGLE-encoded wrdata for one byte (MSB first).
     //
-    // Before calling for the first byte in a sequence, a kickoff edge
-    // must have been sent (via fm_kickoff) to prime the decoder's
-    // first_edge flag. Subsequent bytes can be sent back-to-back.
+    // For each "1" bit: TOGGLE wrdata (invert it). Wait BIT_CELL cycles.
+    // For each "0" bit: hold wrdata steady. Wait BIT_CELL cycles.
     //
-    // Each "0" bit adds one bit-cell of silence before the next edge.
-    // Each "1" bit fires an edge after the accumulated silence.
-    // Trailing zeros add idle time that carries into the next byte.
+    // This matches the IWM write serializer: wrdata <= ~wrdata on each "1" bit.
 
     task fm_send_byte;
         input [7:0] byte_val;
-        integer b, gap, j;
+        integer b, j;
         begin
-            gap = 0;
             for (b = 7; b >= 0; b = b - 1) begin
                 if (byte_val[b]) begin
-                    // "1" bit: produce a falling edge.
-                    // Wait (gap+1) bit cells since last edge,
-                    // minus PULSE_LEN already elapsed from last pulse.
-                    if (gap == 0) begin
-                        for (j = 0; j < BIT_CELL - PULSE_LEN; j = j + 1)
-                            @(posedge clk);
-                    end else begin
-                        for (j = 0; j < (gap + 1) * BIT_CELL - PULSE_LEN; j = j + 1)
-                            @(posedge clk);
-                    end
-
-                    // Falling edge: drive LOW for PULSE_LEN
-                    wrdata = 1'b0;
-                    for (j = 0; j < PULSE_LEN; j = j + 1)
-                        @(posedge clk);
-                    wrdata = 1'b1;
-
-                    gap = 0;
-                end else begin
-                    gap = gap + 1;
+                    // "1" bit: TOGGLE wrdata
+                    wrdata = ~wrdata;
                 end
-            end
-
-            // Trailing zeros: add their idle time so the next byte's
-            // first edge has the correct edge-to-edge interval.
-            if (gap > 0) begin
-                for (j = 0; j < gap * BIT_CELL; j = j + 1)
+                // else "0" bit: no transition, hold steady
+                // Wait one bit cell
+                for (j = 0; j < BIT_CELL; j = j + 1)
                     @(posedge clk);
             end
         end
     endtask
 
-    // fm_kickoff: send an initial falling edge to prime the decoder.
+    // fm_kickoff: send an initial toggle to prime the decoder's first_edge.
+    // After this, wrdata is in the toggled state for the first "1" of the
+    // next byte to build upon.
     task fm_kickoff;
-        integer j;
         begin
-            wrdata = 1'b0;
-            for (j = 0; j < PULSE_LEN; j = j + 1)
-                @(posedge clk);
-            wrdata = 1'b1;
+            wrdata = ~wrdata;
+            // Wait one bit cell for this kickoff edge to register
+            repeat (BIT_CELL) @(posedge clk);
         end
     endtask
 
-    // fm_send_sync: send a kickoff edge followed by N bytes of $FF.
+    // fm_send_sync: send a kickoff toggle followed by N bytes of $FF.
     task fm_send_sync;
         input integer count;
         integer n;
@@ -141,23 +114,22 @@ module fm_decoder_tb;
         end
     endtask
 
-    // fm_idle: hold wrdata HIGH for some fclk cycles.
+    // fm_idle: hold wrdata steady for some fclk cycles (no edges).
     task fm_idle;
         input integer num_clocks;
         integer j;
         begin
-            wrdata = 1'b1;
             for (j = 0; j < num_clocks; j = j + 1)
                 @(posedge clk);
         end
     endtask
 
     // fm_wait_flush: wait long enough for the decoder's timeout flush
-    // to trigger. The decoder flushes partial bytes after 224 fclk
-    // cycles with no edge. We wait 240 to give margin.
+    // to trigger. The decoder flushes partial bytes after FLUSH_TIMEOUT=252
+    // fclk cycles with no edge. We wait 270 to give margin.
     task fm_wait_flush;
         begin
-            repeat (240) @(posedge clk);
+            repeat (270) @(posedge clk);
         end
     endtask
 
@@ -185,6 +157,7 @@ module fm_decoder_tb;
             enable = 0;
             repeat (10) @(posedge clk);
             enable = 1;
+            wrdata = 1'b1;  // reset to known idle state
             repeat (5) @(posedge clk);
             capture_count = 0;
             pend_count    = 0;
@@ -219,10 +192,13 @@ module fm_decoder_tb;
         // =================================================================
         // TEST 1: Sync detection — 5x $FF + $C3
         // Verify sync_detected goes HIGH and no data bytes are emitted.
+        // SYNC_ONES_MIN = 8, so 5x $FF = 40 ones is plenty.
+        // Decoder uses sliding window C3 check on every bit.
         // =================================================================
         $display("");
         $display("--- Test 1: Sync detection ---");
         enable = 1;
+        wrdata = 1'b1;
         capture_count = 0;
 
         fm_idle(20);
@@ -231,7 +207,7 @@ module fm_decoder_tb;
         fm_send_sync(5);
         fm_send_byte(8'hC3);
 
-        // Wait for pipeline drain without adding inter-byte gap
+        // Wait for pipeline drain
         fm_wait_flush;
 
         if (sync_detected) begin
@@ -401,6 +377,7 @@ module fm_decoder_tb;
 
         // Re-enable, send fresh packet, verify decode works
         enable = 1;
+        wrdata = 1'b1;  // reset to known idle
         capture_count = 0;
         pend_count    = 0;
         repeat (5) @(posedge clk);
@@ -426,6 +403,36 @@ module fm_decoder_tb;
 
         if (!test_failed) begin
             $display("PASS: Test 5b - Re-sync and decode works after re-enable");
+            pass_count = pass_count + 1;
+        end else begin
+            fail_count = fail_count + 1;
+        end
+
+        // =================================================================
+        // TEST 6: 8-cell gap decode — $80 (10000000) = 7 zeros + 1 one
+        // The decoder pipeline is now 8 bits wide and handles 8-cell gaps.
+        // =================================================================
+        $display("");
+        $display("--- Test 6: 8-cell gap decode ($80) ---");
+        reset_decoder;
+
+        fm_send_sync(5);
+        fm_send_byte(8'hC3);
+        fm_send_byte(8'h80);
+
+        fm_wait_flush;
+
+        test_failed = 0;
+        if (capture_count < 1) begin
+            $display("FAIL: Test 6 - No bytes decoded for $80");
+            test_failed = 1;
+        end else if (captured_bytes[0] != 8'h80) begin
+            $display("FAIL: Test 6 - Expected $80, got $%02h", captured_bytes[0]);
+            test_failed = 1;
+        end
+
+        if (!test_failed) begin
+            $display("PASS: Test 6 - 8-cell gap byte $80 decoded correctly");
             pass_count = pass_count + 1;
         end else begin
             fail_count = fail_count + 1;

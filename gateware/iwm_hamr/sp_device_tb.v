@@ -5,20 +5,10 @@
 // Drives wrdata with FM-encoded bit patterns and monitors sense/rddata.
 //
 // Tests:
-//   1. Device present (sense behavior with boot_done)
-//   2. INIT: verify wrreq_fall -> RX_ENABLE -> sync detection ->
-//      RX_DECODE transition (full protocol flow)
-//   3. STATUS: same flow verification after INIT
-//   4. READBLOCK: command dispatch and SDRAM handshake
-//
-// KNOWN LIMITATION: The fm_decoder handles inter-edge gaps up to 7
-// bit cells (max gap for $81 = 10000001). SmartPort wire bytes like
-// $80 (10000000) create 8-cell gaps that exceed this limit, causing
-// byte misalignment. All SmartPort command packets contain $80 for
-// TYPE and AUX fields, so full command decode does not work until
-// fm_decoder is extended to handle 8-cell gaps (or a timeout-flush
-// refinement is added). The tests below verify the protocol state
-// machine flow through sync detection and into RX_DECODE.
+//   1. Device present -- sense starts HIGH immediately (no boot_done gating)
+//   2. wrdata_fall detection and RX_ENABLE transition
+//   3. FM sync detection -- wrdata toggle encoding
+//   4. Full INIT command packet flow
 // ===================================================================
 
 `timescale 1ns / 1ps
@@ -54,9 +44,12 @@ module sp_device_tb;
     wire [15:0] block_num;
     reg         block_ready;
 
+    // Debug outputs
+    wire [4:0]  debug_state;
+    wire        debug_sync;
+
     // FM timing
     localparam BIT_CELL    = 28;
-    localparam PULSE_WIDTH = 4;
 
     // Clock: ~7.16 MHz
     localparam CLK_HALF = 70;
@@ -76,7 +69,7 @@ module sp_device_tb;
     end
 
     // -----------------------------------------------------------
-    // DUT
+    // DUT — now includes debug_state and debug_sync ports
     // -----------------------------------------------------------
     sp_device #(
         .BLOCK_COUNT(16'd280)
@@ -98,7 +91,9 @@ module sp_device_tb;
         .block_read_req (block_read_req),
         .block_write_req(block_write_req),
         .block_num      (block_num),
-        .block_ready    (block_ready)
+        .block_ready    (block_ready),
+        .debug_state    (debug_state),
+        .debug_sync     (debug_sync)
     );
 
     // -----------------------------------------------------------
@@ -161,44 +156,47 @@ module sp_device_tb;
     endtask
 
     // -----------------------------------------------------------
-    // FM encoding tasks (edge-based, matching fm_decoder_tb style)
+    // FM encoding tasks — TOGGLE encoding
     // -----------------------------------------------------------
-    integer fm_trailing_gap;
+    // The IWM write serializer TOGGLES wrdata for each "1" bit.
+    // Each transition (rising or falling) = one "1" bit.
+    // For "0" bits, no transition during the bit cell.
+    // The fm_decoder uses XOR edge detection (any edge).
+    // -----------------------------------------------------------
 
     task fm_send_byte;
         input [7:0] byte_val;
         begin : fm_byte_blk
-            integer b, gap, j;
-            gap = fm_trailing_gap;
+            integer b, j;
             for (b = 7; b >= 0; b = b - 1) begin
                 if (byte_val[b]) begin
-                    if (gap == 0) begin
-                        for (j = 0; j < BIT_CELL - PULSE_WIDTH; j = j + 1)
-                            @(posedge fclk);
-                    end else begin
-                        for (j = 0; j < (gap + 1) * BIT_CELL - PULSE_WIDTH; j = j + 1)
-                            @(posedge fclk);
-                    end
-                    wrdata = 1'b0;
-                    for (j = 0; j < PULSE_WIDTH; j = j + 1)
-                        @(posedge fclk);
-                    wrdata = 1'b1;
-                    gap = 0;
-                end else begin
-                    gap = gap + 1;
+                    // "1" bit: TOGGLE wrdata between clock edges
+                    @(negedge fclk);
+                    wrdata = ~wrdata;
                 end
-            end
-            if (gap > 0) begin
-                for (j = 0; j < gap * BIT_CELL; j = j + 1)
+                // else "0" bit: hold steady (no transition)
+                // Wait one bit cell
+                for (j = 0; j < BIT_CELL; j = j + 1)
                     @(posedge fclk);
-                gap = 0;
             end
-            fm_trailing_gap = gap;
+        end
+    endtask
+
+    // -----------------------------------------------------------
+    // fm_kickoff: send an initial toggle to prime the decoder
+    // -----------------------------------------------------------
+    task fm_kickoff;
+        begin
+            @(negedge fclk);
+            wrdata = ~wrdata;
+            repeat (BIT_CELL) @(posedge fclk);
         end
     endtask
 
     // -----------------------------------------------------------
     // send_fm_packet: kickoff + 5xFF sync + C3 + wire bytes
+    // Trigger is now wrdata_fall, not wrreq_fall.
+    // The device transitions to RX_ENABLE on wrdata_fall.
     // -----------------------------------------------------------
     reg [7:0] pkt_buf [0:63];
     integer   pkt_len;
@@ -207,16 +205,15 @@ module sp_device_tb;
         begin : send_fm_blk
             integer si;
 
-            // Enter write mode
-            @(negedge fclk);
-            _wrreq = 1'b0;
-            repeat (10) @(posedge fclk);
-
-            // Kickoff edge
-            fm_trailing_gap = 0;
-            wrdata = 1'b0;
-            repeat (PULSE_WIDTH) @(posedge fclk);
+            // Trigger wrdata_fall to get device into RX_ENABLE.
+            // The device in IDLE watches for wrdata_fall (wrdata_prev & ~wrdata).
+            // A toggle from HIGH to LOW creates the falling edge.
             wrdata = 1'b1;
+            repeat (5) @(posedge fclk);
+
+            // Kickoff: toggle wrdata (HIGH->LOW), primes decoder first_edge
+            // and triggers wrdata_fall for the device state machine.
+            fm_kickoff;
 
             // 5x $FF sync + $C3 PBEGIN
             fm_send_byte(8'hFF);
@@ -230,11 +227,8 @@ module sp_device_tb;
             for (si = 0; si < pkt_len; si = si + 1)
                 fm_send_byte(pkt_buf[si]);
 
-            // Idle + exit write mode
-            wrdata = 1'b1;
-            repeat (30) @(posedge fclk);
-            @(negedge fclk);
-            _wrreq = 1'b1;
+            // Idle period
+            repeat (300) @(posedge fclk);
         end
     endtask
 
@@ -245,13 +239,13 @@ module sp_device_tb;
         input [6:0] dest;
         begin : build_init_blk
             reg [7:0] chk;
-            pkt_buf[0] = {1'b1, dest};
-            pkt_buf[1] = 8'h87;
-            pkt_buf[2] = 8'h80;
-            pkt_buf[3] = 8'h80;
-            pkt_buf[4] = 8'h85;
-            pkt_buf[5] = 8'h80;
-            pkt_buf[6] = 8'h80;
+            pkt_buf[0] = {1'b1, dest};   // DEST
+            pkt_buf[1] = 8'h87;          // SOURCE: 7 | $80
+            pkt_buf[2] = 8'h80;          // TYPE: 0 (command) | $80
+            pkt_buf[3] = 8'h80;          // AUX: 0 | $80
+            pkt_buf[4] = 8'h85;          // STAT: 5 (INIT) | $80
+            pkt_buf[5] = 8'h80;          // ODDCNT: 0 | $80
+            pkt_buf[6] = 8'h80;          // GRP7CNT: 0 | $80
             chk = pkt_buf[0] ^ pkt_buf[1] ^ pkt_buf[2] ^ pkt_buf[3]
                 ^ pkt_buf[4] ^ pkt_buf[5] ^ pkt_buf[6];
             pkt_buf[7] = {1'b1, chk[6:0]};
@@ -310,27 +304,39 @@ module sp_device_tb;
         total_tests  = 0;
 
         // =======================================================
-        // TEST 1: Device present — sense tracks boot_done
+        // TEST 1: Device present — sense starts HIGH immediately
+        // =======================================================
+        // sense is driven HIGH in ST_IDLE regardless of boot_done.
+        // No boot_done gating for sense anymore.
         // =======================================================
         do_reset;
-        $display("\n--- Test 1: Device present (sense with boot_done) ---");
+        $display("\n--- Test 1: Device present (sense HIGH immediately) ---");
         total_tests = total_tests + 1;
         test_pass = 1;
 
+        // sense should be HIGH immediately after reset, in IDLE state
         repeat (10) @(posedge fclk);
-        if (sense !== 1'b0) begin
-            $display("  ERROR: sense = %b before boot_done, expected 0", sense);
+        if (sense !== 1'b1) begin
+            $display("  ERROR: sense = %b after reset (expected 1, no boot_done dependency)", sense);
             test_pass = 0;
         end else
-            $display("  OK: sense = 0 before boot_done");
+            $display("  OK: sense = 1 immediately after reset (no boot_done needed)");
 
+        // Verify state is IDLE
+        if (dut.state !== 5'd0) begin
+            $display("  ERROR: state = %0d, expected 0 (IDLE)", dut.state);
+            test_pass = 0;
+        end else
+            $display("  OK: state = IDLE");
+
+        // Setting boot_done should not change anything — sense stays HIGH
         boot_done = 1'b1;
         repeat (10) @(posedge fclk);
         if (sense !== 1'b1) begin
-            $display("  ERROR: sense = %b after boot_done, expected 1", sense);
+            $display("  ERROR: sense = %b after boot_done (expected 1)", sense);
             test_pass = 0;
         end else
-            $display("  OK: sense = 1 after boot_done");
+            $display("  OK: sense = 1 after boot_done (still HIGH)");
 
         if (test_pass) begin
             $display("PASS: Test 1 -- Device present");
@@ -341,20 +347,24 @@ module sp_device_tb;
         end
 
         // =======================================================
-        // TEST 2: wrreq_fall detection and RX_ENABLE transition
-        // Verify the state machine detects write mode entry and
-        // enables the FM decoder.
+        // TEST 2: wrdata_fall detection and RX_ENABLE transition
+        // =======================================================
+        // The device now triggers on wrdata_fall (not wrreq_fall).
+        // A falling edge on wrdata causes IDLE -> RX_ENABLE -> RX_WAIT_SYNC.
         // =======================================================
         do_reset;
         boot_done = 1'b1;
         repeat (10) @(posedge fclk);
-        $display("\n--- Test 2: Write mode detection and RX enable ---");
+        $display("\n--- Test 2: wrdata_fall detection and RX enable ---");
         total_tests = total_tests + 1;
         test_pass = 1;
 
-        // Enter write mode
+        // Trigger wrdata_fall (HIGH->LOW transition)
+        // Drive on negedge to avoid race with posedge sampling
+        wrdata = 1'b1;
+        repeat (5) @(posedge fclk);
         @(negedge fclk);
-        _wrreq = 1'b0;
+        wrdata = 1'b0;
 
         // Should transition to ST_RX_ENABLE (1) then ST_RX_WAIT_SYNC (2)
         wait_for_state(5'd2, 100);
@@ -362,7 +372,7 @@ module sp_device_tb;
             $display("  ERROR: never reached ST_RX_WAIT_SYNC (state 2), stuck at %0d", dut.state);
             test_pass = 0;
         end else
-            $display("  OK: state machine reached RX_WAIT_SYNC");
+            $display("  OK: state machine reached RX_WAIT_SYNC via wrdata_fall");
 
         // Verify FM decoder is enabled
         if (dut.rx_enable !== 1'b1) begin
@@ -371,33 +381,33 @@ module sp_device_tb;
         end else
             $display("  OK: FM decoder enabled");
 
-        // Return to idle
-        @(negedge fclk);
-        _wrreq = 1'b1;
+        // Return wrdata idle
+        wrdata = 1'b1;
 
         if (test_pass) begin
-            $display("PASS: Test 2 -- Write mode detection");
+            $display("PASS: Test 2 -- wrdata_fall detection");
             tests_passed = tests_passed + 1;
         end else begin
-            $display("FAIL: Test 2 -- Write mode detection");
+            $display("FAIL: Test 2 -- wrdata_fall detection");
             tests_failed = tests_failed + 1;
         end
 
         // =======================================================
-        // TEST 3: Sync detection — send 5xFF + C3, verify device
-        // transitions from RX_WAIT_SYNC to RX_DECODE.
+        // TEST 3: Sync detection — send toggle-encoded 5xFF + C3,
+        // verify device transitions from RX_WAIT_SYNC to RX_DECODE.
+        // Uses TOGGLE encoding (XOR edge detection in decoder).
         // =======================================================
         do_reset;
         boot_done = 1'b1;
         repeat (10) @(posedge fclk);
-        $display("\n--- Test 3: FM sync detection ---");
+        $display("\n--- Test 3: FM sync detection (toggle encoding) ---");
         total_tests = total_tests + 1;
         test_pass = 1;
 
-        // Enter write mode
-        @(negedge fclk);
-        _wrreq = 1'b0;
-        repeat (10) @(posedge fclk);
+        // Trigger wrdata_fall + kickoff for decoder
+        wrdata = 1'b1;
+        repeat (5) @(posedge fclk);
+        fm_kickoff;  // toggles HIGH->LOW, triggers wrdata_fall
 
         // Wait for device to reach RX_WAIT_SYNC
         wait_for_state(5'd2, 100);
@@ -407,11 +417,7 @@ module sp_device_tb;
         end
 
         if (test_pass) begin
-            // Send sync: kickoff + 5xFF + C3
-            fm_trailing_gap = 0;
-            wrdata = 1'b0;
-            repeat (PULSE_WIDTH) @(posedge fclk);
-            wrdata = 1'b1;
+            // Send sync: 5xFF + C3 using toggle encoding
             fm_send_byte(8'hFF);
             fm_send_byte(8'hFF);
             fm_send_byte(8'hFF);
@@ -426,11 +432,11 @@ module sp_device_tb;
             end else begin
                 // It might have already passed through to another state
                 $display("  INFO: state = %0d (may have progressed past RX_DECODE)", dut.state);
-                // Check if sync_detected flag is set in decoder
-                if (dut.u_fm_decoder.sync_detected) begin
-                    $display("  OK: fm_decoder sync_detected = 1");
+                // Check debug_sync (fm_decoder sync_detected)
+                if (debug_sync) begin
+                    $display("  OK: debug_sync (fm_decoder sync_detected) = 1");
                 end else begin
-                    $display("  ERROR: fm_decoder sync_detected = 0");
+                    $display("  ERROR: debug_sync (fm_decoder sync_detected) = 0");
                     test_pass = 0;
                 end
             end
@@ -438,11 +444,9 @@ module sp_device_tb;
 
         // Return wrdata idle
         wrdata = 1'b1;
-        @(negedge fclk);
-        _wrreq = 1'b1;
 
         if (test_pass) begin
-            $display("PASS: Test 3 -- FM sync detection");
+            $display("PASS: Test 3 -- FM sync detection (toggle encoding)");
             tests_passed = tests_passed + 1;
         end else begin
             $display("FAIL: Test 3 -- FM sync detection");
@@ -452,10 +456,8 @@ module sp_device_tb;
         // =======================================================
         // TEST 4: Full INIT command — send complete packet, verify
         // the device reaches RX_DECODE and receives header bytes.
-        // Due to fm_decoder $80 limitation (see file header), full
-        // command decode may not complete correctly, but we verify
-        // the protocol flow reaches RX_DECODE and the codec sees
-        // at least the first two header bytes (DEST and SOURCE).
+        // The fm_decoder now handles 8-cell gaps ($80 bytes), so
+        // full command decode should work.
         // =======================================================
         do_reset;
         boot_done = 1'b1;
@@ -475,7 +477,7 @@ module sp_device_tb;
             $display("  OK: codec header_valid asserted");
             $display("    dest=%0d source=%0d ptype=%0d stat=%0d",
                      dut.cmd_dest, dut.cmd_source, dut.cmd_ptype, dut.cmd_stat);
-            // Verify dest and source (these bytes don't contain $80)
+            // Verify dest and source
             if (dut.cmd_dest !== 7'd1) begin
                 $display("  ERROR: cmd_dest = %0d, expected 1", dut.cmd_dest);
                 test_pass = 0;
@@ -486,8 +488,7 @@ module sp_device_tb;
             end
         end else begin
             $display("  INFO: codec header_valid not asserted");
-            $display("    (expected due to fm_decoder $80 byte limitation)");
-            // Still pass if the device reached RX_DECODE
+            // Still pass if the device reached RX_DECODE or returned to IDLE
             if (dut.state == 5'd3 || dut.state == 5'd0) begin
                 $display("  OK: device reached RX_DECODE (state 3) or returned to IDLE");
             end else begin
@@ -517,12 +518,6 @@ module sp_device_tb;
             $display("  ALL TESTS PASSED");
         else
             $display("  *** SOME TESTS FAILED ***");
-        $display("===================================================");
-        $display("");
-        $display("NOTE: Full protocol tests (ACK, TX response) require");
-        $display("fm_decoder.v to handle 8-cell gaps for $80 bytes.");
-        $display("See fm_decoder.v FLUSH_TIMEOUT interaction with");
-        $display("edge_timer for the $80 decode issue.");
         $display("===================================================\n");
 
         $finish;

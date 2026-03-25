@@ -83,6 +83,8 @@ module sp_codec (
     reg [6:0]  d_grp_num = 7'd0;       // current group number (0..grp7cnt-1)
     reg [1:0]  d_chk_idx = 2'd0;       // checksum byte index (0 or 1)
     reg [8:0]  d_payload_ctr = 9'd0;   // running payload byte counter
+    reg [7:0]  d_chksum = 8'd0;       // running XOR checksum
+    reg [7:0]  d_chk_even = 8'd0;     // received checksum even byte
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -96,6 +98,8 @@ module sp_codec (
             d_grp_num         <= 7'd0;
             d_chk_idx         <= 2'd0;
             d_payload_ctr     <= 9'd0;
+            d_chksum          <= 8'd0;
+            d_chk_even        <= 8'd0;
             decode_dest       <= 7'd0;
             decode_source     <= 7'd0;
             decode_ptype      <= 7'd0;
@@ -121,6 +125,7 @@ module sp_codec (
                         d_state       <= D_HEADER;
                         d_hdr_idx     <= 3'd0;
                         d_payload_ctr <= 9'd0;
+                        d_chksum      <= 8'd0;
                     end
                 end
 
@@ -129,6 +134,9 @@ module sp_codec (
                 // -------------------------------------------------
                 D_HEADER: begin
                     if (decode_byte_in_valid) begin
+                        // XOR wire byte into running checksum
+                        d_chksum <= d_chksum ^ decode_byte_in;
+
                         case (d_hdr_idx)
                             3'd0: decode_dest   <= decode_byte_in[6:0];
                             3'd1: decode_source <= decode_byte_in[6:0];
@@ -153,6 +161,9 @@ module sp_codec (
                 // -------------------------------------------------
                 D_COUNTS: begin
                     if (decode_byte_in_valid) begin
+                        // XOR count wire bytes into checksum
+                        d_chksum <= d_chksum ^ decode_byte_in;
+
                         if (d_hdr_idx == 3'd0) begin
                             d_oddcnt  <= decode_byte_in[6:0];
                             d_hdr_idx <= 3'd1;
@@ -190,18 +201,22 @@ module sp_codec (
                 // MSB mapping: oddmsb bit (6-i) = MSB of odd byte i
                 // -------------------------------------------------
                 D_ODD_DATA: begin
-                    if (decode_byte_in_valid) begin
+                    if (decode_byte_in_valid) begin : odd_data_decode
+                        reg msb_bit;
                         decode_payload_out[6:0] <= decode_byte_in[6:0];
                         case (d_byte_idx)
-                            3'd0: decode_payload_out[7] <= d_oddmsb[6];
-                            3'd1: decode_payload_out[7] <= d_oddmsb[5];
-                            3'd2: decode_payload_out[7] <= d_oddmsb[4];
-                            3'd3: decode_payload_out[7] <= d_oddmsb[3];
-                            3'd4: decode_payload_out[7] <= d_oddmsb[2];
-                            3'd5: decode_payload_out[7] <= d_oddmsb[1];
-                            3'd6: decode_payload_out[7] <= d_oddmsb[0];
-                            default: decode_payload_out[7] <= 1'b0;
+                            3'd0: msb_bit = d_oddmsb[6];
+                            3'd1: msb_bit = d_oddmsb[5];
+                            3'd2: msb_bit = d_oddmsb[4];
+                            3'd3: msb_bit = d_oddmsb[3];
+                            3'd4: msb_bit = d_oddmsb[2];
+                            3'd5: msb_bit = d_oddmsb[1];
+                            3'd6: msb_bit = d_oddmsb[0];
+                            default: msb_bit = 1'b0;
                         endcase
+                        decode_payload_out[7] <= msb_bit;
+                        // XOR decoded raw byte (MSB restored) into checksum
+                        d_chksum <= d_chksum ^ {msb_bit, decode_byte_in[6:0]};
                         decode_payload_valid <= 1'b1;
                         decode_payload_addr <= d_payload_ctr;
                         d_payload_ctr       <= d_payload_ctr + 9'd1;
@@ -236,18 +251,22 @@ module sp_codec (
                 // MSB mapping: grpmsb bit (6-i) = MSB of group byte i
                 // -------------------------------------------------
                 D_GROUP_DATA: begin
-                    if (decode_byte_in_valid) begin
+                    if (decode_byte_in_valid) begin : grp_data_decode
+                        reg msb_bit;
                         decode_payload_out[6:0] <= decode_byte_in[6:0];
                         case (d_byte_idx)
-                            3'd0: decode_payload_out[7] <= d_grpmsb[6];
-                            3'd1: decode_payload_out[7] <= d_grpmsb[5];
-                            3'd2: decode_payload_out[7] <= d_grpmsb[4];
-                            3'd3: decode_payload_out[7] <= d_grpmsb[3];
-                            3'd4: decode_payload_out[7] <= d_grpmsb[2];
-                            3'd5: decode_payload_out[7] <= d_grpmsb[1];
-                            3'd6: decode_payload_out[7] <= d_grpmsb[0];
-                            default: decode_payload_out[7] <= 1'b0;
+                            3'd0: msb_bit = d_grpmsb[6];
+                            3'd1: msb_bit = d_grpmsb[5];
+                            3'd2: msb_bit = d_grpmsb[4];
+                            3'd3: msb_bit = d_grpmsb[3];
+                            3'd4: msb_bit = d_grpmsb[2];
+                            3'd5: msb_bit = d_grpmsb[1];
+                            3'd6: msb_bit = d_grpmsb[0];
+                            default: msb_bit = 1'b0;
                         endcase
+                        decode_payload_out[7] <= msb_bit;
+                        // XOR decoded raw byte into checksum
+                        d_chksum <= d_chksum ^ {msb_bit, decode_byte_in[6:0]};
                         decode_payload_valid <= 1'b1;
                         decode_payload_addr <= d_payload_ctr;
                         d_payload_ctr       <= d_payload_ctr + 9'd1;
@@ -267,22 +286,33 @@ module sp_codec (
                 end
 
                 // -------------------------------------------------
-                // Read 2 checksum bytes (skip/ignore for now)
+                // Read 2 checksum bytes, verify against accumulated XOR.
+                // Liron ROM algorithm: reconstructed = ((odd << 1) | 1) & even
+                // Then: reconstructed XOR accumulated should = 0.
                 // -------------------------------------------------
                 D_CHECKSUM: begin
                     if (decode_byte_in_valid) begin
-                        if (d_chk_idx == 2'd1) begin
-                            d_state <= D_DONE;
+                        if (d_chk_idx == 2'd0) begin
+                            // First byte = checksum even
+                            d_chk_even <= decode_byte_in;
+                            d_chk_idx  <= 2'd1;
                         end else begin
-                            d_chk_idx <= d_chk_idx + 2'd1;
+                            // Second byte = checksum odd
+                            // Reconstruct: ((odd << 1) | 1) & even
+                            // XOR with accumulated → should be 0
+                            d_chksum <= d_chksum ^ (((decode_byte_in << 1) | 8'h01) & d_chk_even);
+                            d_state  <= D_DONE;
                         end
                     end
                 end
 
                 // -------------------------------------------------
                 D_DONE: begin
-                    decode_done <= 1'b1;
-                    d_state     <= D_IDLE;
+                    if (d_chksum == 8'd0)
+                        decode_done <= 1'b1;   // checksum OK
+                    else
+                        decode_error <= 1'b1;  // checksum FAIL
+                    d_state <= D_IDLE;
                 end
 
                 default: d_state <= D_IDLE;
@@ -308,6 +338,7 @@ module sp_codec (
     localparam E_HEADER     = 4'd3;
     localparam E_COUNTS     = 4'd4;
     localparam E_LOAD_SETUP = 4'd5;   // set first buf addr
+    localparam E_LOAD_WAIT  = 4'd12;  // wait 1 cycle for registered BRAM read
     localparam E_LOAD_CAP   = 4'd6;   // capture buf_data, set next addr
     localparam E_EMIT_MSB   = 4'd7;   // output MSB byte
     localparam E_EMIT_DATA  = 4'd8;   // output data bytes
@@ -516,7 +547,12 @@ module sp_codec (
                 E_LOAD_SETUP: begin
                     encode_buf_addr <= e_buf_ptr;
                     e_load_cnt      <= 3'd0;
-                    e_state         <= E_LOAD_CAP;
+                    e_state         <= E_LOAD_WAIT;
+                end
+
+                // Wait 1 cycle for registered BRAM read to settle
+                E_LOAD_WAIT: begin
+                    e_state <= E_LOAD_CAP;
                 end
 
                 // -------------------------------------------------
@@ -533,6 +569,7 @@ module sp_codec (
                     end else begin
                         encode_buf_addr <= e_buf_ptr + {6'd0, e_load_cnt} + 9'd1;
                         e_load_cnt      <= e_load_cnt + 3'd1;
+                        e_state         <= E_LOAD_WAIT;  // wait for registered read
                     end
                 end
 

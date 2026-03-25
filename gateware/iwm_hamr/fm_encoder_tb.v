@@ -1,7 +1,9 @@
 // ===================================================================
-// FM Encoder Testbench
+// FM Encoder Testbench — Buffer-driven interface
 // ===================================================================
-// Tests FM encoding of SmartPort data bytes.
+// Tests FM encoding of SmartPort data bytes via buffer read interface.
+// The encoder reads sequentially from buf_data using buf_addr.
+//
 // Verifies falling edge count, edge spacing, idle state, multi-byte
 // transmission, and round-trip decode via fm_decoder.
 // ===================================================================
@@ -16,30 +18,40 @@ module fm_encoder_tb;
     reg        clk;
     reg        rst_n;
     reg        start;
-    reg  [7:0] data_in;
-    reg        data_valid;
-    wire       data_request;
+    reg  [9:0] byte_count;
     wire       rddata_enc;
     wire       busy;
     wire       done;
+    wire [9:0] buf_addr;
+    reg  [7:0] buf_data;
 
     // Clock: 7.16 MHz -> period ~139.6 ns -> half-period ~69.8 ns
     initial clk = 0;
     always #69.8 clk = ~clk;
 
     // -----------------------------------------------------------
-    // DUT instantiation
+    // TX buffer (encoder reads from this via buf_addr/buf_data)
+    // -----------------------------------------------------------
+    reg [7:0] tx_buf [0:1023];
+
+    // Combinatorial read: encoder sets buf_addr, we provide buf_data
+    always @(*) begin
+        buf_data = tx_buf[buf_addr];
+    end
+
+    // -----------------------------------------------------------
+    // DUT instantiation — new buffer-driven interface
     // -----------------------------------------------------------
     fm_encoder dut (
         .clk          (clk),
         .rst_n        (rst_n),
         .start        (start),
-        .data_in      (data_in),
-        .data_valid   (data_valid),
-        .data_request (data_request),
+        .byte_count   (byte_count),
         .rddata       (rddata_enc),
         .busy         (busy),
-        .done         (done)
+        .done         (done),
+        .buf_addr     (buf_addr),
+        .buf_data     (buf_data)
     );
 
     // -----------------------------------------------------------
@@ -137,8 +149,7 @@ module fm_encoder_tb;
         begin
             rst_n      = 0;
             start      = 0;
-            data_in    = 8'h00;
-            data_valid = 0;
+            byte_count = 10'd0;
             done_seen  = 0;
             repeat (4) @(posedge clk);
             rst_n = 1;
@@ -147,17 +158,38 @@ module fm_encoder_tb;
     endtask
 
     // -----------------------------------------------------------
-    // Helper: send a single byte (no continuation)
+    // Helper: send a single byte via buffer
     // -----------------------------------------------------------
     task send_single_byte;
         input [7:0] byte_val;
         begin
-            data_in    = byte_val;
-            data_valid = 0;
+            tx_buf[0] = byte_val;
+            byte_count = 10'd1;
             @(posedge clk);
             start = 1;
             @(posedge clk);
             start = 0;
+        end
+    endtask
+
+    // -----------------------------------------------------------
+    // Helper: send a multi-byte packet via buffer
+    // Caller must fill tx_buf[0..len-1] before calling.
+    // -----------------------------------------------------------
+    task send_packet;
+        input integer len;
+        begin
+            byte_count = len;
+            done_seen = 0;
+            @(posedge clk);
+            start = 1;
+            @(posedge clk);
+            start = 0;
+
+            // Wait for done
+            while (!done) begin
+                @(posedge clk);
+            end
         end
     endtask
 
@@ -175,65 +207,41 @@ module fm_encoder_tb;
         end
     endtask
 
-    // -----------------------------------------------------------
-    // Helper: send a multi-byte packet using the handshake.
-    // packet_buf and packet_len must be set before call.
-    //
-    // Protocol: data_in must hold the NEXT byte before the
-    // encoder reaches BYTE_DONE. At start, byte 0 is captured.
-    // We immediately pre-load byte 1. When data_request fires
-    // (byte N consumed), we advance to byte N+1.
-    // -----------------------------------------------------------
-    reg [7:0] packet_buf [0:15];
-    integer   packet_len;
-
-    task send_packet;
-        integer next_serve;
-        begin
-            data_in    = packet_buf[0];
-            data_valid = (packet_len > 1) ? 1'b1 : 1'b0;
-            next_serve = 1;
-
-            @(posedge clk);
-            start = 1;
-            @(posedge clk);
-            start = 0;
-
-            // Encoder captured packet_buf[0]. Pre-load next byte.
-            if (next_serve < packet_len) begin
-                data_in    = packet_buf[next_serve];
-                data_valid = 1'b1;
-                next_serve = next_serve + 1;
-            end else begin
-                data_valid = 1'b0;
-            end
-
-            // Respond to data_request by advancing the feeder
-            while (!done) begin
-                @(posedge clk);
-                if (data_request) begin
-                    if (next_serve < packet_len) begin
-                        data_in    = packet_buf[next_serve];
-                        data_valid = 1'b1;
-                        next_serve = next_serve + 1;
-                    end else begin
-                        data_valid = 1'b0;
-                    end
-                end
-            end
-        end
-    endtask
-
     // =========================================================
     // Round-trip decoder signals and capture (test 5)
     // =========================================================
-    // MUX rddata so we can inject a kick pulse before the
-    // encoder starts, calibrating the decoder's first_edge.
-    // In real hardware, this edge comes from the bus
-    // idle-to-active transition.
+    // The FM encoder outputs falling-edge pulses (rddata LOW
+    // for PULSE_WIDTH cycles per "1" bit). The FM decoder uses
+    // XOR edge detection (any transition = "1" bit). For a
+    // direct loopback, each pulse creates two edges (fall+rise),
+    // doubling the bit count. We interpose a pulse-to-toggle
+    // adapter that converts each falling edge into a toggle,
+    // matching the IWM write serializer behavior.
+    //
+    // The kick_active/rddata_kick mux injects an initial toggle
+    // to prime the decoder's first_edge before the encoder starts.
+    // =========================================================
+
+    // Pulse-to-toggle adapter: detect falling edge on rddata_enc,
+    // toggle dec_wrdata. This simulates the IWM's behavior where
+    // each "1" bit causes a wrdata toggle.
+    reg        dec_wrdata = 1'b1;
+    reg        enc_prev = 1'b1;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dec_wrdata <= 1'b1;
+            enc_prev   <= 1'b1;
+        end else begin
+            enc_prev <= rddata_enc;
+            if (enc_prev && !rddata_enc)  // falling edge on encoder output
+                dec_wrdata <= ~dec_wrdata;
+        end
+    end
+
     reg        kick_active;
     reg        rddata_kick;
-    wire       rddata_wire = kick_active ? rddata_kick : rddata_enc;
+    wire       rddata_wire = kick_active ? rddata_kick : dec_wrdata;
 
     reg        dec_enable;
     wire [7:0] dec_data_out;
@@ -334,8 +342,10 @@ module fm_encoder_tb;
                 integer nom_2cell, nom_3cell, tol;
                 reg ok;
                 ok         = 1;
+                // Bit 7=1, bit 6=0, bit 5=1: 2-cell gap
+                // Bit 5=1, bit 4=0, bit 3=0, bit 2=1: 3-cell gap
+                // Bit 2=1, bit 1=0, bit 0=1: 2-cell gap
                 // Each bit cell = 28 fclk in BIT_CELL + 1 fclk for NEXT_BIT = 29 effective.
-                // Inter-edge gap for N cells = N * 29 * 139.6 ns (approx N * 29 * 139).
                 nom_2cell  = 58 * 139;   // 2 cells (58 fclk) ~8062 ns
                 nom_3cell  = 87 * 139;   // 3 cells (87 fclk) ~12093 ns
                 tol        = 500;
@@ -374,18 +384,16 @@ module fm_encoder_tb;
         $display("\n--- Test 3: Multi-byte $FF + $C3 + $DB ---");
         total_tests = total_tests + 1;
 
-        packet_buf[0] = 8'hFF;
-        packet_buf[1] = 8'hC3;
-        packet_buf[2] = 8'hDB;
-        packet_len = 3;
+        tx_buf[0] = 8'hFF;
+        tx_buf[1] = 8'hC3;
+        tx_buf[2] = 8'hDB;
 
-        // Reset edge counter (test3_fall_count), send packet,
-        // then read the counter after done.
+        // Reset edge counter, send packet, count edges
         test3_fall_count = 0;
         test3_counting   = 1;
         done_seen = 0;
 
-        send_packet;
+        send_packet(3);
 
         // Small delay to catch any trailing edges
         repeat (10) @(posedge clk);
@@ -450,46 +458,36 @@ module fm_encoder_tb;
         // TEST 5: Round-trip with fm_decoder
         //
         // Encode 5x$FF sync + $C3 + test bytes + $C8, feed
-        // encoder output through the fm_decoder, verify decoded
-        // bytes match the transmitted payload.
+        // encoder output through pulse-to-toggle adapter to
+        // the fm_decoder, verify decoded bytes match payload.
         //
-        // The fm_decoder requires a calibration falling edge
-        // (first_edge) before productive decoding begins. In real
-        // SmartPort hardware, this comes from the bus transition
-        // when the device starts driving rddata. We simulate it
-        // with a brief kick pulse on rddata before starting the
-        // encoder.
+        // The adapter converts each encoder falling edge into
+        // a toggle on dec_wrdata, matching IWM behavior. The
+        // first toggle from the encoder serves as the decoder's
+        // first_edge calibration. No explicit kick pulse needed
+        // since the sync pattern has enough 1-bits for recovery.
         // =======================================================
         do_reset;
         $display("\n--- Test 5: Round-trip with fm_decoder ---");
         total_tests = total_tests + 1;
 
+        kick_active = 0;          // use adapter output directly
         dec_enable = 1;
         rx_count   = 0;
         repeat (2) @(posedge clk);
 
-        // Kick pulse: brief LOW on rddata to calibrate first_edge
-        kick_active = 1;
-        rddata_kick = 1;
-        repeat (5) @(posedge clk);
-        rddata_kick = 0;          // falling edge for first_edge calibration
-        repeat (4) @(posedge clk);
-        rddata_kick = 1;
-        kick_active = 0;          // hand control back to encoder
+        // Build packet in buffer: 5x$FF sync + $C3 PBEGIN + payload + $C8 PEND
+        tx_buf[0] = 8'hFF;
+        tx_buf[1] = 8'hFF;
+        tx_buf[2] = 8'hFF;
+        tx_buf[3] = 8'hFF;
+        tx_buf[4] = 8'hFF;
+        tx_buf[5] = 8'hC3;   // PBEGIN
+        tx_buf[6] = 8'hDB;   // test byte 1 (11011011)
+        tx_buf[7] = 8'hA5;   // test byte 2 (10100101)
+        tx_buf[8] = 8'hC8;   // PEND
 
-        // Build packet: 5x$FF sync + $C3 PBEGIN + payload + $C8 PEND
-        packet_buf[0] = 8'hFF;
-        packet_buf[1] = 8'hFF;
-        packet_buf[2] = 8'hFF;
-        packet_buf[3] = 8'hFF;
-        packet_buf[4] = 8'hFF;
-        packet_buf[5] = 8'hC3;   // PBEGIN
-        packet_buf[6] = 8'hDB;   // test byte 1 (11011011)
-        packet_buf[7] = 8'hA5;   // test byte 2 (10100101)
-        packet_buf[8] = 8'hC8;   // PEND
-        packet_len = 9;
-
-        send_packet;
+        send_packet(9);
 
         // Wait for decoder timeout flush of trailing zeros
         repeat (300) @(posedge clk);

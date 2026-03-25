@@ -22,7 +22,11 @@ module iwm (
 	output wire       q7_out,
 
 	// Write mode indicator (synchronized Q7, glitch-free)
-	output wire       q7_stable_out
+	output wire       q7_stable_out,
+
+	// Debug
+	output wire       debug_x7,
+	output wire       debug_latch_synced
 );
 
 	// =========================================================================
@@ -272,12 +276,23 @@ module iwm (
 	// Patent Fig. 3: D7 comes from RR7 (controlled by x7 via hold read
 	// data register logic, block 67), D0-D6 come from the buffer.
 	// x7 is the data-ready flag — it overrides buffer[7] on the bus.
+	//
+	// The {1,1} case returns write-handshake (not $FF). The Liron ROM's
+	// send_nib7 loop toggles Q6 rapidly (Q6L read → Q6H write → Q6L
+	// read). The 2-FF sync delay on q6 (~280ns) means that on Q6L reads
+	// after a Q6H write, q6_sync is briefly still 1, making the mux see
+	// {q7_sync=1, q6_sync=1}. If {1,1} returns $FF, the ROM misreads
+	// writeBufferEmpty=1 (bit 7 of $FF), writes the next byte too early,
+	// and corrupts the command packet. By mapping {1,1} to write-
+	// handshake (same as {1,0}), the transient q6_sync value doesn't
+	// matter — the ROM always sees the correct handshake register when
+	// Q7=1, regardless of Q6's sync state.
 	always @(*) begin
 		case ({q7_sync, q6_sync})
 			2'b00:   data_out = {x7, buffer[6:0]};
 			2'b01:   data_out = {sense, 1'b0, enableActive, modeReg[4:0]};
 			2'b10:   data_out = {writeBufferEmpty, _underrun_delayed, 6'b000000};
-			2'b11:   data_out = 8'hFF;
+			2'b11:   data_out = {writeBufferEmpty, _underrun_delayed, 6'b000000};
 		endcase
 	end
 
@@ -315,6 +330,8 @@ module iwm (
 	// x7 declared above (forward ref)
 	reg [3:0] clrX7Timer;        // 14-FCLK clear delay for x7
 	reg       latchSynced;       // 1 = synced, latch every 8 bits
+	assign debug_x7 = x7;
+	assign debug_latch_synced = latchSynced;
 	reg       q7_prev;           // For detecting Q7 0→1 transition
 	reg       q6_prev;           // For detecting Q6 transitions
 
@@ -386,16 +403,18 @@ module iwm (
 			// 5+ $FF sync bytes, so there's plenty of time to re-sync.
 			// =============================================================
 			q6_prev <= q6_sync;
-			if (~q6_sync & q6_prev & ~q7_stable) begin
-				// Q6 falling edge while in read mode — flush read state
-				latchSynced <= 1'b0;
-				bitTimer    <= 6'd0;
-				bitCounter  <= 3'd0;
-				shifter     <= 8'd0;
-			end
 
 			if (q7_stable == 0) begin
-				if (rddataSync[1] & ~rddataSync[0]) begin
+				// Q6 flush: falling edge clears read state for clean re-sync.
+				// Must be checked FIRST — if flush fires, skip normal read
+				// processing this cycle to prevent NBAs from overriding the reset.
+				if (~q6_sync & q6_prev) begin
+					latchSynced <= 1'b0;
+					bitTimer    <= 6'd0;
+					bitCounter  <= 3'd0;
+					shifter     <= 8'd0;
+				end
+				else if (rddataSync[1] & ~rddataSync[0]) begin
 					// Falling edge on rddata
 					if (bitTimer >= oneThreshold) begin
 						shifter <= {shifter[6:0], 1'b1};
@@ -432,17 +451,28 @@ module iwm (
 				end
 				else begin
 					if (bitTimer >= zeroThreshold) begin
-						// No edge for 1.5 bit cells — shift in a 0
-						shifter <= {shifter[6:0], 1'b0};
-						if (latchSynced && modeLatch) begin
-							if (bitCounter == 7) begin
-								buffer <= {shifter[6:0], 1'b0};
-								x7 <= 1'b1;
-								shifter <= 0;
-								bitCounter <= 0;
+						// No edge for 1.5 bit cells — shift in a 0.
+						// BUT: in latch mode BEFORE sync, suppress zero-
+						// insertion. Idle rddata between Q6 flush and the
+						// first sync byte would otherwise shift in garbage
+						// zeros, offsetting latchSynced's byte boundary
+						// from the encoder's actual byte boundary. With
+						// this guard, the shift register only accumulates
+						// 1-bits (from real rddata edges) until sync is
+						// established. After sync, zeros shift normally
+						// (they're real data). GCR mode is unaffected.
+						if (latchSynced || !modeLatch) begin
+							shifter <= {shifter[6:0], 1'b0};
+							if (latchSynced && modeLatch) begin
+								if (bitCounter == 7) begin
+									buffer <= {shifter[6:0], 1'b0};
+									x7 <= 1'b1;
+									shifter <= 0;
+									bitCounter <= 0;
+								end
+								else
+									bitCounter <= bitCounter + 1'b1;
 							end
-							else
-								bitCounter <= bitCounter + 1'b1;
 						end
 						bitTimer <= oneThreshold;
 					end

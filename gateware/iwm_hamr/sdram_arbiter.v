@@ -27,10 +27,10 @@ module sdram_arbiter (
     input  wire [7:0]  buf_rdata_a,
 
     // SDRAM controller interface
-    output reg         sdram_req = 1'b0,
-    output reg         sdram_write = 1'b0,
-    output reg  [25:0] sdram_addr = 26'd0,
-    output reg  [15:0] sdram_wdata = 16'd0,
+    output wire        sdram_req,
+    output wire        sdram_write,
+    output wire [25:0] sdram_addr,
+    output wire [15:0] sdram_wdata,
     input  wire        sdram_ready,
     input  wire [15:0] sdram_rdata,
     input  wire        sdram_rdata_valid
@@ -99,9 +99,22 @@ module sdram_arbiter (
     reg [15:0]  rd_data_latch = 16'd0;   // latched SDRAM read data
 
     // -----------------------------------------------------------------
-    // Boot passthrough — directly wire boot signals when !boot_done
+    // Boot passthrough — combinational mux to SDRAM controller.
+    // Both forward (req/addr/data) and backward (ready) paths are
+    // combinational during boot, eliminating the timing asymmetry
+    // that caused dropped writes when refresh coincided with the
+    // 1-cycle registered forward delay.
     // -----------------------------------------------------------------
-    assign boot_ready = (!boot_done) ? sdram_ready : 1'b0;
+    reg         rt_sdram_req = 1'b0;
+    reg         rt_sdram_write = 1'b0;
+    reg  [25:0] rt_sdram_addr = 26'd0;
+    reg  [15:0] rt_sdram_wdata = 16'd0;
+
+    assign sdram_req   = (!boot_done) ? boot_req   : rt_sdram_req;
+    assign sdram_write = (!boot_done) ? boot_write : rt_sdram_write;
+    assign sdram_addr  = (!boot_done) ? boot_addr  : rt_sdram_addr;
+    assign sdram_wdata = (!boot_done) ? boot_wdata : rt_sdram_wdata;
+    assign boot_ready  = (!boot_done) ? sdram_ready : 1'b0;
 
     // -----------------------------------------------------------------
     // Main logic
@@ -114,45 +127,46 @@ module sdram_arbiter (
             wr_lo_byte      <= 8'd0;
             rd_data_latch   <= 16'd0;
             dev_block_ready <= 1'b0;
-            sdram_req       <= 1'b0;
-            sdram_write     <= 1'b0;
-            sdram_addr      <= 26'd0;
-            sdram_wdata     <= 16'd0;
+            rt_sdram_req    <= 1'b0;
+            rt_sdram_write  <= 1'b0;
+            rt_sdram_addr   <= 26'd0;
+            rt_sdram_wdata  <= 16'd0;
             buf_addr_a      <= 9'd0;
             buf_wdata_a     <= 8'd0;
             buf_we_a        <= 1'b0;
         end else if (!boot_done) begin
-            // ---- Boot phase: pass through ----
-            sdram_req   <= boot_req;
-            sdram_write <= boot_write;
-            sdram_addr  <= boot_addr;
-            sdram_wdata <= boot_wdata;
-            // Buffer unused during boot
-            buf_addr_a  <= 9'd0;
-            buf_wdata_a <= 8'd0;
-            buf_we_a    <= 1'b0;
+            // ---- Boot phase: combinational mux handles SDRAM signals ----
+            buf_addr_a      <= 9'd0;
+            buf_wdata_a     <= 8'd0;
+            buf_we_a        <= 1'b0;
             dev_block_ready <= 1'b0;
-            state       <= S_IDLE;
+            rt_sdram_req    <= 1'b0;
+            rt_sdram_write  <= 1'b0;
+            state           <= S_IDLE;
         end else begin
             // ---- Runtime phase ----
             // Default: no buffer write, no SDRAM request
-            buf_we_a  <= 1'b0;
-            sdram_req <= 1'b0;
+            buf_we_a     <= 1'b0;
+            rt_sdram_req <= 1'b0;
 
             case (state)
                 // =====================================================
                 // IDLE
                 // =====================================================
                 S_IDLE: begin
-                    // Clear ready when requester deasserts
-                    if (dev_block_ready && !dev_read_sync && !dev_write_sync)
-                        dev_block_ready <= 1'b0;
+                    // dev_block_ready stays HIGH after DONE. It will be
+                    // cleared when a new request arrives (the 7MHz side
+                    // samples it level-based, so it must persist across
+                    // at least one full 7MHz period = ~140ns = 4 clk25).
 
+                    // Priority: block transfers > boot_loader pass-through
                     if (dev_read_rise) begin
-                        base_addr <= {1'b0, dev_block_num, 9'd0};  // block_num * 512
+                        dev_block_ready <= 1'b0;
+                        base_addr <= {1'b0, dev_block_num, 9'd0};
                         xfer_cnt  <= 9'd0;
                         state     <= S_BLOCK_READ_SETUP;
                     end else if (dev_write_rise) begin
+                        dev_block_ready <= 1'b0;
                         base_addr <= {1'b0, dev_block_num, 9'd0};
                         xfer_cnt  <= 9'd0;
                         state     <= S_BLOCK_WRITE_LOAD_LO;
@@ -164,17 +178,18 @@ module sdram_arbiter (
                 // =====================================================
                 S_BLOCK_READ_SETUP: begin
                     // Present address to SDRAM — byte address = base + xfer_cnt*2
-                    sdram_addr  <= base_addr + {17'd0, xfer_cnt[7:0], 1'b0};
-                    sdram_write <= 1'b0;
-                    sdram_req   <= 1'b1;
-                    state       <= S_BLOCK_READ_ISSUE;
+                    rt_sdram_addr  <= base_addr + {17'd0, xfer_cnt[7:0], 1'b0};
+                    rt_sdram_write <= 1'b0;
+                    rt_sdram_req   <= 1'b1;
+                    state          <= S_BLOCK_READ_ISSUE;
                 end
 
                 S_BLOCK_READ_ISSUE: begin
-                    // Wait for controller to accept the request
+                    // Hold rt_sdram_req HIGH until controller accepts.
+                    rt_sdram_req <= 1'b1;
                     if (sdram_ready) begin
-                        sdram_req <= 1'b0;
-                        state     <= S_BLOCK_READ_WAIT;
+                        rt_sdram_req <= 1'b0;
+                        state        <= S_BLOCK_READ_WAIT;
                     end
                 end
 
@@ -253,17 +268,20 @@ module sdram_arbiter (
 
                 S_BLOCK_WRITE_ISSUE: begin
                     // rdata_a now has hi byte; combine and issue SDRAM write
-                    sdram_addr  <= base_addr + {17'd0, xfer_cnt[7:0], 1'b0};
-                    sdram_wdata <= {buf_rdata_a, wr_lo_byte};
-                    sdram_write <= 1'b1;
-                    sdram_req   <= 1'b1;
-                    state       <= S_BLOCK_WRITE_WAIT;
+                    rt_sdram_addr  <= base_addr + {17'd0, xfer_cnt[7:0], 1'b0};
+                    rt_sdram_wdata <= {buf_rdata_a, wr_lo_byte};
+                    rt_sdram_write <= 1'b1;
+                    rt_sdram_req   <= 1'b1;
+                    state          <= S_BLOCK_WRITE_WAIT;
                 end
 
                 S_BLOCK_WRITE_WAIT: begin
+                    // Hold req until controller accepts
+                    rt_sdram_req   <= 1'b1;
+                    rt_sdram_write <= 1'b1;
                     if (sdram_ready) begin
-                        sdram_req   <= 1'b0;
-                        sdram_write <= 1'b0;
+                        rt_sdram_req   <= 1'b0;
+                        rt_sdram_write <= 1'b0;
 
                         if (xfer_cnt == 9'd255) begin
                             state <= S_BLOCK_WRITE_DONE;

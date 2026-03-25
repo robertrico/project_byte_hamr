@@ -132,15 +132,31 @@ module iwm_hamr_top (
     wire [4:0] sp_debug_state;
     wire [2:0] bl_debug_state;
     wire       rx_sync_debug;
-    assign GPIO1  = sp_sense;               // sense (HIGH=present, LOW=ACK)
-    assign GPIO2  = sp_rddata;              // rddata from device engine
-    assign GPIO3  = sp_debug_state[0];      // sp_device state[0]
-    assign GPIO4  = sp_debug_state[1];      // sp_device state[1]
-    assign GPIO6  = sp_debug_state[2];      // sp_device state[2]
-    assign GPIO7  = sp_debug_state[3];      // sp_device state[3]
-    assign GPIO10 = wrdata;                 // wrdata (host command)
-    assign GPIO11 = sp_debug_state[4];      // sp_device state[4]
-    assign GPIO5  = 1'b0;
+    wire [2:0] sp_debug_cmd;
+    wire       dut_iwm_x7;
+    wire       dut_iwm_latch_synced;
+    wire       sp_debug_wr_idle;
+
+    // GPIO Debug — full 5-bit state for deadlock diagnosis
+    //
+    //   Ch 0  GPIO1  = sense      (HIGH=present, LOW=ACK)
+    //   Ch 1  GPIO2  = rddata     (device TX data)
+    //   Ch 2  GPIO3  = state[0]   ─┐
+    //   Ch 3  GPIO4  = state[1]    │
+    //   Ch 4  GPIO6  = state[2]    │ Full 5-bit state (0-22)
+    //   Ch 5  GPIO7  = state[3]    │
+    //   Ch 6  GPIO10 = state[4]   ─┘
+    //   Ch 7  GPIO11 = wrdata     (host command data)
+    //
+    assign GPIO1  = sp_sense;
+    assign GPIO2  = sp_rddata;
+    assign GPIO3  = sp_debug_state[0];
+    assign GPIO4  = sp_debug_state[1];
+    assign GPIO6  = sp_debug_state[2];
+    assign GPIO5  = 1'b0;                  // unused (GPIO5 not on LA)
+    assign GPIO7  = sp_debug_state[3];
+    assign GPIO10 = sp_debug_state[4];
+    assign GPIO11 = wrdata;
 
     // Level Shifter OE
     wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
@@ -203,7 +219,9 @@ module iwm_hamr_top (
         .sense          (sp_sense),
         .rddata         (sp_rddata),
         .q7_out         (iwm_q7),
-        .q7_stable_out  (iwm_q7_stable)
+        .q7_stable_out  (iwm_q7_stable),
+        .debug_x7       (dut_iwm_x7),
+        .debug_latch_synced (dut_iwm_latch_synced)
     );
 
     // =========================================================================
@@ -225,7 +243,13 @@ module iwm_hamr_top (
     // The top module has individual pins. Wire them through intermediate buses.
     // =========================================================================
     wire [12:0] sdram_a;
-    wire [15:0] sdram_dq;
+    // sdram_dq is now the top-level bidirectional DQ bus, assembled
+    // from individual inout pins. Both the controller and external
+    // SDRAM model can drive it via tristate.
+    wire [15:0] sdram_dq = {SDRAM_D15, SDRAM_D14, SDRAM_D13, SDRAM_D12,
+                             SDRAM_D11, SDRAM_D10, SDRAM_D9,  SDRAM_D8,
+                             SDRAM_D7,  SDRAM_D6,  SDRAM_D5,  SDRAM_D4,
+                             SDRAM_D3,  SDRAM_D2,  SDRAM_D1,  SDRAM_D0};
 
     // Address pin assignments (output only)
     assign SDRAM_A0  = sdram_a[0];
@@ -242,23 +266,14 @@ module iwm_hamr_top (
     assign SDRAM_A11 = sdram_a[11];
     assign SDRAM_A12 = sdram_a[12];
 
-    // Data pin assignments (bidirectional — controller drives tristate internally)
-    assign SDRAM_D0  = sdram_dq[0];
-    assign SDRAM_D1  = sdram_dq[1];
-    assign SDRAM_D2  = sdram_dq[2];
-    assign SDRAM_D3  = sdram_dq[3];
-    assign SDRAM_D4  = sdram_dq[4];
-    assign SDRAM_D5  = sdram_dq[5];
-    assign SDRAM_D6  = sdram_dq[6];
-    assign SDRAM_D7  = sdram_dq[7];
-    assign SDRAM_D8  = sdram_dq[8];
-    assign SDRAM_D9  = sdram_dq[9];
-    assign SDRAM_D10 = sdram_dq[10];
-    assign SDRAM_D11 = sdram_dq[11];
-    assign SDRAM_D12 = sdram_dq[12];
-    assign SDRAM_D13 = sdram_dq[13];
-    assign SDRAM_D14 = sdram_dq[14];
-    assign SDRAM_D15 = sdram_dq[15];
+    // Data pin assignments — controller drives top-level inout pins.
+    // Since sdram_dq is now defined as the pin readback above, and
+    // the controller's tristate assign drives SDRAM_DQ (= sdram_dq),
+    // both the controller output and external model input share the
+    // same wires. No separate pin assigns needed — the controller's
+    // internal `assign SDRAM_DQ = sdram_dq_oe ? ... : 16'hZZZZ`
+    // drives sdram_dq directly, and when hi-Z, the model's drive
+    // on the individual SDRAM_Dx pins takes effect.
 
     // =========================================================================
     // SDRAM Controller (25 MHz domain)
@@ -276,7 +291,7 @@ module iwm_hamr_top (
         .clk            (CLK_25MHz),
         .rst_n          (por_25_n),
         .init_done      (sdram_init_done),
-        .pause_refresh  (1'b0),
+        .pause_refresh  (1'b0),           // Never pause refresh — boot takes 91ms, exceeds 64ms tREF
         .req            (arb_sdram_req),
         .req_write      (arb_sdram_write),
         .req_addr       (arb_sdram_addr),
@@ -462,7 +477,9 @@ module iwm_hamr_top (
         .block_num       (dev_block_num),
         .block_ready     (dev_block_ready),
         .debug_state     (sp_debug_state),
-        .debug_sync      (rx_sync_debug)
+        .debug_sync      (rx_sync_debug),
+        .debug_cmd_code  (sp_debug_cmd),
+        .debug_wr_idle   (sp_debug_wr_idle)
     );
 
 endmodule
