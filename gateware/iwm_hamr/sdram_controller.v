@@ -292,7 +292,11 @@ module sdram_controller (
                     end else begin
                         req_ready <= 1'b1;
 
-                        // Priority: new request > refresh (avoid dropping requests)
+                        // Requests take priority, but refresh is interleaved:
+                        // If both request and refresh are pending, service the
+                        // request first, then the refresh will be caught on the
+                        // next IDLE entry (no request will be pending because
+                        // the arbiter needs several cycles between words).
                         if (req && req_ready) begin
                             // Latch request
                             latched_write <= req_write;
@@ -369,7 +373,7 @@ module sdram_controller (
                     sdram_ba <= latched_bank;
                     // Column address with auto-precharge (A10=1)
                     SDRAM_A <= {2'b00, 1'b1, latched_col};
-                    SDRAM_DQM0 <= 1'b0;  // Enable both byte lanes
+                    SDRAM_DQM0 <= 1'b0;
                     SDRAM_DQM1 <= 1'b0;
                     sdram_dq_out <= latched_wdata;
                     sdram_dq_oe <= 1'b1;

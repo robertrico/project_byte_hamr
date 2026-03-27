@@ -1,22 +1,24 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// IWM Hamr - Top Level Module
+// IWM Hamr — Top Level Module (v2: Register-based block device)
 // =============================================================================
-// Self-contained SmartPort device: IWM + internal device engine + SDRAM + Flash
+// Architecture:
+//   - Custom slot ROM serves ProDOS block device driver
+//   - bus_interface provides register file at $C0n0-$C0nF
+//   - 6502 reads/writes blocks through DATA register, no SmartPort protocol
+//   - SDRAM stores disk image, loaded from SPI flash at boot
 //
-// Two clock domains:
-//   sig_7M   (7.16 MHz) - Apple II bus, IWM, device engine
-//   CLK_25MHz (25 MHz)  - SDRAM controller, SPI flash reader, boot loader
+// Future: IWM re-added for external SmartPort devices on DB-19
+//
+// Clock domains:
+//   sig_7M   (7.16 MHz) - Apple II bus, bus_interface
+//   CLK_25MHz (25 MHz)  - SDRAM controller, SPI flash, boot loader
 //
 // Boot sequence:
 //   1. POR releases (both domains)
-//   2. SDRAM controller initializes (200us power-up + mode register load)
+//   2. SDRAM controller initializes
 //   3. boot_loader copies disk image from SPI flash to SDRAM
-//   4. sp_device begins responding to SmartPort commands (sense HIGH)
-//
-// Data path:
-//   Flash --[boot_loader]--> SDRAM
-//   SDRAM <--[sdram_arbiter]--> block_buffer <--[sp_device]--> IWM
+//   4. bus_interface becomes ready (STATUS bit 7 + bit 0)
 // =============================================================================
 
 module iwm_hamr_top (
@@ -62,7 +64,6 @@ module iwm_hamr_top (
     inout  wire       SDRAM_D12, SDRAM_D13, SDRAM_D14, SDRAM_D15,
 
     // ---- SPI Flash (IS25LP128F, 16MB) ----
-    // Note: SCK driven via USRMCLK primitive, not a top-level port
     output wire       FLASH_nCS,
     output wire       FLASH_MOSI,
     input  wire       FLASH_MISO,
@@ -78,29 +79,16 @@ module iwm_hamr_top (
 );
 
     // =========================================================================
-    // Internal Signals - Apple II / IWM
+    // Internal Signals
     // =========================================================================
-    wire [3:0] phase;
-    wire       wrdata;
-    wire       _enbl1, _enbl2;
-    wire       _wrreq;
     wire [7:0] rom_data;
-    wire       rom_oe;
+    wire       rom_oe_raw;
+    // We don't use $C800 — only serve $Cn slot ROM
+    wire       rom_oe = ~nI_O_SELECT;
     wire       rom_expansion_active;
-    wire [7:0] iwm_data_out;
-    wire       iwm_q7, iwm_q7_stable;
-    wire [7:0] data_out_mux;
-
-    // Internal device signals (from sp_device, replacing GPIO inputs)
-    wire       sp_rddata;
-    wire       sp_sense;
-
-    // Forward declarations for signals used in GPIO before instantiation
+    wire [7:0] bus_data_out;
     wire       boot_done;
-    wire       flash_start;
     wire       sdram_init_done;
-    wire       flash_busy;
-    wire       flash_data_valid;
 
     // =========================================================================
     // Power-On Reset (7 MHz domain)
@@ -127,55 +115,19 @@ module iwm_hamr_top (
     end
 
     // =========================================================================
-    // GPIO Debug Outputs
+    // Unused control signals
     // =========================================================================
-    wire [4:0] sp_debug_state;
-    wire [2:0] bl_debug_state;
-    wire       rx_sync_debug;
-    wire [2:0] sp_debug_cmd;
-    wire       dut_iwm_x7;
-    wire       dut_iwm_latch_synced;
-    wire       sp_debug_wr_idle;
-
-    // GPIO Debug — full 5-bit state for deadlock diagnosis
-    //
-    //   Ch 0  GPIO1  = sense      (HIGH=present, LOW=ACK)
-    //   Ch 1  GPIO2  = rddata     (device TX data)
-    //   Ch 2  GPIO3  = state[0]   ─┐
-    //   Ch 3  GPIO4  = state[1]    │
-    //   Ch 4  GPIO6  = state[2]    │ Full 5-bit state (0-22)
-    //   Ch 5  GPIO7  = state[3]    │
-    //   Ch 6  GPIO10 = state[4]   ─┘
-    //   Ch 7  GPIO11 = wrdata     (host command data)
-    //
-    assign GPIO1  = sp_sense;
-    assign GPIO2  = sp_rddata;
-    assign GPIO3  = sp_debug_state[0];
-    assign GPIO4  = sp_debug_state[1];
-    assign GPIO6  = sp_debug_state[2];
-    assign GPIO5  = 1'b0;                  // unused (GPIO5 not on LA)
-    assign GPIO7  = sp_debug_state[3];
-    assign GPIO10 = sp_debug_state[4];
-    assign GPIO11 = wrdata;
-
-    // Level Shifter OE
-    wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
-    assign GPIO12 = ~lvl_shift_oe;
-
-    // Tri-state control signals
     assign nIRQ = 1'bZ;
     assign nNMI = 1'bZ;
     assign nINH = 1'bZ;
     assign nDMA = 1'bZ;
-
-    // Daisy chain pass-through
     assign DMA_IN = DMA_OUT;
     assign INT_IN = INT_OUT;
 
     // =========================================================================
-    // Data Bus Control
+    // Data Bus — mux ROM and register reads
     // =========================================================================
-    assign data_out_mux = rom_oe ? rom_data : iwm_data_out;
+    wire [7:0] data_out_mux = rom_oe ? rom_data : bus_data_out;
     wire data_oe = R_nW && (rom_oe || !nDEVICE_SELECT);
 
     assign D0 = data_oe ? data_out_mux[0] : 1'bZ;
@@ -187,45 +139,44 @@ module iwm_hamr_top (
     assign D6 = data_oe ? data_out_mux[6] : 1'bZ;
     assign D7 = data_oe ? data_out_mux[7] : 1'bZ;
 
+    // Level shifter OE
+    wire lvl_shift_oe = !nDEVICE_SELECT || rom_oe;
+    assign GPIO12 = ~lvl_shift_oe;
+
+    // =========================================================================
+    // GPIO Debug — minimal for now
+    // =========================================================================
+    assign GPIO1  = boot_done;
+    assign GPIO2  = 1'b0;
+    assign GPIO3  = 1'b0;
+    assign GPIO4  = 1'b0;
+    assign GPIO5  = 1'b0;
+    assign GPIO6  = 1'b0;
+    assign GPIO7  = 1'b0;
+    assign GPIO10 = 1'b0;
+    assign GPIO11 = 1'b0;
+
     // =========================================================================
     // Address Decoder
     // =========================================================================
+    // Override: we don't use $C800 shared ROM (driver fits in $Cn page).
+    // Force rom_expansion_active=0 so we never claim $C800-$CFFF.
+    // Without this, accessing our $C4xx sets rom_expansion_active,
+    // and our card serves $FF for $C800 accesses, blocking other cards
+    // (80-col, etc.) and breaking BASIC.SYSTEM's ProDOS command hooks.
+    wire rom_expansion_active_unused;
     addr_decoder u_addr_decoder (
         .addr                (addr),
         .clk                 (sig_7M),
         .nI_O_STROBE         (nI_O_STROBE),
         .nI_O_SELECT         (nI_O_SELECT),
         .nRES                (por_n),
-        .rom_oe              (rom_oe),
-        .rom_expansion_active(rom_expansion_active)
+        .rom_oe              (rom_oe_raw),  // unused — we override with ~nI_O_SELECT
+        .rom_expansion_active(rom_expansion_active_unused)
     );
 
     // =========================================================================
-    // IWM — rddata and sense now come from internal sp_device
-    // =========================================================================
-    iwm u_iwm (
-        .addr           (addr[3:0]),
-        .nDEVICE_SELECT (nDEVICE_SELECT),
-        .fclk           (sig_7M),
-        .Q3             (Q3),
-        .nRES           (por_n),
-        .data_in        ({D7, D6, D5, D4, D3, D2, D1, D0}),
-        .data_out       (iwm_data_out),
-        .wrdata         (wrdata),
-        .phase          (phase),
-        ._wrreq         (_wrreq),
-        ._enbl1         (_enbl1),
-        ._enbl2         (_enbl2),
-        .sense          (sp_sense),
-        .rddata         (sp_rddata),
-        .q7_out         (iwm_q7),
-        .q7_stable_out  (iwm_q7_stable),
-        .debug_x7       (dut_iwm_x7),
-        .debug_latch_synced (dut_iwm_latch_synced)
-    );
-
-    // =========================================================================
-    // Boot ROM
+    // Boot ROM — serves slot ROM content to Apple II
     // =========================================================================
     wire [11:0] rom_addr = !nI_O_SELECT ? {4'b0100, addr[7:0]}
                                         : {1'b1, addr[10:0]};
@@ -237,21 +188,66 @@ module iwm_hamr_top (
     );
 
     // =========================================================================
-    // SDRAM Address and Data Bus Mapping
+    // Bus Interface — register file replacing SmartPort protocol
     // =========================================================================
-    // The controller uses bused ports [12:0] SDRAM_A and [15:0] SDRAM_DQ.
-    // The top module has individual pins. Wire them through intermediate buses.
+    wire [8:0]  buf_addr_b;
+    wire [7:0]  buf_rdata_b;
+    wire [7:0]  buf_wdata_b;
+    wire        buf_we_b;
+    wire        dev_block_read_req;
+    wire        dev_block_write_req;
+    wire [15:0] dev_block_num;
+    wire        dev_block_ready;
+
+    bus_interface u_bus_interface (
+        .clk              (sig_7M),
+        .rst_n            (por_n),
+        .addr             (addr[3:0]),
+        .data_in          ({D7, D6, D5, D4, D3, D2, D1, D0}),
+        .data_out         (bus_data_out),
+        .nDEVICE_SELECT   (nDEVICE_SELECT),
+        .R_nW             (R_nW),
+        .boot_done        (boot_done),
+        .buf_addr         (buf_addr_b),
+        .buf_rdata        (buf_rdata_b),
+        .buf_wdata        (buf_wdata_b),
+        .buf_we           (buf_we_b),
+        .block_read_req   (dev_block_read_req),
+        .block_write_req  (dev_block_write_req),
+        .block_num        (dev_block_num),
+        .block_ready      (dev_block_ready)
+    );
+
+    // =========================================================================
+    // Block Buffer — dual-port BRAM bridging 25 MHz and 7 MHz
+    // =========================================================================
+    wire [8:0]  buf_addr_a;
+    wire [7:0]  buf_wdata_a;
+    wire        buf_we_a;
+    wire [7:0]  buf_rdata_a;
+
+    block_buffer u_block_buffer (
+        .clk_a   (CLK_25MHz),
+        .addr_a  (buf_addr_a),
+        .wdata_a (buf_wdata_a),
+        .we_a    (buf_we_a),
+        .rdata_a (buf_rdata_a),
+        .clk_b   (sig_7M),
+        .addr_b  (buf_addr_b),
+        .wdata_b (buf_wdata_b),
+        .we_b    (buf_we_b),
+        .rdata_b (buf_rdata_b)
+    );
+
+    // =========================================================================
+    // SDRAM Address/Data Bus Mapping
     // =========================================================================
     wire [12:0] sdram_a;
-    // sdram_dq is now the top-level bidirectional DQ bus, assembled
-    // from individual inout pins. Both the controller and external
-    // SDRAM model can drive it via tristate.
     wire [15:0] sdram_dq = {SDRAM_D15, SDRAM_D14, SDRAM_D13, SDRAM_D12,
                              SDRAM_D11, SDRAM_D10, SDRAM_D9,  SDRAM_D8,
                              SDRAM_D7,  SDRAM_D6,  SDRAM_D5,  SDRAM_D4,
                              SDRAM_D3,  SDRAM_D2,  SDRAM_D1,  SDRAM_D0};
 
-    // Address pin assignments (output only)
     assign SDRAM_A0  = sdram_a[0];
     assign SDRAM_A1  = sdram_a[1];
     assign SDRAM_A2  = sdram_a[2];
@@ -266,19 +262,9 @@ module iwm_hamr_top (
     assign SDRAM_A11 = sdram_a[11];
     assign SDRAM_A12 = sdram_a[12];
 
-    // Data pin assignments — controller drives top-level inout pins.
-    // Since sdram_dq is now defined as the pin readback above, and
-    // the controller's tristate assign drives SDRAM_DQ (= sdram_dq),
-    // both the controller output and external model input share the
-    // same wires. No separate pin assigns needed — the controller's
-    // internal `assign SDRAM_DQ = sdram_dq_oe ? ... : 16'hZZZZ`
-    // drives sdram_dq directly, and when hi-Z, the model's drive
-    // on the individual SDRAM_Dx pins takes effect.
-
     // =========================================================================
-    // SDRAM Controller (25 MHz domain)
+    // SDRAM Controller (25 MHz)
     // =========================================================================
-    // sdram_init_done declared above (forward ref)
     wire        arb_sdram_req;
     wire        arb_sdram_write;
     wire [25:0] arb_sdram_addr;
@@ -291,7 +277,7 @@ module iwm_hamr_top (
         .clk            (CLK_25MHz),
         .rst_n          (por_25_n),
         .init_done      (sdram_init_done),
-        .pause_refresh  (1'b0),           // Never pause refresh — boot takes 91ms, exceeds 64ms tREF
+        .pause_refresh  (1'b0),
         .req            (arb_sdram_req),
         .req_write      (arb_sdram_write),
         .req_addr       (arb_sdram_addr),
@@ -314,14 +300,14 @@ module iwm_hamr_top (
     );
 
     // =========================================================================
-    // SPI Flash Reader (25 MHz domain)
+    // SPI Flash Reader (25 MHz)
     // =========================================================================
-    // flash_busy declared above (forward ref)
+    wire        flash_busy;
     wire        flash_done;
     wire [7:0]  flash_data_out;
-    // flash_data_valid declared above (forward ref)
+    wire        flash_data_valid;
     wire        flash_data_ready;
-    // flash_start declared above (forward ref)
+    wire        flash_start;
     wire [23:0] flash_start_addr;
     wire [23:0] flash_byte_count;
     wire        flash_sck_pin;
@@ -346,9 +332,8 @@ module iwm_hamr_top (
     );
 
     // =========================================================================
-    // Boot Loader (25 MHz domain)
+    // Boot Loader (25 MHz)
     // =========================================================================
-    // boot_done declared above (forward declaration for GPIO)
     wire        boot_sdram_req;
     wire        boot_sdram_write;
     wire [25:0] boot_sdram_addr;
@@ -360,7 +345,6 @@ module iwm_hamr_top (
         .rst_n           (por_25_n),
         .sdram_init_done (sdram_init_done),
         .boot_done       (boot_done),
-        // Flash reader interface
         .flash_start     (flash_start),
         .flash_addr      (flash_start_addr),
         .flash_count     (flash_byte_count),
@@ -368,77 +352,34 @@ module iwm_hamr_top (
         .flash_data      (flash_data_out),
         .flash_data_valid(flash_data_valid),
         .flash_data_ready(flash_data_ready),
-        // SDRAM write interface (routed through arbiter)
         .sdram_req       (boot_sdram_req),
         .sdram_req_write (boot_sdram_write),
         .sdram_req_addr  (boot_sdram_addr),
         .sdram_req_wdata (boot_sdram_wdata),
         .sdram_req_ready (boot_sdram_ready),
-        .debug_state     (bl_debug_state)
+        .debug_state     ()
     );
 
     // =========================================================================
-    // Block Buffer — Dual-port BRAM bridging 25 MHz and 7 MHz domains
+    // SDRAM Arbiter (25 MHz)
     // =========================================================================
-    // Port A: 25 MHz (SDRAM arbiter side)
-    wire [8:0]  buf_addr_a;
-    wire [7:0]  buf_wdata_a;
-    wire        buf_we_a;
-    wire [7:0]  buf_rdata_a;
-
-    // Port B: 7 MHz (sp_device side)
-    wire [8:0]  buf_addr_b;
-    wire [7:0]  buf_rdata_b;
-    wire [7:0]  buf_wdata_b;
-    wire        buf_we_b;
-
-    block_buffer u_block_buffer (
-        // Port A (25 MHz - arbiter)
-        .clk_a   (CLK_25MHz),
-        .addr_a  (buf_addr_a),
-        .wdata_a (buf_wdata_a),
-        .we_a    (buf_we_a),
-        .rdata_a (buf_rdata_a),
-        // Port B (7 MHz - device engine)
-        .clk_b   (sig_7M),
-        .addr_b  (buf_addr_b),
-        .wdata_b (buf_wdata_b),
-        .we_b    (buf_we_b),
-        .rdata_b (buf_rdata_b)
-    );
-
-    // =========================================================================
-    // SDRAM Arbiter (25 MHz domain)
-    // =========================================================================
-    // Multiplexes boot_loader (during boot) and sp_device block requests
-    // (at runtime). Handles block-level SDRAM <-> buffer transfers.
-    // =========================================================================
-    wire        dev_block_read_req;
-    wire        dev_block_write_req;
-    wire [15:0] dev_block_num;
-    wire        dev_block_ready;
-
     sdram_arbiter u_sdram_arbiter (
         .clk                (CLK_25MHz),
         .rst_n              (por_25_n),
         .boot_done          (boot_done),
-        // Boot loader port
         .boot_req           (boot_sdram_req),
         .boot_write         (boot_sdram_write),
         .boot_addr          (boot_sdram_addr),
         .boot_wdata         (boot_sdram_wdata),
         .boot_ready         (boot_sdram_ready),
-        // Device engine block requests (CDC from 7 MHz)
         .dev_block_read_req (dev_block_read_req),
         .dev_block_write_req(dev_block_write_req),
         .dev_block_num      (dev_block_num),
         .dev_block_ready    (dev_block_ready),
-        // Block buffer Port A (25 MHz side)
         .buf_addr_a         (buf_addr_a),
         .buf_wdata_a        (buf_wdata_a),
         .buf_we_a           (buf_we_a),
         .buf_rdata_a        (buf_rdata_a),
-        // SDRAM controller interface
         .sdram_req          (arb_sdram_req),
         .sdram_write        (arb_sdram_write),
         .sdram_addr         (arb_sdram_addr),
@@ -446,40 +387,6 @@ module iwm_hamr_top (
         .sdram_ready        (sdram_req_ready),
         .sdram_rdata        (sdram_req_rdata),
         .sdram_rdata_valid  (sdram_req_rdata_valid)
-    );
-
-    // =========================================================================
-    // SmartPort Device Engine (7 MHz domain)
-    // =========================================================================
-    // Replaces the external PicoPort. Receives IWM signals, generates rddata
-    // and sense internally. Block buffer Port B provides payload data.
-    // =========================================================================
-    sp_device u_sp_device (
-        .fclk            (sig_7M),
-        .rst_n           (por_n),
-        .boot_done       (boot_done),
-        // IWM drive interface (internal)
-        .wrdata          (wrdata),
-        .rddata          (sp_rddata),
-        .phase           (phase),
-        ._wrreq          (_wrreq),
-        ._enbl1          (_enbl1),
-        ._enbl2          (_enbl2),
-        .sense           (sp_sense),
-        // Block buffer Port B (7 MHz side)
-        .buf_addr        (buf_addr_b),
-        .buf_rd_data     (buf_rdata_b),
-        .buf_wr_data     (buf_wdata_b),
-        .buf_wr_en       (buf_we_b),
-        // SDRAM block requests (cross to 25 MHz via arbiter CDC)
-        .block_read_req  (dev_block_read_req),
-        .block_write_req (dev_block_write_req),
-        .block_num       (dev_block_num),
-        .block_ready     (dev_block_ready),
-        .debug_state     (sp_debug_state),
-        .debug_sync      (rx_sync_debug),
-        .debug_cmd_code  (sp_debug_cmd),
-        .debug_wr_idle   (sp_debug_wr_idle)
     );
 
 endmodule

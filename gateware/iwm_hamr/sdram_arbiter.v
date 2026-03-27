@@ -1,5 +1,5 @@
 // sdram_arbiter.v — Multiplexes SDRAM access between boot_loader (boot)
-// and sp_device (runtime).  Handles block-level transfers between SDRAM
+// and bus_interface (runtime).  Handles block-level transfers between SDRAM
 // and the dual-port block buffer.
 
 module sdram_arbiter (
@@ -92,6 +92,8 @@ module sdram_arbiter (
     localparam S_BLOCK_WRITE_WAIT   = 4'd11;
     localparam S_BLOCK_WRITE_DONE   = 4'd12;
 
+    localparam [8:0] WRITE_LIMIT = 9'd255;
+
     reg [3:0]   state = S_IDLE;
     reg [8:0]   xfer_cnt = 9'd0;        // 0-255 word index (256 words = 512 bytes)
     reg [25:0]  base_addr = 26'd0;
@@ -110,10 +112,10 @@ module sdram_arbiter (
     reg  [25:0] rt_sdram_addr = 26'd0;
     reg  [15:0] rt_sdram_wdata = 16'd0;
 
-    assign sdram_req   = (!boot_done) ? boot_req   : rt_sdram_req;
-    assign sdram_write = (!boot_done) ? boot_write : rt_sdram_write;
-    assign sdram_addr  = (!boot_done) ? boot_addr  : rt_sdram_addr;
-    assign sdram_wdata = (!boot_done) ? boot_wdata : rt_sdram_wdata;
+    assign sdram_req          = (!boot_done) ? boot_req   : rt_sdram_req;
+    assign sdram_write        = (!boot_done) ? boot_write : rt_sdram_write;
+    assign sdram_addr         = (!boot_done) ? boot_addr  : rt_sdram_addr;
+    assign sdram_wdata        = (!boot_done) ? boot_wdata : rt_sdram_wdata;
     assign boot_ready  = (!boot_done) ? sdram_ready : 1'b0;
 
     // -----------------------------------------------------------------
@@ -146,20 +148,14 @@ module sdram_arbiter (
         end else begin
             // ---- Runtime phase ----
             // Default: no buffer write, no SDRAM request
-            buf_we_a     <= 1'b0;
-            rt_sdram_req <= 1'b0;
+            buf_we_a      <= 1'b0;
+            rt_sdram_req  <= 1'b0;
 
             case (state)
                 // =====================================================
                 // IDLE
                 // =====================================================
                 S_IDLE: begin
-                    // dev_block_ready stays HIGH after DONE. It will be
-                    // cleared when a new request arrives (the 7MHz side
-                    // samples it level-based, so it must persist across
-                    // at least one full 7MHz period = ~140ns = 4 clk25).
-
-                    // Priority: block transfers > boot_loader pass-through
                     if (dev_read_rise) begin
                         dev_block_ready <= 1'b0;
                         base_addr <= {1'b0, dev_block_num, 9'd0};
@@ -267,7 +263,6 @@ module sdram_arbiter (
                 end
 
                 S_BLOCK_WRITE_ISSUE: begin
-                    // rdata_a now has hi byte; combine and issue SDRAM write
                     rt_sdram_addr  <= base_addr + {17'd0, xfer_cnt[7:0], 1'b0};
                     rt_sdram_wdata <= {buf_rdata_a, wr_lo_byte};
                     rt_sdram_write <= 1'b1;
@@ -283,11 +278,11 @@ module sdram_arbiter (
                         rt_sdram_req   <= 1'b0;
                         rt_sdram_write <= 1'b0;
 
-                        if (xfer_cnt == 9'd255) begin
+                        if (xfer_cnt == WRITE_LIMIT) begin
                             state <= S_BLOCK_WRITE_DONE;
                         end else begin
                             xfer_cnt <= xfer_cnt + 9'd1;
-                            state    <= S_BLOCK_WRITE_LOAD_LO;
+                            state <= S_BLOCK_WRITE_LOAD_LO;
                         end
                     end
                 end

@@ -1,555 +1,417 @@
-`define SIMULATION
 `timescale 1ns / 1ps
 // =============================================================================
-// IWM Hamr - Integration Testbench
+// iwm_hamr_tb.v — Integration test: bus_interface + block_buffer + sdram_arbiter
 // =============================================================================
-// Verifies full boot sequence: POR -> SDRAM init -> Flash->SDRAM copy -> device
-// present. Uses behavioral SDRAM and SPI flash models.
+// Tests the full data path from Apple II bus registers through block_buffer
+// and sdram_arbiter to a mock SDRAM. No flash/boot — injects data directly.
 //
-// Tests:
-//   1. POR sequence (both 7 MHz and 25 MHz domains)
-//   2. SDRAM initialization (init_done asserts)
-//   3. Boot sequence (flash -> SDRAM copy, boot_done asserts)
-//   4. Device present (sp_device sense HIGH after boot)
-//   5. ROM reads still work (Apple II bus functional)
+// Test flow:
+//   1. Pre-fill mock SDRAM with known block data
+//   2. Signal boot_done
+//   3. Write block number via bus registers
+//   4. Issue READ command
+//   5. Wait for ready
+//   6. Read 512 bytes via DATA port, verify each byte
+//   7. Write 512 bytes via DATA port
+//   8. Issue WRITE command
+//   9. Verify data reached mock SDRAM
 // =============================================================================
 
 module iwm_hamr_tb;
 
-    // =========================================================================
-    // Test infrastructure
-    // =========================================================================
-    integer pass_count = 0;
-    integer fail_count = 0;
-
-    task check(input [511:0] name, input condition);
-    begin
-        if (condition) begin
-            $display("  PASS: %0s", name);
-            pass_count = pass_count + 1;
-        end else begin
-            $display("  FAIL: %0s", name);
-            fail_count = fail_count + 1;
-        end
-    end
-    endtask
-
-    // =========================================================================
-    // Clock generation
-    // =========================================================================
-    reg clk_7m  = 0;
+    // ---- Clocks ----
+    reg clk_7m = 0;
     reg clk_25m = 0;
+    always #70  clk_7m  = ~clk_7m;   // 7.14 MHz
+    always #20  clk_25m = ~clk_25m;   // 25 MHz
 
-    always #69.8  clk_7m  = ~clk_7m;   // ~7.16 MHz (139.6 ns period)
-    always #20.0  clk_25m = ~clk_25m;   // 25 MHz (40 ns period)
+    // ---- Resets ----
+    reg rst_7_n = 0;
+    reg rst_25_n = 0;
 
-    // =========================================================================
-    // Apple II Bus Signals
-    // =========================================================================
-    reg  [11:0] addr;
-    wire [7:0]  data_bus;
-    reg  [7:0]  data_drive;
-    reg         data_drive_en;
-    reg         Q3;
-    reg         R_nW;
+    // ---- Apple II Bus signals ----
+    reg  [3:0]  addr;
+    reg  [7:0]  data_in;
+    wire [7:0]  data_out;
     reg         nDEVICE_SELECT;
-    reg         nI_O_SELECT;
-    reg         nI_O_STROBE;
-    wire        nRES;
-    reg         RDY;
-    wire        nIRQ, nNMI, nDMA, nINH;
-    reg         DMA_OUT, INT_OUT;
-    wire        DMA_IN, INT_IN;
-    reg         PHI0, PHI1, uSync;
+    reg         R_nW;
 
-    // Data bus tristate from testbench perspective
-    assign data_bus = data_drive_en ? data_drive : 8'hZZ;
+    // ---- System ----
+    reg         boot_done;
 
-    // Individual data bus wires (bidirectional)
-    wire D0, D1, D2, D3, D4, D5, D6, D7;
-    assign D0 = data_bus[0];
-    assign D1 = data_bus[1];
-    assign D2 = data_bus[2];
-    assign D3 = data_bus[3];
-    assign D4 = data_bus[4];
-    assign D5 = data_bus[5];
-    assign D6 = data_bus[6];
-    assign D7 = data_bus[7];
+    // ---- Mock SDRAM (word-addressed, 256 words = 512 bytes per block) ----
+    reg [15:0] mock_sdram [0:65535];  // 128KB
 
-    // =========================================================================
-    // GPIO Signals
-    // =========================================================================
-    wire GPIO1, GPIO2, GPIO3, GPIO4, GPIO5;
-    wire GPIO6, GPIO7, GPIO10, GPIO11, GPIO12;
-    reg  GPIO8, GPIO9;
+    // ---- SDRAM controller mock signals ----
+    wire        sdram_req;
+    wire        sdram_write;
+    wire [25:0] sdram_addr;
+    wire [15:0] sdram_wdata;
+    reg         sdram_ready;
+    reg  [15:0] sdram_rdata;
+    reg         sdram_rdata_valid;
 
-    // =========================================================================
-    // SDRAM Signals (individual pins matching top module ports)
-    // =========================================================================
-    wire SDRAM_CLK, SDRAM_CKE, SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE;
-    wire SDRAM_DQM0, SDRAM_DQM1, SDRAM_BA0, SDRAM_BA1;
-    wire SDRAM_A0, SDRAM_A1, SDRAM_A2, SDRAM_A3, SDRAM_A4;
-    wire SDRAM_A5, SDRAM_A6, SDRAM_A7, SDRAM_A8, SDRAM_A9;
-    wire SDRAM_A10, SDRAM_A11, SDRAM_A12;
-    wire SDRAM_D0, SDRAM_D1, SDRAM_D2, SDRAM_D3;
-    wire SDRAM_D4, SDRAM_D5, SDRAM_D6, SDRAM_D7;
-    wire SDRAM_D8, SDRAM_D9, SDRAM_D10, SDRAM_D11;
-    wire SDRAM_D12, SDRAM_D13, SDRAM_D14, SDRAM_D15;
+    // ---- Block buffer wires ----
+    wire [8:0]  buf_addr_a, buf_addr_b;
+    wire [7:0]  buf_wdata_a, buf_rdata_a;
+    wire        buf_we_a;
+    wire [7:0]  buf_wdata_b, buf_rdata_b;
+    wire        buf_we_b;
+
+    // ---- Block request wires ----
+    wire        dev_block_read_req;
+    wire        dev_block_write_req;
+    wire [15:0] dev_block_num;
+    wire        dev_block_ready;
+
+    // ---- Test tracking ----
+    integer tests_run = 0;
+    integer tests_passed = 0;
+    integer tests_failed = 0;
+    integer i;
+    reg [7:0] rd;
 
     // =========================================================================
-    // Flash Signals
+    // DUT: bus_interface
     // =========================================================================
-    wire FLASH_nCS, FLASH_MOSI, FLASH_nWP, FLASH_nHOLD;
-    wire FLASH_MISO;
-
-    // =========================================================================
-    // Behavioral SDRAM Model
-    // =========================================================================
-    // Simplified: 64K x 16-bit memory (128KB), indexed by low bits of
-    // column address. Supports ACTIVATE, READ (CAS=2), WRITE, REFRESH.
-    // Sufficient for boot_loader's sequential writes and arbiter's block
-    // transfers at low addresses.
-    // =========================================================================
-
-    // Reconstruct buses from individual pins
-    wire [12:0] sdram_a_bus = {SDRAM_A12, SDRAM_A11, SDRAM_A10, SDRAM_A9,
-                               SDRAM_A8, SDRAM_A7, SDRAM_A6, SDRAM_A5,
-                               SDRAM_A4, SDRAM_A3, SDRAM_A2, SDRAM_A1, SDRAM_A0};
-    wire [15:0] sdram_dq_in = {SDRAM_D15, SDRAM_D14, SDRAM_D13, SDRAM_D12,
-                                SDRAM_D11, SDRAM_D10, SDRAM_D9,  SDRAM_D8,
-                                SDRAM_D7,  SDRAM_D6,  SDRAM_D5,  SDRAM_D4,
-                                SDRAM_D3,  SDRAM_D2,  SDRAM_D1,  SDRAM_D0};
-
-    // Command decode
-    wire [3:0] sdram_cmd = {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE};
-    localparam [3:0] SCMD_NOP       = 4'b0111;
-    localparam [3:0] SCMD_ACTIVE    = 4'b0011;
-    localparam [3:0] SCMD_READ      = 4'b0101;
-    localparam [3:0] SCMD_WRITE     = 4'b0100;
-    localparam [3:0] SCMD_PRECHARGE = 4'b0010;
-    localparam [3:0] SCMD_REFRESH   = 4'b0001;
-    localparam [3:0] SCMD_LOAD_MODE = 4'b0000;
-
-    // Model storage: 64K words (128KB), enough for a small disk image
-    reg [15:0] sdram_mem [0:65535];
-    reg [15:0] sdram_dq_out;
-    reg        sdram_dq_oe = 0;
-    reg [15:0] sdram_read_addr;
-    reg [2:0]  sdram_cas_delay;
-    reg [12:0] sdram_active_row;
-    reg [1:0]  sdram_active_bank;
-
-    // Drive individual DQ pins from model
-    assign SDRAM_D0  = sdram_dq_oe ? sdram_dq_out[0]  : 1'bZ;
-    assign SDRAM_D1  = sdram_dq_oe ? sdram_dq_out[1]  : 1'bZ;
-    assign SDRAM_D2  = sdram_dq_oe ? sdram_dq_out[2]  : 1'bZ;
-    assign SDRAM_D3  = sdram_dq_oe ? sdram_dq_out[3]  : 1'bZ;
-    assign SDRAM_D4  = sdram_dq_oe ? sdram_dq_out[4]  : 1'bZ;
-    assign SDRAM_D5  = sdram_dq_oe ? sdram_dq_out[5]  : 1'bZ;
-    assign SDRAM_D6  = sdram_dq_oe ? sdram_dq_out[6]  : 1'bZ;
-    assign SDRAM_D7  = sdram_dq_oe ? sdram_dq_out[7]  : 1'bZ;
-    assign SDRAM_D8  = sdram_dq_oe ? sdram_dq_out[8]  : 1'bZ;
-    assign SDRAM_D9  = sdram_dq_oe ? sdram_dq_out[9]  : 1'bZ;
-    assign SDRAM_D10 = sdram_dq_oe ? sdram_dq_out[10] : 1'bZ;
-    assign SDRAM_D11 = sdram_dq_oe ? sdram_dq_out[11] : 1'bZ;
-    assign SDRAM_D12 = sdram_dq_oe ? sdram_dq_out[12] : 1'bZ;
-    assign SDRAM_D13 = sdram_dq_oe ? sdram_dq_out[13] : 1'bZ;
-    assign SDRAM_D14 = sdram_dq_oe ? sdram_dq_out[14] : 1'bZ;
-    assign SDRAM_D15 = sdram_dq_oe ? sdram_dq_out[15] : 1'bZ;
-
-    integer sdram_init_i;
-    initial begin
-        for (sdram_init_i = 0; sdram_init_i < 65536; sdram_init_i = sdram_init_i + 1)
-            sdram_mem[sdram_init_i] = 16'h0000;
-        sdram_cas_delay  = 3'd0;
-        sdram_dq_out     = 16'h0000;
-        sdram_active_row = 13'd0;
-        sdram_active_bank = 2'd0;
-    end
-
-    // Track total SDRAM writes for boot verification
-    integer sdram_write_count = 0;
-
-    always @(posedge SDRAM_CLK) begin
-        // CAS latency pipeline
-        if (sdram_cas_delay > 0) begin
-            sdram_cas_delay <= sdram_cas_delay - 3'd1;
-            if (sdram_cas_delay == 3'd1) begin
-                sdram_dq_oe  <= 1'b1;
-                sdram_dq_out <= sdram_mem[sdram_read_addr[15:0]];
-            end
-        end else begin
-            sdram_dq_oe <= 1'b0;
-        end
-
-        // Command processing
-        case (sdram_cmd)
-            SCMD_ACTIVE: begin
-                sdram_active_row  <= sdram_a_bus;
-                sdram_active_bank <= {SDRAM_BA1, SDRAM_BA0};
-            end
-            SCMD_WRITE: begin
-                // Index: row[2:0] || col[9:0] => 13-bit index, use low 16 bits
-                // For boot, row=0, so effectively just col[9:0]
-                sdram_mem[{sdram_active_row[2:0], sdram_a_bus[9:0], sdram_active_bank[0]}] <= sdram_dq_in;
-                sdram_write_count = sdram_write_count + 1;
-            end
-            SCMD_READ: begin
-                sdram_read_addr <= {sdram_active_row[2:0], sdram_a_bus[9:0], sdram_active_bank[0]};
-                // CAS latency 2: set counter to 1 (model sees cmd 1 cycle late)
-                sdram_cas_delay <= 3'd1;
-            end
-            SCMD_REFRESH: begin
-                // No-op in model
-            end
-            SCMD_PRECHARGE: begin
-                // No-op in model
-            end
-            SCMD_LOAD_MODE: begin
-                // No-op in model
-            end
-        endcase
-    end
-
-    // =========================================================================
-    // Behavioral SPI Flash Model
-    // =========================================================================
-    // 4KB memory starting at offset 0. Boot loader reads from FLASH_OFFSET
-    // (0x400000), so flash model maps address & 0xFFF to internal storage.
-    // Pre-loaded with a known pattern: addr[7:0] as low byte, ~addr[7:0] as
-    // high byte (when viewed as 16-bit pairs).
-    // =========================================================================
-
-    reg [7:0] flash_mem [0:4095];
-
-    // SPI state
-    reg [7:0]  flash_cmd_reg;
-    reg [23:0] flash_addr_reg;
-    reg [5:0]  flash_bit_cnt;
-    reg        flash_cmd_phase;
-    reg [7:0]  flash_data_byte;
-    reg [2:0]  flash_out_bit_cnt;
-    reg [23:0] flash_read_addr;
-    reg        flash_miso_reg;
-
-    assign FLASH_MISO = flash_miso_reg;
-
-    // Get SCK from the flash_reader's simulation output
-    // The flash_reader uses an internal spi_sck register.
-    // In simulation (SYNTHESIS not defined), flash_sck_pin is driven.
-    // We need to access it through the DUT hierarchy.
-    wire flash_sck = dut.u_flash_reader.flash_sck_pin;
-
-    integer flash_init_i;
-    initial begin
-        // Fill flash with known pattern: byte at address A = A[7:0]
-        // This matches the flash_reader_tb pattern for easy verification
-        for (flash_init_i = 0; flash_init_i < 4096; flash_init_i = flash_init_i + 1)
-            flash_mem[flash_init_i] = flash_init_i[7:0];
-        flash_miso_reg     = 1'bz;
-        flash_bit_cnt      = 6'd0;
-        flash_cmd_phase    = 1'b1;
-        flash_cmd_reg      = 8'd0;
-        flash_addr_reg     = 24'd0;
-        flash_out_bit_cnt  = 3'd0;
-        flash_read_addr    = 24'd0;
-        flash_data_byte    = 8'd0;
-    end
-
-    // CS deasserted — reset
-    always @(posedge FLASH_nCS) begin
-        flash_bit_cnt     <= 6'd0;
-        flash_cmd_phase   <= 1'b1;
-        flash_miso_reg    <= 1'bz;
-    end
-
-    // CS asserted — prepare
-    always @(negedge FLASH_nCS) begin
-        flash_bit_cnt     <= 6'd0;
-        flash_cmd_phase   <= 1'b1;
-        flash_cmd_reg     <= 8'd0;
-        flash_addr_reg    <= 24'd0;
-    end
-
-    // Sample MOSI on SCK rising edge
-    always @(posedge flash_sck) begin
-        if (!FLASH_nCS && flash_cmd_phase) begin
-            if (flash_bit_cnt < 6'd8) begin
-                flash_cmd_reg <= {flash_cmd_reg[6:0], FLASH_MOSI};
-            end else if (flash_bit_cnt < 6'd32) begin
-                flash_addr_reg <= {flash_addr_reg[22:0], FLASH_MOSI};
-            end
-            flash_bit_cnt <= flash_bit_cnt + 6'd1;
-
-            if (flash_bit_cnt == 6'd31) begin
-                flash_cmd_phase   <= 1'b0;
-                flash_read_addr   <= {flash_addr_reg[22:0], FLASH_MOSI};
-                flash_out_bit_cnt <= 3'd0;
-            end
-        end
-    end
-
-    // Drive MISO on SCK falling edge during data phase
-    always @(negedge flash_sck) begin
-        if (!FLASH_nCS && !flash_cmd_phase) begin
-            if (flash_out_bit_cnt == 3'd0) begin
-                // Load next byte (wrap address to 4KB model)
-                flash_data_byte <= flash_mem[flash_read_addr[11:0]];
-            end
-
-            // Drive current bit (MSB first)
-            flash_miso_reg <= (flash_out_bit_cnt == 3'd0) ?
-                flash_mem[flash_read_addr[11:0]][7] :
-                flash_data_byte[7 - flash_out_bit_cnt];
-
-            flash_out_bit_cnt <= flash_out_bit_cnt + 3'd1;
-            if (flash_out_bit_cnt == 3'd7) begin
-                flash_read_addr   <= flash_read_addr + 24'd1;
-                flash_out_bit_cnt <= 3'd0;
-            end
-        end
-    end
-
-    // =========================================================================
-    // DUT Instantiation
-    // =========================================================================
-    iwm_hamr_top dut (
-        .addr(addr),
-        .D0(D0), .D1(D1), .D2(D2), .D3(D3),
-        .D4(D4), .D5(D5), .D6(D6), .D7(D7),
-        .sig_7M(clk_7m), .Q3(Q3), .R_nW(R_nW),
-        .nDEVICE_SELECT(nDEVICE_SELECT),
-        .nI_O_SELECT(nI_O_SELECT),
-        .nI_O_STROBE(nI_O_STROBE),
-        .nRES(nRES),
-        .RDY(RDY),
-        .nIRQ(nIRQ), .nNMI(nNMI), .nDMA(nDMA), .nINH(nINH),
-        .DMA_OUT(DMA_OUT), .DMA_IN(DMA_IN),
-        .INT_OUT(INT_OUT), .INT_IN(INT_IN),
-        .PHI0(PHI0), .PHI1(PHI1), .uSync(uSync),
-        .CLK_25MHz(clk_25m),
-        // SDRAM
-        .SDRAM_CLK(SDRAM_CLK), .SDRAM_CKE(SDRAM_CKE),
-        .SDRAM_nCS(SDRAM_nCS), .SDRAM_nRAS(SDRAM_nRAS),
-        .SDRAM_nCAS(SDRAM_nCAS), .SDRAM_nWE(SDRAM_nWE),
-        .SDRAM_DQM0(SDRAM_DQM0), .SDRAM_DQM1(SDRAM_DQM1),
-        .SDRAM_BA0(SDRAM_BA0), .SDRAM_BA1(SDRAM_BA1),
-        .SDRAM_A0(SDRAM_A0), .SDRAM_A1(SDRAM_A1), .SDRAM_A2(SDRAM_A2),
-        .SDRAM_A3(SDRAM_A3), .SDRAM_A4(SDRAM_A4), .SDRAM_A5(SDRAM_A5),
-        .SDRAM_A6(SDRAM_A6), .SDRAM_A7(SDRAM_A7), .SDRAM_A8(SDRAM_A8),
-        .SDRAM_A9(SDRAM_A9), .SDRAM_A10(SDRAM_A10), .SDRAM_A11(SDRAM_A11),
-        .SDRAM_A12(SDRAM_A12),
-        .SDRAM_D0(SDRAM_D0), .SDRAM_D1(SDRAM_D1), .SDRAM_D2(SDRAM_D2),
-        .SDRAM_D3(SDRAM_D3), .SDRAM_D4(SDRAM_D4), .SDRAM_D5(SDRAM_D5),
-        .SDRAM_D6(SDRAM_D6), .SDRAM_D7(SDRAM_D7), .SDRAM_D8(SDRAM_D8),
-        .SDRAM_D9(SDRAM_D9), .SDRAM_D10(SDRAM_D10), .SDRAM_D11(SDRAM_D11),
-        .SDRAM_D12(SDRAM_D12), .SDRAM_D13(SDRAM_D13), .SDRAM_D14(SDRAM_D14),
-        .SDRAM_D15(SDRAM_D15),
-        // Flash
-        .FLASH_nCS(FLASH_nCS), .FLASH_MOSI(FLASH_MOSI),
-        .FLASH_MISO(FLASH_MISO), .FLASH_nWP(FLASH_nWP),
-        .FLASH_nHOLD(FLASH_nHOLD),
-        // GPIO
-        .GPIO1(GPIO1), .GPIO2(GPIO2), .GPIO3(GPIO3), .GPIO4(GPIO4),
-        .GPIO5(GPIO5), .GPIO6(GPIO6), .GPIO7(GPIO7),
-        .GPIO8(GPIO8), .GPIO9(GPIO9),
-        .GPIO10(GPIO10), .GPIO11(GPIO11), .GPIO12(GPIO12)
+    bus_interface u_bus (
+        .clk              (clk_7m),
+        .rst_n            (rst_7_n),
+        .addr             (addr),
+        .data_in          (data_in),
+        .data_out         (data_out),
+        .nDEVICE_SELECT   (nDEVICE_SELECT),
+        .R_nW             (R_nW),
+        .boot_done        (boot_done),
+        .buf_addr         (buf_addr_b),
+        .buf_rdata        (buf_rdata_b),
+        .buf_wdata        (buf_wdata_b),
+        .buf_we           (buf_we_b),
+        .block_read_req   (dev_block_read_req),
+        .block_write_req  (dev_block_write_req),
+        .block_num        (dev_block_num),
+        .block_ready      (dev_block_ready)
     );
 
     // =========================================================================
-    // Apple II Bus Helper Tasks
+    // DUT: block_buffer
     // =========================================================================
+    block_buffer u_buf (
+        .clk_a   (clk_25m),
+        .addr_a  (buf_addr_a),
+        .wdata_a (buf_wdata_a),
+        .we_a    (buf_we_a),
+        .rdata_a (buf_rdata_a),
+        .clk_b   (clk_7m),
+        .addr_b  (buf_addr_b),
+        .wdata_b (buf_wdata_b),
+        .we_b    (buf_we_b),
+        .rdata_b (buf_rdata_b)
+    );
 
-    // Read from slot 4 I/O space ($C4xx)
-    task bus_read_slot4(input [7:0] slot_addr, output [7:0] rdata);
-    begin
-        R_nW = 1;
-        data_drive_en = 0;
-        addr = {4'h4, slot_addr};
-        nI_O_SELECT = 0;
-        @(posedge clk_7m);
-        @(negedge clk_7m);
-        rdata = {D7, D6, D5, D4, D3, D2, D1, D0};
-        nI_O_SELECT = 1;
-        @(posedge clk_7m);
+    // =========================================================================
+    // DUT: sdram_arbiter
+    // =========================================================================
+    sdram_arbiter u_arb (
+        .clk                (clk_25m),
+        .rst_n              (rst_25_n),
+        .boot_done          (boot_done),
+        .boot_req           (1'b0),
+        .boot_write         (1'b0),
+        .boot_addr          (26'd0),
+        .boot_wdata         (16'd0),
+        .boot_ready         (),
+        .dev_block_read_req (dev_block_read_req),
+        .dev_block_write_req(dev_block_write_req),
+        .dev_block_num      (dev_block_num),
+        .dev_block_ready    (dev_block_ready),
+        .buf_addr_a         (buf_addr_a),
+        .buf_wdata_a        (buf_wdata_a),
+        .buf_we_a           (buf_we_a),
+        .buf_rdata_a        (buf_rdata_a),
+        .sdram_req          (sdram_req),
+        .sdram_write        (sdram_write),
+        .sdram_addr         (sdram_addr),
+        .sdram_wdata        (sdram_wdata),
+        .sdram_ready        (sdram_ready),
+        .sdram_rdata        (sdram_rdata),
+        .sdram_rdata_valid  (sdram_rdata_valid)
+    );
+
+    // =========================================================================
+    // Mock SDRAM controller behavior
+    // =========================================================================
+    // Responds to requests after 2 cycles (simulates CAS latency).
+    // Read: returns data from mock_sdram array.
+    // Write: stores data into mock_sdram array.
+    reg [1:0]  sdram_pipe;
+    reg [25:0] sdram_pipe_addr;
+
+    always @(posedge clk_25m) begin
+        sdram_ready       <= 1'b0;
+        sdram_rdata_valid <= 1'b0;
+
+        if (sdram_req && !sdram_ready) begin
+            sdram_ready <= 1'b1;
+            if (sdram_write) begin
+                mock_sdram[sdram_addr[16:1]] <= sdram_wdata;
+            end else begin
+                sdram_pipe      <= 2'd2;  // 2-cycle read latency
+                sdram_pipe_addr <= sdram_addr;
+            end
+        end
+
+        if (sdram_pipe > 0) begin
+            sdram_pipe <= sdram_pipe - 1;
+            if (sdram_pipe == 1) begin
+                sdram_rdata       <= mock_sdram[sdram_pipe_addr[16:1]];
+                sdram_rdata_valid <= 1'b1;
+            end
+        end
     end
+
+    // =========================================================================
+    // Bus cycle tasks
+    // =========================================================================
+    task bus_write(input [3:0] a, input [7:0] d);
+        begin
+            @(posedge clk_7m);
+            addr = a;
+            R_nW = 1'b0;
+            data_in = d;
+            @(posedge clk_7m);
+            nDEVICE_SELECT = 1'b0;
+            repeat(4) @(posedge clk_7m);
+            nDEVICE_SELECT = 1'b1;
+            repeat(2) @(posedge clk_7m);
+        end
     endtask
 
-    // Read from expansion ROM ($C800-$CFFF)
-    task bus_read_expansion(input [10:0] exp_addr, output [7:0] rdata);
-    begin
-        R_nW = 1;
-        data_drive_en = 0;
-        addr = {1'b1, exp_addr};
-        nI_O_STROBE = 0;
-        @(posedge clk_7m);
-        @(negedge clk_7m);
-        rdata = {D7, D6, D5, D4, D3, D2, D1, D0};
-        nI_O_STROBE = 1;
-        @(posedge clk_7m);
-    end
+    task bus_read(input [3:0] a, output [7:0] d);
+        begin
+            @(posedge clk_7m);
+            addr = a;
+            R_nW = 1'b1;
+            @(posedge clk_7m);
+            nDEVICE_SELECT = 1'b0;
+            repeat(3) @(posedge clk_7m);
+            d = data_out;
+            @(posedge clk_7m);
+            nDEVICE_SELECT = 1'b1;
+            repeat(2) @(posedge clk_7m);
+        end
+    endtask
+
+    task wait_ready;
+        reg [7:0] status;
+        integer timeout;
+        begin
+            timeout = 0;
+            status = 0;
+            while (!(status & 8'h80) && timeout < 5000) begin
+                bus_read(4'h0, status);
+                timeout = timeout + 1;
+            end
+            if (timeout >= 5000) begin
+                $display("  TIMEOUT waiting for ready!");
+                tests_failed = tests_failed + 1;
+                tests_run = tests_run + 1;
+            end
+        end
+    endtask
+
+    task check(input [255:0] name, input [7:0] actual, input [7:0] expected);
+        begin
+            tests_run = tests_run + 1;
+            if (actual === expected) begin
+                tests_passed = tests_passed + 1;
+            end else begin
+                tests_failed = tests_failed + 1;
+                $display("  FAIL: %0s = $%02X, expected $%02X", name, actual, expected);
+            end
+        end
     endtask
 
     // =========================================================================
-    // Main Test Sequence
+    // Test sequence
     // =========================================================================
-    reg [7:0] read_data;
-
     initial begin
         $dumpfile("iwm_hamr_tb.vcd");
         $dumpvars(0, iwm_hamr_tb);
 
-        // Initialize all signals
-        addr           = 12'h000;
-        Q3             = 0;
-        R_nW           = 1;
+        // Init
         nDEVICE_SELECT = 1;
-        nI_O_SELECT    = 1;
-        nI_O_STROBE    = 1;
-        RDY            = 1;
-        DMA_OUT        = 1;
-        INT_OUT        = 1;
-        PHI0           = 0;
-        PHI1           = 0;
-        uSync          = 0;
-        GPIO8          = 0;    // unused input (formerly sense)
-        GPIO9          = 0;    // unused input (formerly rddata)
-        data_drive     = 8'h00;
-        data_drive_en  = 0;
+        R_nW = 1;
+        addr = 0;
+        data_in = 0;
+        boot_done = 0;
+        sdram_ready = 0;
+        sdram_rdata = 0;
+        sdram_rdata_valid = 0;
+        sdram_pipe = 0;
 
-        $display("");
-        $display("==============================================");
-        $display("IWM Hamr Integration Testbench");
-        $display("==============================================");
+        // Pre-fill block 5 in mock SDRAM with known pattern
+        // Block 5 starts at byte address 5*512 = 2560, word address 1280
+        for (i = 0; i < 256; i = i + 1)
+            mock_sdram[1280 + i] = {i[7:0] ^ 8'hA5, i[7:0]};
+        // Byte layout: buf[0]=$00, buf[1]=$A5, buf[2]=$01, buf[3]=$A4, ...
 
-        // =====================================================================
-        // Test 1: POR Sequence
-        // =====================================================================
-        $display("\n--- Test 1: Power-On Reset ---");
+        // Release resets
+        repeat(8) @(posedge clk_25m);
+        rst_25_n = 1;
+        repeat(4) @(posedge clk_7m);
+        rst_7_n = 1;
+        repeat(4) @(posedge clk_7m);
 
-        // 7 MHz POR: 4-bit counter, 15 clocks to saturate (~2 us)
-        // 25 MHz POR: 8-bit counter, 255 clocks to saturate (~10 us)
-        // Wait enough for both to complete
-        repeat (80) @(posedge clk_7m);
+        // Signal boot done
+        boot_done = 1;
+        repeat(4) @(posedge clk_7m);
 
-        check("7 MHz POR released (por_n = 1)", dut.por_n === 1'b1);
-        check("25 MHz POR released (por_25_n = 1)", dut.por_25_n === 1'b1);
+        // =================================================================
+        // TEST: Full block READ — bus → arbiter → mock SDRAM → buffer → bus
+        // =================================================================
+        $display("\n--- Integration Test: READ block 5 ---");
 
-        // Verify control signals are correct after POR
-        check("nRES = 1 (not asserting reset)", nRES === 1'b1);
-        check("nIRQ = Z (tri-stated)", nIRQ === 1'bZ);
-        check("nNMI = Z (tri-stated)", nNMI === 1'bZ);
-        check("nDMA = Z (tri-stated)", nDMA === 1'bZ);
-        check("nINH = Z (tri-stated)", nINH === 1'bZ);
-        check("DMA daisy chain pass-through", DMA_IN === DMA_OUT);
-        check("INT daisy chain pass-through", INT_IN === INT_OUT);
+        bus_write(4'h2, 8'h05);  // BLOCK_LO = 5
+        bus_write(4'h3, 8'h00);  // BLOCK_HI = 0
+        bus_write(4'h0, 8'h01);  // COMMAND = READ
 
-        // =====================================================================
-        // Test 2: SDRAM Initialization
-        // =====================================================================
-        $display("\n--- Test 2: SDRAM Initialization ---");
+        wait_ready;
 
-        begin : test_sdram_init
-            integer timeout;
-            timeout = 0;
-            while (!dut.sdram_init_done && timeout < 300000) begin
-                @(posedge clk_25m);
-                timeout = timeout + 1;
-            end
-            check("SDRAM init_done asserted", dut.sdram_init_done === 1'b1);
-            if (dut.sdram_init_done)
-                $display("    init_done after %0d clocks at 25 MHz (~%0d us)",
-                         timeout, timeout / 25);
+        // Read all 512 bytes and verify
+        for (i = 0; i < 512; i = i + 1) begin
+            bus_read(4'h1, rd);
+            if (i[0] == 0)
+                check("read_lo", rd, i[8:1]);
             else
-                $display("    TIMEOUT: init_done never asserted after %0d clocks", timeout);
+                check("read_hi", rd, i[8:1] ^ 8'hA5);
         end
 
-        // =====================================================================
-        // Test 3: Boot bypass (boot path tested by unit TBs)
-        // =====================================================================
-        $display("\n--- Test 3: Boot Bypass ---");
+        $display("  READ block 5: %0d/%0d bytes correct",
+                 tests_passed, tests_run);
 
-        // The full boot (143KB SPI -> SDRAM) takes millions of sim clocks.
-        // boot_loader_tb, flash_reader_tb, and sdram_controller_tb already
-        // cover the boot path. Force boot_done to exercise post-boot state.
-        force dut.boot_done = 1'b1;
-        repeat (10) @(posedge clk_25m);
-        check("boot_done forced HIGH", dut.boot_done === 1'b1);
-        $display("    boot_done forced — skipping SPI flash copy");
+        // =================================================================
+        // TEST: Full block WRITE — bus → buffer → arbiter → mock SDRAM
+        // =================================================================
+        $display("\n--- Integration Test: WRITE block 10 ---");
 
-        // =====================================================================
-        // Test 4: Device Present (sense HIGH after boot)
-        // =====================================================================
-        $display("\n--- Test 4: Device Present ---");
+        bus_write(4'h2, 8'h0A);  // BLOCK_LO = 10
+        bus_write(4'h3, 8'h00);  // BLOCK_HI = 0
 
-        // After boot_done, sp_device should drive sense HIGH in IDLE state.
-        // Wait a few 7 MHz cycles for the signal to propagate.
-        repeat (20) @(posedge clk_7m);
+        // Fill buffer with pattern: byte[n] = n ^ $55 (addr 5 = DATA_WRITE)
+        for (i = 0; i < 512; i = i + 1)
+            bus_write(4'h5, i[7:0] ^ 8'h55);
 
-        check("sp_device sense = HIGH (device present)",
-              dut.u_sp_device.sense === 1'b1);
-        check("GPIO1 = boot_done (HIGH)", GPIO1 === 1'b1);
-        check("GPIO2 = sense mirror (HIGH)", GPIO2 === 1'b1);
+        bus_write(4'h0, 8'h02);  // COMMAND = WRITE
 
-        // Verify sp_device is in IDLE state
-        check("sp_device in IDLE state", dut.u_sp_device.state === 5'd0);
+        wait_ready;
 
-        // =====================================================================
-        // Test 5: ROM Still Works (Apple II bus functional)
-        // =====================================================================
-        $display("\n--- Test 5: ROM Reads ---");
+        // Verify mock SDRAM — block 10 at word address 10*256 = 2560
+        // Each SDRAM word = {hi_byte, lo_byte}
+        begin : verify_write
+            integer errs;
+            reg [15:0] expected_word;
+            errs = 0;
+            for (i = 0; i < 256; i = i + 1) begin
+                expected_word[7:0]  = (i*2)   ^ 8'h55;
+                expected_word[15:8] = (i*2+1) ^ 8'h55;
 
-        // Read slot 4 ROM byte at $C400 (first byte of boot code)
-        bus_read_slot4(8'h00, read_data);
-        check("ROM slot 4 byte 0 is non-zero", read_data !== 8'h00);
-        $display("    ROM[$C400] = $%02X", read_data);
+                // Note: block 10 at word offset = 10*256 = 2560
+                tests_run = tests_run + 1;
+                if (mock_sdram[2560 + i] === expected_word) begin
+                    tests_passed = tests_passed + 1;
+                end else begin
+                    tests_failed = tests_failed + 1;
+                    if (errs < 5)
+                        $display("  FAIL: sdram[%0d] = $%04X, expected $%04X",
+                                 2560+i, mock_sdram[2560+i], expected_word);
+                    errs = errs + 1;
+                end
+            end
+            $display("  WRITE block 10: %0d errors", errs);
+        end
 
-        // Read a few more bytes to confirm ROM access is stable
-        bus_read_slot4(8'h05, read_data);
-        $display("    ROM[$C405] = $%02X", read_data);
-        check("ROM slot 4 byte 5 readable", 1'b1);
+        // =================================================================
+        // TEST: READ block 5 again AFTER writing block 10
+        // Verifies WRITE didn't corrupt unrelated blocks
+        // =================================================================
+        $display("\n--- Integration Test: RE-READ block 5 after WRITE ---");
 
-        // Read expansion ROM (should be active after slot 4 access)
-        bus_read_expansion(11'h000, read_data);
-        $display("    ROM[$C800] = $%02X", read_data);
-        check("Expansion ROM byte readable", 1'b1);
+        bus_write(4'h2, 8'h05);  // BLOCK_LO = 5
+        bus_write(4'h3, 8'h00);  // BLOCK_HI = 0
+        bus_write(4'h0, 8'h01);  // COMMAND = READ
 
-        // Verify level shifter OE is inactive when no device access
-        nDEVICE_SELECT = 1;
-        nI_O_SELECT    = 1;
-        nI_O_STROBE    = 1;
-        @(posedge clk_7m);
-        @(posedge clk_7m);
-        check("Level shifter OE inactive when idle (GPIO12=1)",
-              GPIO12 === 1'b1);
+        wait_ready;
 
-        // =====================================================================
+        begin : verify_reread
+            integer errs;
+            errs = 0;
+            for (i = 0; i < 512; i = i + 1) begin
+                bus_read(4'h1, rd);
+                tests_run = tests_run + 1;
+                if (i[0] == 0) begin
+                    if (rd === i[8:1]) tests_passed = tests_passed + 1;
+                    else begin tests_failed = tests_failed + 1; errs = errs + 1;
+                        if (errs < 5) $display("  FAIL: byte %0d = $%02X, expected $%02X", i, rd, i[8:1]);
+                    end
+                end else begin
+                    if (rd === (i[8:1] ^ 8'hA5)) tests_passed = tests_passed + 1;
+                    else begin tests_failed = tests_failed + 1; errs = errs + 1;
+                        if (errs < 5) $display("  FAIL: byte %0d = $%02X, expected $%02X", i, rd, i[8:1] ^ 8'hA5);
+                    end
+                end
+            end
+            $display("  RE-READ block 5: %0d errors", errs);
+        end
+
+        // =================================================================
+        // TEST: READ back block 10 (the one we wrote)
+        // =================================================================
+        $display("\n--- Integration Test: READ back written block 10 ---");
+
+        bus_write(4'h2, 8'h0A);
+        bus_write(4'h3, 8'h00);
+        bus_write(4'h0, 8'h01);  // READ
+
+        wait_ready;
+
+        begin : verify_readback
+            integer errs;
+            errs = 0;
+            for (i = 0; i < 512; i = i + 1) begin
+                bus_read(4'h1, rd);
+                tests_run = tests_run + 1;
+                if (rd === ((i[7:0]) ^ 8'h55)) begin
+                    tests_passed = tests_passed + 1;
+                end else begin
+                    tests_failed = tests_failed + 1; errs = errs + 1;
+                    if (errs < 5)
+                        $display("  FAIL: byte %0d = $%02X, expected $%02X", i, rd, i[7:0] ^ 8'h55);
+                end
+            end
+            $display("  READ-BACK block 10: %0d errors", errs);
+        end
+
+        // =================================================================
         // Summary
-        // =====================================================================
-        $display("");
-        $display("==============================================");
-        $display("IWM Hamr Integration Testbench Results:");
-        $display("  %0d tests passed, %0d failed", pass_count, fail_count);
-        $display("==============================================");
+        // =================================================================
+        $display("\n========================================");
+        $display("  Tests: %0d  Passed: %0d  Failed: %0d",
+                 tests_run, tests_passed, tests_failed);
+        $display("========================================\n");
 
-        if (fail_count > 0)
-            $display("RESULT: FAIL");
+        if (tests_failed > 0)
+            $display("*** SOME TESTS FAILED ***");
         else
-            $display("RESULT: PASS");
+            $display("*** ALL TESTS PASSED ***");
 
-        $display("");
-        #1000;
         $finish;
     end
 
-    // =========================================================================
-    // Watchdog timer — abort if simulation hangs
-    // =========================================================================
+    // Timeout watchdog
     initial begin
-        #500000000;  // 500 ms simulation time
-        $display("WATCHDOG: Simulation timeout reached, aborting");
-        $display("  %0d tests passed, %0d failed (incomplete)", pass_count, fail_count);
-        $display("RESULT: FAIL (timeout)");
+        #200_000_000;
+        $display("WATCHDOG TIMEOUT");
         $finish;
     end
 
