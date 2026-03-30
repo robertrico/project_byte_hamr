@@ -88,6 +88,7 @@ module block_hamr_top (
     wire [7:0] bus_data_out;
     wire       boot_done;
     wire       sdram_init_done;
+    wire [15:0] total_blocks;
 
     // =========================================================================
     // Power-On Reset (7 MHz domain)
@@ -208,6 +209,7 @@ module block_hamr_top (
         .nDEVICE_SELECT   (nDEVICE_SELECT),
         .R_nW             (R_nW),
         .boot_done        (boot_done),
+        .total_blocks     (total_blocks),
         .buf_addr         (buf_addr_b),
         .buf_rdata        (buf_rdata_b),
         .buf_wdata        (buf_wdata_b),
@@ -416,6 +418,7 @@ module block_hamr_top (
         .rst_n           (por_25_n),
         .sdram_init_done (sdram_init_done),
         .boot_done       (boot_done),
+        .total_blocks    (total_blocks),
         .flash_start     (flash_start),
         .flash_addr      (flash_start_addr),
         .flash_count     (flash_byte_count),

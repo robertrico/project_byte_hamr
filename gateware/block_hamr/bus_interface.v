@@ -40,6 +40,7 @@ module bus_interface (
 
     // System
     input  wire        boot_done,
+    input  wire [15:0] total_blocks,       // auto-detected volume size from boot_loader
 
     // Block buffer Port B (7 MHz side) — BRAM with 1-cycle read latency
     output reg  [8:0]  buf_addr,
@@ -158,6 +159,8 @@ module bus_interface (
             4'h1: data_out = prefetch;
             4'h2: data_out = block_num[7:0];
             4'h3: data_out = block_num[15:8];
+            4'h6: data_out = total_blocks[7:0];
+            4'h7: data_out = total_blocks[15:8];
             default: data_out = 8'h00;
         endcase
     end

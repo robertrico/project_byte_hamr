@@ -28,6 +28,8 @@ REG_DATA   = 0xC081  # +X: DATA read (auto-increment)
 REG_DATA_WR= 0xC085  # +X: DATA write (separate to avoid STA dummy-read bug)
 REG_BLK_LO = 0xC082  # +X: block number lo
 REG_BLK_HI = 0xC083  # +X: block number hi
+REG_BLKCNT_LO = 0xC086  # +X: total blocks lo (read-only, from boot_loader)
+REG_BLKCNT_HI = 0xC087  # +X: total blocks hi (read-only, from boot_loader)
 
 # Error codes / commands
 ERR_NONE    = 0x00
@@ -36,8 +38,6 @@ ERR_IO      = 0x27
 ERR_NO_DEV  = 0x28
 CMD_READ    = 0x01
 CMD_WRITE   = 0x02
-BLK_CNT_LO  = 0x00  # 16384 blocks (8MB)
-BLK_CNT_HI  = 0x40
 
 # =========================================================================
 # Simple assembler (label-resolving, single-pass with fixups)
@@ -108,6 +108,7 @@ class Asm:
     def INY(self): self._emit(0xC8)
     def DEY(self): self._emit(0x88)
     def TAX(self): self._emit(0xAA)
+    def TAY(self): self._emit(0xA8)
     def NOP(self): self._emit(0xEA)
     def PHA(self): self._emit(0x48)
     def PLA(self): self._emit(0x68)
@@ -167,7 +168,7 @@ a.JMP(0x0801)            # execute boot block
 
 # ---- ProDOS Driver ----
 a.label('driver')
-a.LDA_abs(0xCFFF)        # Release $C800 ownership (Apple II bus latch)
+# No LDA $CFFF needed — we don't use $C800 shared ROM
 a.LDA_zp(Command)
 a.BEQ('cmd_status')
 a.CMP_imm(CMD_READ)
@@ -178,10 +179,12 @@ a.SEC()
 a.LDA_imm(ERR_BAD_CMD)
 a.RTS()
 
-# ---- STATUS ----
+# ---- STATUS — read block count from FPGA registers ----
 a.label('cmd_status')
-a.LDX_imm(BLK_CNT_LO)
-a.LDY_imm(BLK_CNT_HI)
+a.LDA_abx(REG_BLKCNT_HI)   # A = total blocks hi
+a.TAY()                      # Y = hi
+a.LDA_abx(REG_BLKCNT_LO)   # A = total blocks lo (X still has slot offset)
+a.TAX()                      # X = lo
 a.LDA_imm(ERR_NONE)
 a.CLC()
 a.RTS()
