@@ -139,7 +139,7 @@ a.org(0xC400)
 a.CPX_imm(0x20)       # $Cn01 = $20 (ProDOS block device)
 a.CPX_imm(0x00)       # $Cn03 = $00
 a.CPX_imm(0x03)       # $Cn05 = $03
-a.CPX_imm(0x3C)       # $Cn07 = $3C (Autostart ROM, NOT $00 = not SmartPort)
+a.CPX_imm(0x3C)       # $Cn07 = $3C (Autostart ROM)
 
 # ---- Boot entry ($Cn08) ----
 a.LDA_imm(SLOT * 0x10)
@@ -315,8 +315,8 @@ print(f"Labels:")
 for name, addr in sorted(a.labels.items(), key=lambda x: x[1]):
     print(f"  {name:20s} = ${addr:04X}")
 print(f"\n$CnFE = $17, $CnFF = ${a.labels['driver_entry'] & 0xFF:02X}")
-print(f"Output: liron_rom.mem")
+print(f"Output: hamr_rom.mem")
 
-with open("liron_rom.mem", "w") as f:
+with open("hamr_rom.mem", "w") as f:
     for i in range(4096):
         f.write(f"{rom[i]:02X}\n")

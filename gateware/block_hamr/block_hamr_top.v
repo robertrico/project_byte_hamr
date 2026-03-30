@@ -8,7 +8,6 @@
 //   - 6502 reads/writes blocks through DATA register, no SmartPort protocol
 //   - SDRAM stores disk image, loaded from SPI flash at boot
 //
-// Future: IWM re-added for external SmartPort devices on DB-19
 //
 // Clock domains:
 //   sig_7M   (7.16 MHz) - Apple II bus, bus_interface
@@ -188,7 +187,7 @@ module block_hamr_top (
     );
 
     // =========================================================================
-    // Bus Interface — register file replacing SmartPort protocol
+    // Bus Interface — register file for block device commands
     // =========================================================================
     wire [8:0]  buf_addr_b;
     wire [7:0]  buf_rdata_b;

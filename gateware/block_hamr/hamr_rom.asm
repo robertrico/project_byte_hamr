@@ -1,8 +1,7 @@
 ; =============================================================================
 ; hamr_rom.asm — Byte Hamr ProDOS/SmartPort block device ROM
 ; =============================================================================
-; Replaces the Liron ROM. Talks to FPGA register file instead of
-; bit-banging SmartPort protocol through IWM.
+; Talks to FPGA register file for block reads/writes.
 ;
 ; Register interface ($C0n0 + slot*16):
 ;   REG_CMD   ($C080,X): Read = STATUS, Write = COMMAND
@@ -22,7 +21,7 @@
 
 	cpu	65c02
 
-; ---- Zero page temporaries (safe range $40-$5B, same as Liron) ----
+; ---- Zero page temporaries (safe range $40-$5B) ----
 slot		equ	$58	; slot number (1-7)
 buf_ptr		equ	$44	; ProDOS buffer pointer (lo/hi)
 buf_ptr_h	equ	$45

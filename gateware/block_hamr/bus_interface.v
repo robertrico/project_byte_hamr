@@ -2,9 +2,8 @@
 // =============================================================================
 // bus_interface.v — Apple II bus register interface for block device
 // =============================================================================
-// Replaces the SmartPort protocol stack with a simple register file.
-// The 6502 slot ROM reads/writes these registers directly — no IWM,
-// no FM encoding, no SmartPort packets.
+// Simple register file for 6502 block device access.
+// The slot ROM reads/writes these registers directly.
 //
 // Register Map ($C0n0 - $C0nF, via addr[3:0]):
 //   0: STATUS (R) / COMMAND (W)
@@ -120,7 +119,7 @@ module bus_interface (
     // sample it. Instead, use posedge nDEVICE_SELECT — the exact bus cycle
     // end — as the capture clock. The latched values are rock-stable by the
     // time nds_rise fires 2 clk cycles later in the 7MHz domain.
-    // This matches how real Apple II peripherals work (AppleIISd, IWM).
+    // This matches how real Apple II peripherals work (e.g. AppleIISd).
     reg [7:0] wr_data_latch;
     reg [3:0] wr_addr_latch;
     reg       wr_rw_latch;

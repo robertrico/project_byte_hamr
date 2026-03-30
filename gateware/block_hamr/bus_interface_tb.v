@@ -2,7 +2,7 @@
 // =============================================================================
 // bus_interface_tb.v — TDD testbench for the Apple II bus register interface
 // =============================================================================
-// Tests the register file that replaces the SmartPort protocol stack.
+// Tests the block device register file.
 // Red/Green: write tests first, then make them pass.
 //
 // Register Map ($C0n0 - $C0nF):

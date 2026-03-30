@@ -9,7 +9,7 @@
 // This module manages the expansion ROM active flag and ROM output enable.
 //
 // Memory Map (Slot 4):
-//   $C0C0-$C0CF  nDEVICE_SELECT  IWM registers
+//   $C0C0-$C0CF  nDEVICE_SELECT  device registers
 //   $C400-$C4FF  nI_O_SELECT     Boot ROM ($000-$0FF)
 //   $C800-$CFFF  nI_O_STROBE     Boot ROM ($100-$7FF) when expansion active
 //

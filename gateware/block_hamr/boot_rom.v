@@ -2,13 +2,13 @@
 // =============================================================================
 // Boot ROM Module for Yellow Hamr
 // =============================================================================
-// 4KB Liron ROM wrapper using LUT logic (combinatorial read)
+// 4KB boot ROM wrapper using LUT logic (combinatorial read)
 //
-// The ROM contains the Liron disk controller firmware and is accessed via:
+// The ROM contains the Byte Hamr block device firmware and is accessed via:
 //   - $C400-$C4FF (nI_O_SELECT) -> ROM $000-$0FF
 //   - $C800-$CFFF (nI_O_STROBE) -> ROM $100-$7FF (when expansion active)
 //
-// The ROM data is loaded from liron_rom.mem at synthesis time.
+// The ROM data is loaded from hamr_rom.mem at synthesis time.
 //
 // COMBINATORIAL READ — no clock dependency.
 // The previous registered-BRAM approach sampled addr on posedge sig_7M,
@@ -34,7 +34,7 @@ module boot_rom (
 
     // Load ROM contents at synthesis/simulation
     initial begin
-        $readmemh("liron_rom.mem", rom);
+        $readmemh("hamr_rom.mem", rom);
     end
 
     // Combinatorial read — data valid immediately when addr settles
