@@ -36,8 +36,8 @@ ERR_IO      = 0x27
 ERR_NO_DEV  = 0x28
 CMD_READ    = 0x01
 CMD_WRITE   = 0x02
-BLK_CNT_LO  = 0x18  # 280 blocks
-BLK_CNT_HI  = 0x01
+BLK_CNT_LO  = 0x00  # 16384 blocks (8MB)
+BLK_CNT_HI  = 0x40
 
 # =========================================================================
 # Simple assembler (label-resolving, single-pass with fixups)

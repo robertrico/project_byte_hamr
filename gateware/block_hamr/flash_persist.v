@@ -15,7 +15,7 @@ module flash_persist (
 
     // Command interface
     input  wire        start,          // pulse: begin erase+program
-    input  wire [5:0]  sector_num,     // which sector (0-34, 6 bits for 280-block disk)
+    input  wire [11:0] sector_num,     // which sector (up to 4095 for 32MB volume)
     output reg         busy = 1'b0,
 
     // SDRAM read interface
@@ -55,16 +55,16 @@ module flash_persist (
         FP_DONE         = 4'd9;
 
     reg [3:0]   state = FP_IDLE;
-    reg [5:0]   sector = 6'd0;
+    reg [11:0]  sector = 12'd0;
     reg [15:0]  rd_data_latch = 16'd0;
     reg [4:0]   page = 5'd0;
     reg [7:0]   word = 8'd0;
     reg         feed_hi = 1'b0;
 
     // Address computation
-    wire [23:0] sector_flash_addr = FLASH_OFFSET + {6'd0, sector, 12'd0};
-    wire [23:0] page_flash_addr   = FLASH_OFFSET + {6'd0, sector, page[3:0], 8'd0};
-    wire [25:0] sdram_word_addr   = {8'd0, sector, page[3:0], word[6:0], 1'b0};
+    wire [23:0] sector_flash_addr = FLASH_OFFSET + {sector, 12'd0};
+    wire [23:0] page_flash_addr   = FLASH_OFFSET + {sector, page[3:0], 8'd0};
+    wire [25:0] sdram_word_addr   = {2'd0, sector, page[3:0], word[6:0], 1'b0};
 
     // Data streaming
     assign fw_prog_data       = feed_hi ? rd_data_latch[15:8] : rd_data_latch[7:0];
@@ -76,7 +76,7 @@ module flash_persist (
             state          <= FP_IDLE;
             busy           <= 1'b0;
             sdram_claim    <= 1'b0;
-            sector         <= 6'd0;
+            sector         <= 12'd0;
             rd_data_latch  <= 16'd0;
             page           <= 5'd0;
             word           <= 8'd0;
@@ -99,7 +99,7 @@ module flash_persist (
                         busy           <= 1'b1;
                         sdram_claim    <= 1'b1;
                         sector         <= sector_num;
-                        fw_flash_addr  <= FLASH_OFFSET + {6'd0, sector_num, 12'd0};
+                        fw_flash_addr  <= FLASH_OFFSET + {sector_num, 12'd0};
                         fw_start_erase <= 1'b1;
                         state          <= FP_ERASE;
                     end

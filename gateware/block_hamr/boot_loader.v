@@ -6,7 +6,7 @@
 
 module boot_loader #(
     parameter FLASH_OFFSET = 24'h400000,   // 4MB offset in flash (after bitstream)
-    parameter IMAGE_SIZE   = 24'h023000    // 143,360 bytes = 140KB ProDOS .po
+    parameter IMAGE_SIZE   = 24'h800000    // 8,388,608 bytes = 8MB ProDOS volume
 )(
     input  wire        clk,            // 25 MHz
     input  wire        rst_n,

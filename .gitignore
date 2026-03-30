@@ -73,3 +73,4 @@ __pycache__/
 /reporting/*.log
 # Logic Analyzer Captures
 *.dsl
+.claude/worktrees/

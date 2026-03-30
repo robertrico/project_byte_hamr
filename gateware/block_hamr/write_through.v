@@ -24,7 +24,7 @@ module write_through (
 
     // Flash persist interface
     output reg         fp_start = 1'b0,
-    output reg  [5:0]  fp_sector = 6'd0,
+    output reg  [11:0] fp_sector = 12'd0,
     input  wire        fp_busy
 );
 
@@ -55,7 +55,7 @@ module write_through (
         if (!rst_n) begin
             holding   <= 1'b0;
             fp_start  <= 1'b0;
-            fp_sector <= 6'd0;
+            fp_sector <= 12'd0;
         end else begin
             fp_start <= 1'b0;  // default: single-cycle pulse
 
@@ -63,7 +63,7 @@ module write_through (
                 holding   <= 1'b1;
                 `ifndef TIMER_ONLY
                 fp_start  <= 1'b1;
-                fp_sector <= dev_block_num[8:3];
+                fp_sector <= dev_block_num[14:3];
                 `endif
             end
 

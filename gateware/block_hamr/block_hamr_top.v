@@ -464,7 +464,7 @@ module block_hamr_top (
     // Write-Through — gating only (separate module from flash ops)
     // =========================================================================
     wire        fp_start;
-    wire [5:0]  fp_sector;
+    wire [11:0] fp_sector;
     wire        fp_busy;
 
     write_through u_write_through (
