@@ -1,5 +1,5 @@
 // =============================================================================
-// SDRAM Controller for IWM Hamr
+// SDRAM Controller for Block Hamr
 // =============================================================================
 //
 // Provides a simple SRAM-like interface to the SDRAM, abstracting all timing

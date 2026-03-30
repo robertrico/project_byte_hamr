@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// IWM Hamr — Top Level Module (v2: Register-based block device)
+// Block Hamr — Top Level Module (register-based block device)
 // =============================================================================
 // Architecture:
 //   - Custom slot ROM serves ProDOS block device driver
@@ -21,7 +21,7 @@
 //   4. bus_interface becomes ready (STATUS bit 7 + bit 0)
 // =============================================================================
 
-module iwm_hamr_top (
+module block_hamr_top (
     // ---- Apple II Bus ----
     input wire [11:0] addr,
     inout wire        D0, D1, D2, D3, D4, D5, D6, D7,
@@ -147,9 +147,9 @@ module iwm_hamr_top (
     // GPIO Debug — minimal for now
     // =========================================================================
     assign GPIO1  = boot_done;
-    assign GPIO2  = 1'b0;
-    assign GPIO3  = 1'b0;
-    assign GPIO4  = 1'b0;
+    assign GPIO2  = wt_claim;
+    assign GPIO3  = fw_busy;
+    assign GPIO4  = dev_block_ready;
     assign GPIO5  = 1'b0;
     assign GPIO6  = 1'b0;
     assign GPIO7  = 1'b0;
@@ -197,7 +197,8 @@ module iwm_hamr_top (
     wire        dev_block_read_req;
     wire        dev_block_write_req;
     wire [15:0] dev_block_num;
-    wire        dev_block_ready;
+    wire        arb_block_ready;    // raw from arbiter
+    wire        dev_block_ready;    // gated by write_through
 
     bus_interface u_bus_interface (
         .clk              (sig_7M),
@@ -215,7 +216,8 @@ module iwm_hamr_top (
         .block_read_req   (dev_block_read_req),
         .block_write_req  (dev_block_write_req),
         .block_num        (dev_block_num),
-        .block_ready      (dev_block_ready)
+        .block_ready      (dev_block_ready),
+        .block_num_out    ()   // used via dev_block_num wire
     );
 
     // =========================================================================
@@ -263,7 +265,7 @@ module iwm_hamr_top (
     assign SDRAM_A12 = sdram_a[12];
 
     // =========================================================================
-    // SDRAM Controller (25 MHz)
+    // SDRAM Controller (25 MHz) + persist SDRAM mux
     // =========================================================================
     wire        arb_sdram_req;
     wire        arb_sdram_write;
@@ -273,15 +275,26 @@ module iwm_hamr_top (
     wire [15:0] sdram_req_rdata;
     wire        sdram_req_rdata_valid;
 
+    // SDRAM mux: wt_claim switches SDRAM from arbiter to write_through
+    wire        wt_sdram_req;
+    wire [25:0] wt_sdram_addr;
+    wire [15:0] wt_sdram_wdata;
+    wire        wt_claim;
+
+    wire        mux_sdram_req   = wt_claim ? wt_sdram_req   : arb_sdram_req;
+    wire        mux_sdram_write = wt_claim ? 1'b0           : arb_sdram_write;
+    wire [25:0] mux_sdram_addr  = wt_claim ? wt_sdram_addr  : arb_sdram_addr;
+    wire [15:0] mux_sdram_wdata = wt_claim ? wt_sdram_wdata : arb_sdram_wdata;
+
     sdram_controller u_sdram_controller (
         .clk            (CLK_25MHz),
         .rst_n          (por_25_n),
         .init_done      (sdram_init_done),
         .pause_refresh  (1'b0),
-        .req            (arb_sdram_req),
-        .req_write      (arb_sdram_write),
-        .req_addr       (arb_sdram_addr),
-        .req_wdata      (arb_sdram_wdata),
+        .req            (mux_sdram_req),
+        .req_write      (mux_sdram_write),
+        .req_addr       (mux_sdram_addr),
+        .req_wdata      (mux_sdram_wdata),
         .req_ready      (sdram_req_ready),
         .req_rdata      (sdram_req_rdata),
         .req_rdata_valid(sdram_req_rdata_valid),
@@ -300,8 +313,12 @@ module iwm_hamr_top (
     );
 
     // =========================================================================
-    // SPI Flash Reader (25 MHz)
+    // SPI Flash — shared bus (USRMCLK is singleton on ECP5)
     // =========================================================================
+    // Reader owns SPI during boot. Writer owns SPI after boot_done.
+    // They never overlap, so a simple boot_done mux is safe.
+
+    // ---- Flash reader signals ----
     wire        flash_busy;
     wire        flash_done;
     wire [7:0]  flash_data_out;
@@ -310,8 +327,36 @@ module iwm_hamr_top (
     wire        flash_start;
     wire [23:0] flash_start_addr;
     wire [23:0] flash_byte_count;
-    wire        flash_sck_pin;
+    wire        reader_sck;
+    wire        reader_ncs;
+    wire        reader_mosi;
 
+    // ---- Flash writer signals (active after boot_done) ----
+    wire        writer_sck;
+    wire        writer_ncs;
+    wire        writer_mosi;
+
+    // ---- SPI bus mux: reader during boot, writer after ----
+    wire spi_sck  = boot_done ? writer_sck  : reader_sck;
+    wire spi_ncs  = boot_done ? writer_ncs  : reader_ncs;
+    wire spi_mosi = boot_done ? writer_mosi : reader_mosi;
+
+    assign FLASH_nCS  = spi_ncs;
+    assign FLASH_MOSI = spi_mosi;
+    assign FLASH_nWP   = 1'b1;
+    assign FLASH_nHOLD = 1'b1;
+
+    // ---- USRMCLK: ECP5 singleton for post-config SPI clock ----
+    `ifndef SYNTHESIS
+        // Simulation: spi_sck visible as a wire (no USRMCLK primitive)
+    `else
+        USRMCLK u_usrmclk (
+            .USRMCLKI (spi_sck),
+            .USRMCLKTS(1'b0)
+        );
+    `endif
+
+    // ---- Flash reader (active during boot) ----
     flash_reader u_flash_reader (
         .clk            (CLK_25MHz),
         .rst_n          (por_25_n),
@@ -323,12 +368,39 @@ module iwm_hamr_top (
         .data_out       (flash_data_out),
         .data_valid     (flash_data_valid),
         .data_ready     (flash_data_ready),
-        .flash_ncs      (FLASH_nCS),
-        .flash_mosi     (FLASH_MOSI),
+        .flash_ncs      (reader_ncs),
+        .flash_mosi     (reader_mosi),
         .flash_miso     (FLASH_MISO),
-        .flash_nwp      (FLASH_nWP),
-        .flash_nhold    (FLASH_nHOLD),
-        .flash_sck_pin  (flash_sck_pin)
+        .flash_nwp      (),             // driven at top level
+        .flash_nhold    (),             // driven at top level
+        .flash_sck_pin  (reader_sck)
+    );
+
+    // ---- Flash writer (active after boot_done for background persist) ----
+    wire        fw_start_erase;
+    wire        fw_start_program;
+    wire [23:0] fw_flash_addr;
+    wire [7:0]  fw_prog_data;
+    wire        fw_prog_data_valid;
+    wire        fw_prog_data_req;
+    wire        fw_busy;
+    wire        fw_done;
+
+    flash_writer u_flash_writer (
+        .clk            (CLK_25MHz),
+        .rst_n          (por_25_n),
+        .start_erase    (fw_start_erase),
+        .start_program  (fw_start_program),
+        .flash_addr     (fw_flash_addr),
+        .prog_data      (fw_prog_data),
+        .prog_data_valid(fw_prog_data_valid),
+        .prog_data_req  (fw_prog_data_req),
+        .busy           (fw_busy),
+        .done           (fw_done),
+        .spi_sck        (writer_sck),
+        .spi_ncs        (writer_ncs),
+        .spi_mosi       (writer_mosi),
+        .spi_miso       (FLASH_MISO)
     );
 
     // =========================================================================
@@ -375,7 +447,7 @@ module iwm_hamr_top (
         .dev_block_read_req (dev_block_read_req),
         .dev_block_write_req(dev_block_write_req),
         .dev_block_num      (dev_block_num),
-        .dev_block_ready    (dev_block_ready),
+        .dev_block_ready    (arb_block_ready),
         .buf_addr_a         (buf_addr_a),
         .buf_wdata_a        (buf_wdata_a),
         .buf_we_a           (buf_we_a),
@@ -387,6 +459,51 @@ module iwm_hamr_top (
         .sdram_ready        (sdram_req_ready),
         .sdram_rdata        (sdram_req_rdata),
         .sdram_rdata_valid  (sdram_req_rdata_valid)
+    );
+
+    // =========================================================================
+    // Write-Through — gating only (separate module from flash ops)
+    // =========================================================================
+    wire        fp_start;
+    wire [5:0]  fp_sector;
+    wire        fp_busy;
+
+    write_through u_write_through (
+        .clk              (CLK_25MHz),
+        .rst_n            (por_25_n),
+        .boot_done        (boot_done),
+        .arb_block_ready  (arb_block_ready),
+        .gated_block_ready(dev_block_ready),
+        .dev_block_write_req(dev_block_write_req),
+        .dev_block_num    (dev_block_num),
+        .fp_start         (fp_start),
+        .fp_sector        (fp_sector),
+        .fp_busy          (fp_busy)
+    );
+
+    // =========================================================================
+    // Flash Persist — flash erase+program in separate module
+    // =========================================================================
+    flash_persist u_flash_persist (
+        .clk              (CLK_25MHz),
+        .rst_n            (por_25_n),
+        .start            (fp_start),
+        .sector_num       (fp_sector),
+        .busy             (fp_busy),
+        .sdram_req        (wt_sdram_req),
+        .sdram_addr       (wt_sdram_addr),
+        .sdram_wdata      (wt_sdram_wdata),
+        .sdram_ready      (wt_claim & sdram_req_ready),
+        .sdram_rdata      (sdram_req_rdata),
+        .sdram_rdata_valid(wt_claim & sdram_req_rdata_valid),
+        .fw_start_erase   (fw_start_erase),
+        .fw_start_program (fw_start_program),
+        .fw_flash_addr    (fw_flash_addr),
+        .fw_prog_data     (fw_prog_data),
+        .fw_prog_data_valid(fw_prog_data_valid),
+        .fw_prog_data_req (fw_prog_data_req),
+        .fw_busy          (fw_busy),
+        .sdram_claim      (wt_claim)
     );
 
 endmodule

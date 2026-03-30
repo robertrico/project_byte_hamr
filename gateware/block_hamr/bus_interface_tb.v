@@ -46,6 +46,10 @@ module bus_interface_tb;
     integer tests_passed = 0;
     integer tests_failed = 0;
 
+    // Dirty tracking
+    wire [279:0] dirty_bitmap;
+    wire         has_dirty;
+
     // ---- DUT ----
     bus_interface dut (
         .clk              (clk),
@@ -63,7 +67,11 @@ module bus_interface_tb;
         .block_read_req   (block_read_req),
         .block_write_req  (block_write_req),
         .block_num        (block_num),
-        .block_ready      (block_ready)
+        .block_ready      (block_ready),
+        .dirty_bitmap     (dirty_bitmap),
+        .has_dirty        (has_dirty),
+        .dirty_clear_sector(5'd0),
+        .dirty_clear_en   (1'b0)
     );
 
     // ---- Simple block buffer model (512 bytes, sync read like BRAM) ----

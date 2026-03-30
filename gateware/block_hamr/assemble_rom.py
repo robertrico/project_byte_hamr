@@ -109,6 +109,9 @@ class Asm:
     def DEY(self): self._emit(0x88)
     def TAX(self): self._emit(0xAA)
     def NOP(self): self._emit(0xEA)
+    def PHA(self): self._emit(0x48)
+    def PLA(self): self._emit(0x68)
+    def SBC_imm(self, v): self._emit(0xE9, v)
 
     def resolve(self):
         for code_off, branch_pc, lbl, is_rel in self.fixups:
@@ -191,7 +194,7 @@ a.LDA_zp(BlockHi)
 a.STA_abx(REG_BLK_HI)
 a.LDA_imm(CMD_READ)
 a.STA_abx(REG_CMD)
-a.JSR('wait_ready')
+a.JSR('wait_short')
 a.BCS('read_err')
 a.LDY_imm(0x00)
 a.label('read_p1')
@@ -234,7 +237,7 @@ a.DEC_zp(BufferHi)
 # Issue WRITE command — triggers BRAM→SDRAM transfer in arbiter
 a.LDA_imm(CMD_WRITE)
 a.STA_abx(REG_CMD)
-a.JSR('wait_ready')
+a.JSR('wait_long')
 a.BCS('write_err')
 a.LDA_imm(ERR_NONE)
 a.CLC()
@@ -250,19 +253,46 @@ a.INY()
 a.BNE('write_p2')
 a.RTS()
 
-# ---- wait_ready: poll STATUS until ready or timeout ----
-a.label('wait_ready')
+# ---- wait_short: poll STATUS, short timeout (~2.8ms) — for reads ----
+a.label('wait_short')
 a.LDY_imm(0x00)
-a.label('wr_outer')
+a.label('ws_loop')
 a.LDA_abx(REG_CMD)
-a.BMI('wr_done')
+a.BMI('ws_done')
 a.DEY()
-a.BNE('wr_outer')
-# Timeout
+a.BNE('ws_loop')
 a.SEC()
 a.LDA_imm(ERR_IO)
 a.RTS()
-a.label('wr_done')
+a.label('ws_done')
+a.CLC()
+a.LDA_imm(ERR_NONE)
+a.RTS()
+
+# ---- wait_long: poll STATUS, long timeout (~718ms) — for writes ----
+# Saves/restores ZP $3A via stack so we don't clobber anything.
+a.label('wait_long')
+a.LDA_zp(0x3A)
+a.PHA()                    # save original $3A
+a.LDA_imm(0xFF)
+a.STA_zp(0x3A)             # outer counter
+a.label('wl_outer')
+a.LDY_imm(0x00)            # inner counter = 256
+a.label('wl_inner')
+a.LDA_abx(REG_CMD)
+a.BMI('wl_done')
+a.DEY()
+a.BNE('wl_inner')
+a.DEC_zp(0x3A)
+a.BNE('wl_outer')
+a.PLA()
+a.STA_zp(0x3A)             # restore on timeout
+a.SEC()
+a.LDA_imm(ERR_IO)
+a.RTS()
+a.label('wl_done')
+a.PLA()
+a.STA_zp(0x3A)             # restore on success
 a.CLC()
 a.LDA_imm(ERR_NONE)
 a.RTS()

@@ -65,6 +65,7 @@ __pycache__/
 # Simulation artifacts (Icarus Verilog / GTKWave)
 *.vvp
 *.vcd
+*.out
 
 # Reporting
 /reporting/*.txt

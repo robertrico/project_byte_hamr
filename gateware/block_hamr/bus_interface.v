@@ -52,7 +52,10 @@ module bus_interface (
     output reg         block_read_req,
     output reg         block_write_req,
     output reg  [15:0] block_num,
-    input  wire        block_ready
+    input  wire        block_ready,
+
+    // Block number exposed for write-through controller
+    output wire [15:0] block_num_out
 );
 
     // =========================================================================
@@ -70,6 +73,8 @@ module bus_interface (
     reg [1:0] state;
     reg error;
     reg auto_inc;
+
+    assign block_num_out = block_num;
 
     wire ready = (state == S_IDLE) & boot_done;
 

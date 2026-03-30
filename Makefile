@@ -154,7 +154,7 @@ $(JSON): $(VERILOG_SRC) $(MEM_FILES) | $(BUILD_DIR) $(REPORT_DIR)
 	@# Copy any .mem files to build directory for synthesis
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
 	cd $(BUILD_DIR) && $(YOSYS) -p "\
-		read_verilog -DSYNTHESIS $(addprefix ../,$(VERILOG_SRC)); \
+		read_verilog -DSYNTHESIS $(EXTRA_VFLAGS) $(addprefix ../,$(VERILOG_SRC)); \
 		synth_ecp5 -top $(TOP) -json $(DESIGN).json; \
 		stat -top $(TOP)" 2>&1 | tee -a ../$(SYNTH_LOG)
 	@echo "" >> $(SYNTH_LOG)
@@ -244,8 +244,9 @@ else
     GTKWAVE  := gtkwave
 endif
 
-# Simulation files - main design testbench
+# Simulation files - main design testbench + any helper testbench modules
 SIM_MAIN_TB := $(DESIGN_DIR)/$(DESIGN)_tb.v
+SIM_AUX_TB  := $(filter-out $(SIM_MAIN_TB),$(wildcard $(DESIGN_DIR)/*_tb.v))
 SIM_OUT := $(BUILD_DIR)/$(DESIGN)_tb.vvp
 VCD     := $(BUILD_DIR)/$(DESIGN)_tb.vcd
 
@@ -254,11 +255,11 @@ sim: $(SIM_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(MEM_FILES) | $(BUILD_DIR)
+$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
 	@echo "=== Compiling Testbench ==="
 	@# Copy any .mem files to build directory for simulation
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
-	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MAIN_TB)
+	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB)
 
 wave: sim
 	@echo "=== Opening Waveform Viewer ==="

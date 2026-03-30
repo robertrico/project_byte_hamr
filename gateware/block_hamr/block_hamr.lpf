@@ -1,7 +1,7 @@
 // =============================================================================
-// IWM Hamr - Pin Constraints
+// Block Hamr - Pin Constraints
 // =============================================================================
-// Self-contained SmartPort device: IWM + internal device engine + SDRAM + Flash
+// Register-based ProDOS block device: SDRAM + SPI Flash persistence
 // Two clock domains: sig_7M (Apple II) + CLK_25MHz (SDRAM/Flash)
 // =============================================================================
 
@@ -229,7 +229,7 @@ LOCATE COMP "FLASH_nHOLD" SITE "W1";
 IOBUF PORT "FLASH_nHOLD" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=FAST PULLMODE=UP;
 
 // =============================================================================
-// GPIO Header (debug outputs in iwm_hamr)
+// GPIO Header (debug outputs in block_hamr)
 // =============================================================================
 LOCATE COMP "GPIO1" SITE "L1";
 IOBUF PORT "GPIO1" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=NONE;

@@ -1,5 +1,5 @@
 // =============================================================================
-// SDRAM Controller Testbench for IWM Hamr
+// SDRAM Controller Testbench for Block Hamr
 // =============================================================================
 //
 // Direct testbench for sdram_controller module with:
@@ -303,7 +303,7 @@ module sdram_controller_tb;
         last_activate_bank = 2'd0;
 
         $display("==============================================");
-        $display("IWM Hamr SDRAM Controller Testbench");
+        $display("Block Hamr SDRAM Controller Testbench");
         $display("AS4C32M16SB-7TCNTR (64MB, 32Mx16)");
         $display("==============================================");
         $display("");

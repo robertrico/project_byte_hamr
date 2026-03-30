@@ -34,17 +34,8 @@ module flash_reader (
     // ---------------------------------------------------------------
     reg spi_sck;
 
-    `ifndef SYNTHESIS
-        // In simulation, flash_sck is just a wire output for the testbench
-        assign flash_sck_pin = spi_sck;
-    `else
-        // On real ECP5, drive SCK through USRMCLK primitive
-        USRMCLK u_usrmclk (
-            .USRMCLKI(spi_sck),
-            .USRMCLKTS(1'b0)
-        );
-        assign flash_sck_pin = 1'b0; // not routable; use scope on USRMCLK
-    `endif
+    // USRMCLK now lives at top level (singleton — shared with flash_writer)
+    assign flash_sck_pin = spi_sck;
 
     // ---------------------------------------------------------------
     // State encoding
