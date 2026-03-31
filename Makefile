@@ -337,6 +337,23 @@ prog-flash-with-image: $(BIT)
 	@echo "=== Done ==="
 	@/Users/hambook/Development/bell/bell
 
+DUMP_FILE ?= disk_dump.po
+DUMP_SIZE ?= 12582912
+
+read-flash:
+	@echo "=== Reading disk image from flash ($(DUMP_SIZE) bytes at offset $(FLASH_IMG_OFFSET)) ==="
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) \
+		--dump-flash --offset $(FLASH_IMG_OFFSET) --file-size $(DUMP_SIZE) $(DUMP_FILE)
+	@echo "=== Saved to $(DUMP_FILE) ==="
+	@/Users/hambook/Development/bell/bell
+
+write-flash:
+	@echo "=== Writing disk image to flash at offset $(FLASH_IMG_OFFSET) ==="
+	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) \
+		--offset $(FLASH_IMG_OFFSET) -f $(DISK_IMAGE)
+	@echo "=== Done ==="
+	@/Users/hambook/Development/bell/bell
+
 prog-detect:
 	@echo "=== Detecting FPGA ==="
 	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) --detect
