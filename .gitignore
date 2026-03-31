@@ -71,6 +71,9 @@ __pycache__/
 /reporting/*.txt
 /reporting/*.json
 /reporting/*.log
+# User disk images (pulled from flash, swappable)
+/gateware/block_hamr/volumes/*.po
+
 # Logic Analyzer Captures
 *.dsl
 .claude/worktrees/
