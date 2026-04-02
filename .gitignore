@@ -77,3 +77,7 @@ __pycache__/
 # Logic Analyzer Captures
 *.dsl
 .claude/worktrees/
+
+gateware/smart_hamr/fuji/
+
+gateware/smart_hamr/MERLIN-8_PRODOS.dsk
