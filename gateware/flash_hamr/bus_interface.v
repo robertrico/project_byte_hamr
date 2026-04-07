@@ -71,7 +71,7 @@ module bus_interface (
 
     // Mount command output
     output reg  [3:0]  img_select,
-    output reg  [3:0]  img_name_idx,
+    output reg  [4:0]  img_name_idx,
     output reg         mount_request,
     output reg         sd_init_request,   // level: set by POKE, cleared when sd_ready/sd_error
 
@@ -82,7 +82,11 @@ module bus_interface (
     // Debug (from fat32_reader, 25MHz domain)
     input  wire [7:0]  dbg_dir_byte0,
     input  wire [7:0]  dbg_dir_byte8,
-    input  wire        dbg_is_fat16
+    input  wire        dbg_is_fat16,
+    // Debug (from sd_mount, 25MHz domain)
+    input  wire [15:0] mount_dbg_sectors,
+    input  wire [4:0]  mount_dbg_state,
+    input  wire [15:0] mount_dbg_fat_entry
 );
 
     // =========================================================================
@@ -120,6 +124,9 @@ module bus_interface (
     reg [7:0]  dbg_byte0_s1,   dbg_byte0_s2;
     reg [7:0]  dbg_byte8_s1,   dbg_byte8_s2;
     reg        dbg_fat16_s1,   dbg_fat16_s2;
+    reg [15:0] mount_sectors_s1, mount_sectors_s2;
+    reg [4:0]  mount_state_s1,  mount_state_s2;
+    reg [15:0] mount_fat_s1,    mount_fat_s2;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -133,6 +140,9 @@ module bus_interface (
             {dbg_byte0_s1, dbg_byte0_s2}       <= 16'b0;
             {dbg_byte8_s1, dbg_byte8_s2}       <= 16'b0;
             {dbg_fat16_s1, dbg_fat16_s2}       <= 2'b0;
+            {mount_sectors_s1, mount_sectors_s2} <= 32'b0;
+            {mount_state_s1, mount_state_s2}   <= 10'b0;
+            {mount_fat_s1, mount_fat_s2}       <= 32'b0;
         end else begin
             sd_ready_s1     <= sd_ready;        sd_ready_s2     <= sd_ready_s1;
             sd_error_s1     <= sd_error_in;     sd_error_s2     <= sd_error_s1;
@@ -144,6 +154,9 @@ module bus_interface (
             dbg_byte0_s1    <= dbg_dir_byte0;  dbg_byte0_s2    <= dbg_byte0_s1;
             dbg_byte8_s1    <= dbg_dir_byte8;  dbg_byte8_s2    <= dbg_byte8_s1;
             dbg_fat16_s1    <= dbg_is_fat16;   dbg_fat16_s2    <= dbg_fat16_s1;
+            mount_sectors_s1 <= mount_dbg_sectors; mount_sectors_s2 <= mount_sectors_s1;
+            mount_state_s1  <= mount_dbg_state;   mount_state_s2  <= mount_state_s1;
+            mount_fat_s1    <= mount_dbg_fat_entry; mount_fat_s2  <= mount_fat_s1;
         end
     end
 
@@ -227,8 +240,8 @@ module bus_interface (
     // Catalog BRAM address: entry N starts at byte N*32.
     // {img_select, 5'd0} = img_select * 32
     wire [8:0] cat_entry_base = {img_select, 5'd0};
-    // For name reads (reg A): entry_base + img_name_idx (0-10)
-    assign cat_rd_addr = cat_entry_base + {5'd0, img_name_idx};
+    // For catalog reads (reg A): entry_base + img_name_idx (0-31)
+    assign cat_rd_addr = cat_entry_base + {4'd0, img_name_idx};
 
     // =========================================================================
     // Read mux (combinational — data valid entire nDEVICE_SELECT window)
@@ -247,9 +260,9 @@ module bus_interface (
             4'hA: data_out = cat_rd_data;  // IMG_NAME_CHAR (catalog BRAM read)
             4'hB: data_out = s4d2_blkcnt_s2[7:0];
             4'hC: data_out = s4d2_blkcnt_s2[15:8];
-            4'hD: data_out = {7'b0, s4d2_is2mg_s2};
-            4'hE: data_out = dbg_byte0_s2;   // DEBUG: first byte of first root dir entry
-            4'hF: data_out = {dbg_fat16_s2, dbg_byte8_s2[6:0]};  // DEBUG: {is_fat16, ext_byte[6:0]}
+            4'hD: data_out = mount_sectors_s2[7:0];  // DEBUG: sectors read (low byte)
+            4'hE: data_out = mount_fat_s2[7:0];    // DEBUG: FAT entry value lo
+            4'hF: data_out = mount_fat_s2[15:8];   // DEBUG: FAT entry value hi
             default: data_out = 8'h00;
         endcase
     end
@@ -269,15 +282,14 @@ module bus_interface (
             block_write_req <= 1'b0;
             auto_inc        <= 1'b0;
             img_select      <= 4'd0;
-            img_name_idx    <= 4'd0;
+            img_name_idx    <= 5'd0;
             mount_request   <= 1'b0;
             sd_init_request <= 1'b0;
         end else begin
             mount_request   <= 1'b0;
-            // sd_init_request: set by POKE, cleared when init completes
-            // sd_ready_s2 or sd_error_s2 going HIGH means init finished
-            if (sd_ready_s2 || sd_error_s2)
-                sd_init_request <= 1'b0;
+            // sd_init_request: set by POKE $02, stays HIGH until cleared
+            // by POKE $00, or by writing $02 again (re-trigger).
+            // Do NOT auto-clear on sd_ready — that races with the CDC.
             // Defaults
             buf_we  <= 1'b0;
             // Auto-increment: READ of addr 1, or WRITE of addr 5.
@@ -360,7 +372,7 @@ module bus_interface (
                         img_select <= wr_data_latch[3:0];
                     end
                     4'hA: begin  // IMG_NAME_IDX
-                        img_name_idx <= wr_data_latch[3:0];
+                        img_name_idx <= wr_data_latch[4:0];
                     end
                 endcase
             end

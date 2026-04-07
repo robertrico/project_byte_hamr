@@ -183,12 +183,17 @@ module sd_controller (
             gap_return      <= IDLE;
         end else begin
             spi_start       <= 1'b0;
-            read_data_valid <= 1'b0;
+            // read_data_valid: level-based, cleared by handshake (NOT pulsed)
             read_done       <= 1'b0;
             read_error      <= 1'b0;
             write_data_req  <= 1'b0;
             write_done      <= 1'b0;
             write_error     <= 1'b0;
+
+            // Global ack: clear read_data_valid when consumer acknowledges
+            // Must be outside R_DATA so ack works even after state transitions
+            if (read_data_valid && read_data_ready)
+                read_data_valid <= 1'b0;
 
             // Free-running timeout counter for ACMD41 loop
             // Increments every clock when in CMD55/ACMD41 states
@@ -201,12 +206,17 @@ module sd_controller (
                 IDLE: begin
                     sd_cs <= 1'b1;
                     if (init_start) begin
-                        init_done      <= 1'b0;
-                        init_error     <= 1'b0;
-                        spi_slow       <= 1'b1;
-                        powerup_cnt    <= 5'd0;
-                        acmd41_timeout <= 25'd0;
-                        state          <= POWERUP;
+                        init_done       <= 1'b0;
+                        init_error      <= 1'b0;
+                        is_sdhc         <= 1'b0;
+                        spi_slow        <= 1'b1;
+                        powerup_cnt     <= 5'd0;
+                        acmd41_timeout  <= 25'd0;
+                        read_data_valid <= 1'b0;
+                        read_done       <= 1'b0;
+                        read_error      <= 1'b0;
+                        data_cnt        <= 10'd0;
+                        state           <= POWERUP;
                     end else if (read_start && init_done) begin
                         sd_cs <= 1'b0;
                         set_cmd(6'd17, is_sdhc ? read_addr : {read_addr[22:0], 9'd0}, 8'hFF);
@@ -596,6 +606,7 @@ module sd_controller (
                 end
 
                 R_DATA: begin
+                    // Ack is handled globally above (outside case)
                     if (spi_done) begin
                         read_data_valid <= 1'b1;
                         data_cnt        <= data_cnt + 10'd1;
@@ -603,10 +614,8 @@ module sd_controller (
                             crc_cnt <= 2'd0;
                             state   <= R_CRC;
                         end
-                        // DON'T start next byte on same cycle as data delivery.
-                        // Wait for consumer to process and re-check read_data_ready
-                        // on the next cycle via the else-if below.
-                    end else if (!spi_busy && !spi_start && read_data_ready && data_cnt < 10'd512) begin
+                    end else if (!read_data_valid && !spi_busy && !spi_start && data_cnt < 10'd512) begin
+                        // Only start next byte after previous was consumed
                         spi_tx    <= 8'hFF;
                         spi_start <= 1'b1;
                     end
@@ -628,9 +637,10 @@ module sd_controller (
                 end
 
                 R_DONE: begin
-                    sd_cs     <= 1'b1;
-                    read_done <= 1'b1;
-                    state     <= IDLE;
+                    sd_cs           <= 1'b1;
+                    read_done       <= 1'b1;
+                    read_data_valid <= 1'b0;
+                    state           <= IDLE;
                 end
 
                 // =============================================================

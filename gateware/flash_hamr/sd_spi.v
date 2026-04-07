@@ -57,9 +57,9 @@ module sd_spi (
     // =========================================================================
     // slow_mode: divide by 64 per half-period → SCK period = 128 CLK cycles
     //   25MHz / 128 = ~195kHz
-    // fast_mode: divide by 1 per half-period → SCK period = 2 CLK cycles
-    //   25MHz / 2 = 12.5MHz
-    wire [6:0] div_threshold = slow_mode ? 7'd63 : 7'd0;
+    // fast_mode: divide by 4 per half-period → SCK period = 8 CLK cycles
+    //   25MHz / 8 = 3.125MHz
+    wire [6:0] div_threshold = slow_mode ? 7'd63 : 7'd3;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

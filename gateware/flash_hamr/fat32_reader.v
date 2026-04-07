@@ -70,6 +70,7 @@ module fat32_reader (
         S_READ_ROOTDIR  = 5'd6,   // read root directory cluster
         S_DIR_COLLECT   = 5'd7,   // collect 512 bytes of directory entries
         S_DIR_PARSE     = 5'd8,   // parse current 32-byte directory entry
+        S_DRAIN         = 5'd13,  // drain remaining sector bytes before done
         S_DIR_STORE     = 5'd9,   // write entry to catalog BRAM
         S_DIR_NEXT      = 5'd10,  // advance to next entry
         S_DONE          = 5'd11,
@@ -192,7 +193,8 @@ module fat32_reader (
 
                 // Collect MBR bytes
                 S_MBR_COLLECT: begin
-                    if (sd_read_data_valid && reading_sector) begin
+                    sd_read_data_ready <= 1'b1;
+                    if (sd_read_data_valid && sd_read_data_ready && reading_sector) begin
                         // Capture bytes of interest
                         case (byte_idx)
                             10'd446: mbr_byte_446 <= sd_read_data;
@@ -281,7 +283,8 @@ module fat32_reader (
                 end
 
                 S_BPB_COLLECT: begin
-                    if (sd_read_data_valid && reading_sector) begin
+                    sd_read_data_ready <= 1'b1;
+                    if (sd_read_data_valid && sd_read_data_ready && reading_sector) begin
                         case (byte_idx)
                             10'd11:  bpb_byte_11  <= sd_read_data;
                             10'd12:  bpb_byte_12  <= sd_read_data;
@@ -390,7 +393,8 @@ module fat32_reader (
                 // Collect directory sector bytes
                 // =============================================================
                 S_DIR_COLLECT: begin
-                    if (sd_read_data_valid && reading_sector) begin
+                    sd_read_data_ready <= 1'b1;
+                    if (sd_read_data_valid && sd_read_data_ready && reading_sector) begin
                         dir_bytes[entry_offset] <= sd_read_data;
                         entry_offset <= entry_offset + 5'd1;
                         byte_idx     <= byte_idx + 10'd1;
@@ -437,8 +441,10 @@ module fat32_reader (
                     end
                     // Check first byte
                     if (dir_bytes[0] == 8'h00) begin
-                        // End of directory
-                        state <= S_DONE;
+                        // End of directory — drain remaining sector bytes
+                        // so sd_controller returns to IDLE
+                        sd_read_data_ready <= 1'b1;
+                        state <= S_DRAIN;
                     end else if (dir_bytes[0] == 8'hE5) begin
                         // Deleted entry — skip
                         state <= S_DIR_NEXT;
@@ -522,6 +528,20 @@ module fat32_reader (
                         state <= S_DIR_COLLECT;
                     end else begin
                         state <= S_DIR_COLLECT;
+                    end
+                end
+
+                // =============================================================
+                // Drain remaining bytes from current CMD17 so
+                // sd_controller returns to IDLE for sd_mount to use
+                // =============================================================
+                S_DRAIN: begin
+                    sd_read_data_ready <= 1'b1;  // accept all bytes
+                    if (sd_read_done) begin
+                        state <= S_DONE;
+                    end
+                    if (sd_read_error) begin
+                        state <= S_DONE;  // don't flag error, scan was ok
                     end
                 end
 

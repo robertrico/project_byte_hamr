@@ -125,8 +125,8 @@ module flash_hamr_top (
     // Forward: sequencer state + constants for SD read mux
     reg [2:0]   sd_seq_state;
     localparam SD_SEQ_FAT32_FWD = 3'd3, SD_SEQ_FAT32_WAIT_FWD = 3'd4;
-    assign GPIO5  = boot_done;
-    assign GPIO6  = sd_is_sdhc;       // DEBUG: is card detected as SDHC?
+    assign GPIO5  = fat32_dbg_is_fat16; // DEBUG: is FAT16 detected?
+    assign GPIO6  = s4d2_loading;      // DEBUG: mount in progress?
     assign GPIO7  = sd_init_request; // from bus_interface (KNOWN WORKING output)
     assign GPIO8  = sd_init_error;   // RAW from sd_controller
     assign GPIO10 = 1'b0;
@@ -150,11 +150,15 @@ module flash_hamr_top (
     // Port A: fat32_reader writes during scan
     // Port B: bus_interface reads for registers 9-D
     // =========================================================================
-    wire [8:0]  cat_wr_addr, cat_rd_addr;
+    wire [8:0]  cat_wr_addr;
     wire [7:0]  cat_wr_data, cat_rd_data;
     wire        cat_wr_en;
     (* ram_style = "block" *)
     reg [7:0]   catalog_mem [0:511];
+
+    // Catalog read port mux: sd_mount during loading, bus_interface otherwise
+    wire [8:0]  cat_rd_addr_bus, cat_rd_addr_mount;
+    wire [8:0]  cat_rd_addr = s4d2_loading ? cat_rd_addr_mount : cat_rd_addr_bus;
 
     reg [7:0] cat_rd_data_r;
     always @(posedge CLK_25MHz) begin
@@ -218,13 +222,15 @@ module flash_hamr_top (
         .sd_ready(sd_ready), .sd_error_in(sd_error),
         .s4d2_mounted(s4d2_mounted), .s4d2_loading(s4d2_loading),
         .img_count(img_count),
-        .cat_rd_addr(cat_rd_addr), .cat_rd_data(cat_rd_data),
+        .cat_rd_addr(cat_rd_addr_bus), .cat_rd_data(cat_rd_data),
         .img_select(img_select), .img_name_idx(img_name_idx),
         .mount_request(mount_request), .sd_init_request(sd_init_request),
         .s4d2_block_count(s4d2_block_count), .s4d2_is_2mg(s4d2_is_2mg),
         // Debug
         .dbg_dir_byte0(fat32_dbg_byte0), .dbg_dir_byte8(fat32_dbg_byte8),
-        .dbg_is_fat16(fat32_dbg_is_fat16)
+        .dbg_is_fat16(fat32_dbg_is_fat16),
+        .mount_dbg_sectors(mount_dbg_sectors), .mount_dbg_state(mount_dbg_state),
+        .mount_dbg_fat_entry(mount_dbg_fat_entry)
     );
 
     // =========================================================================
@@ -538,26 +544,41 @@ module flash_hamr_top (
     wire [15:0] mount_data_offset;
     wire [31:0] sd_image_first_cluster;
 
+    // CDC for mount_request (7MHz pulse → 25MHz edge detect)
+    reg mount_req_s1 = 1'b0, mount_req_s2 = 1'b0, mount_req_s3 = 1'b0;
+    always @(posedge CLK_25MHz) begin
+        mount_req_s1 <= mount_request;
+        mount_req_s2 <= mount_req_s1;
+        mount_req_s3 <= mount_req_s2;
+    end
+    wire mount_req_pulse = mount_req_s2 & ~mount_req_s3;
+
     sd_mount u_sd_mount (
         .clk(CLK_25MHz), .rst_n(por_25_n),
-        .mount_request(mount_request), .img_select(img_select),
+        .mount_request(mount_req_pulse), .img_select(img_select),
         .s4d2_mounted(s4d2_mounted), .s4d2_loading(s4d2_loading),
         .s4d2_block_count(s4d2_block_count),
         .is_2mg(s4d2_is_2mg), .data_offset(mount_data_offset),
-        .cat_rd_addr(), .cat_rd_data(8'd0),  // TODO: wire to catalog BRAM port B
+        .cat_rd_addr(cat_rd_addr_mount), .cat_rd_data(cat_rd_data),
         .fat32_data_start(fat32_data_start), .fat32_fat_start(fat32_fat_start),
-        .fat32_spc(fat32_spc),
+        .fat32_spc(fat32_spc), .fat_is_fat16(fat32_dbg_is_fat16),
         .sd_read_start(sd_read_start_mt), .sd_read_addr(sd_read_addr_mt),
         .sd_read_data(sd_read_data), .sd_read_data_valid(sd_read_data_valid),
         .sd_read_data_ready(sd_read_ready_mt), .sd_read_done(sd_read_done),
         .sdram_req(mount_sdram_req), .sdram_req_write(mount_sdram_write),
         .sdram_req_addr(mount_sdram_addr), .sdram_req_wdata(mount_sdram_wdata),
-        .sdram_req_ready(mount_sdram_claim & sdram_req_ready),
+        .sdram_req_ready(sdram_req_ready),
         .sdram_claim(mount_sdram_claim),
         .chain_wr_addr(chain_wr_addr), .chain_wr_data(chain_wr_data),
         .chain_wr_en(chain_wr_en),
-        .sd_image_first_cluster(sd_image_first_cluster)
+        .sd_image_first_cluster(sd_image_first_cluster),
+        .dbg_sector_count(mount_dbg_sectors),
+        .dbg_mount_state(mount_dbg_state),
+        .dbg_fat_entry(mount_dbg_fat_entry)
     );
+    wire [15:0] mount_dbg_sectors;
+    wire [4:0]  mount_dbg_state;
+    wire [15:0] mount_dbg_fat_entry;
 
     // =========================================================================
     // Write-Through + SD Persist
