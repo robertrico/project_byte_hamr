@@ -248,7 +248,10 @@ static int do_mount(uint8_t idx) {
 
     sdram_claim();
 
-    uint32_t sdram_byte_addr = UNIT2_OFFSET_BYTES;
+    /* Write to SDRAM starting at block 0 — overwrites the menu volume.
+     * After reboot (JMP $Cs00), ProDOS boots from the mounted image.
+     * The menu volume is re-loaded from flash on next power cycle. */
+    uint32_t sdram_byte_addr = 0;
     uint32_t blocks_written = 0;
 
     for (uint32_t b = 0; b < mounted_block_count; b++) {
@@ -282,7 +285,7 @@ static int do_mount(uint8_t idx) {
     uart_put_hex32(blocks_written);
     uart_puts(" blocks written\r\n");
 
-    MBOX_REG_TOTAL_BLK = UNIT2_OFFSET_BLOCKS + mounted_block_count;
+    MBOX_REG_TOTAL_BLK = mounted_block_count;
 
     set_status(FL_SD_READY | FL_S4D2_MOUNTED);
     return 0;
@@ -322,7 +325,6 @@ int main(void) {
 loop:
     uart_puts("Command loop\r\n");
 
-    /* Track mailbox cmd_pending edge */
     uint8_t last_pending = 0;
 
     while (1) {
@@ -350,19 +352,18 @@ loop:
             uart_puts("Persist blk=");
             uart_put_hex32(pblk);
 
-            if (file_is_open && pblk >= UNIT2_OFFSET_BLOCKS) {
+            if (file_is_open) {
                 /* Read 512 bytes from block buffer */
                 BBUF_CTRL = BBUF_CTRL_CLAIM;
                 BBUF_ADDR = 0;
-                /* Need 1 dummy read for BRAM latency, then 512 real reads */
-                (void)BBUF_RDATA;  /* prime the pipeline */
+                /* No dummy read needed — BRAM latency is covered by the
+                 * bus transaction gap between ADDR write and first RDATA read */
                 for (int i = 0; i < 512; i++)
                     sector_buf[i] = (uint8_t)BBUF_RDATA;
                 BBUF_CTRL = 0;
 
                 /* Compute file offset */
-                uint32_t rel_block = pblk - UNIT2_OFFSET_BLOCKS;
-                uint32_t file_off = mounted_data_offset + (rel_block * 512);
+                uint32_t file_off = mounted_data_offset + ((uint32_t)pblk * 512);
 
                 /* Write to SD via FatFS */
                 UINT bw;

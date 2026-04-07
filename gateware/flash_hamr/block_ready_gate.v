@@ -65,8 +65,8 @@ module block_ready_gate #(
         end
     end
 
-    // S4D2 check
-    wire is_s4d2 = (dev_block_num >= UNIT2_OFFSET);
+    // Previously checked UNIT2_OFFSET — now persist all writes when enabled
+    // (mount writes to block 0+, not block 2048+)
 
     // Persist done edge detection (toggle from CPU, synced to 7MHz)
     reg pd_s1, pd_s2, pd_prev;
@@ -88,7 +88,7 @@ module block_ready_gate #(
     reg persist_wr_d1 = 1'b0;
 
     // Trigger: rising edge of block_ready after a S4D2 write
-    wire trigger = br_rise & wr_req_d2 & boot_done & is_s4d2 & persist_enabled;
+    wire trigger = br_rise & wr_req_d2 & boot_done & persist_enabled;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

@@ -256,6 +256,10 @@ module cpu_soc (
     reg mbr_prev;
     wire mbr_edge = magic_block_req & ~mbr_prev;
     reg  mbr_pending;  // latched until CPU services it
+    reg [3:0] mbr_stretch;  // stretch pulse for 25MHz->7MHz CDC
+    assign magic_block_ready = (mbr_stretch != 4'd0);
+
+    reg bbuf_post_inc;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -264,13 +268,23 @@ module cpu_soc (
             buf_addr          <= 9'd0;
             buf_wdata         <= 8'd0;
             buf_we            <= 1'b0;
-            magic_block_ready <= 1'b0;
             mbr_prev          <= 1'b0;
             mbr_pending       <= 1'b0;
+            mbr_stretch       <= 4'd0;
+            bbuf_post_inc     <= 1'b0;
         end else begin
             bbuf_ready        <= 1'b0;
             buf_we            <= 1'b0;
-            magic_block_ready <= 1'b0;  // default: clear pulse
+
+            // Post-increment: advance buf_addr AFTER the BRAM write cycle
+            if (bbuf_post_inc) begin
+                buf_addr      <= buf_addr + 9'd1;
+                bbuf_post_inc <= 1'b0;
+            end
+
+            // Stretch counter countdown for magic_block_ready CDC
+            if (mbr_stretch != 4'd0)
+                mbr_stretch <= mbr_stretch - 4'd1;
             mbr_prev          <= magic_block_req;
 
             // Latch magic block request
@@ -286,20 +300,19 @@ module cpu_soc (
                         if (mem_wstrb != 4'h0)
                             buf_addr <= mem_wdata[8:0];
                     end
-                    3'd1: begin  // WDATA (+0x04, write byte + auto-increment)
+                    3'd1: begin  // WDATA (+0x04, write byte then auto-increment)
                         bbuf_rdata <= 32'd0;
                         if (mem_wstrb != 4'h0) begin
                             buf_wdata <= mem_wdata[7:0];
                             buf_we    <= 1'b1;
-                            buf_addr  <= buf_addr + 9'd1;
+                            // Don't increment yet — BRAM needs current addr for this write.
+                            // Increment happens on the NEXT cycle via bbuf_post_inc.
+                            bbuf_post_inc <= 1'b1;
                         end
                     end
                     3'd2: begin  // RDATA (+0x08) — read with 1-cycle BRAM latency
-                        // buf_addr was set on a previous ADDR write.
-                        // buf_rdata reflects the data at buf_addr from last cycle.
-                        // Auto-increment after read for sequential access.
-                        bbuf_rdata <= {24'd0, buf_rdata};
-                        buf_addr   <= buf_addr + 9'd1;
+                        bbuf_rdata    <= {24'd0, buf_rdata};
+                        bbuf_post_inc <= 1'b1;  // increment after read
                     end
                     3'd3: begin  // CTRL (+0x0C) bit0=claim
                         bbuf_rdata <= {31'd0, buf_claim};
@@ -312,7 +325,7 @@ module cpu_soc (
                     3'd5: begin  // MAGIC_DONE (+0x14) W: signal block ready, clear pending
                         bbuf_rdata <= 32'd0;
                         if (mem_wstrb != 4'h0) begin
-                            magic_block_ready <= 1'b1;
+                            mbr_stretch       <= 4'd15; // stretch pulse for CDC
                             mbr_pending       <= 1'b0;
                         end
                     end

@@ -145,10 +145,26 @@ module flash_hamr_top (
         else begin cpu_br_s1 <= cpu_block_ready_25; cpu_br_s2 <= cpu_br_s1; end
     end
 
-    // block_ready mux: arbiter for normal blocks, CPU for magic blocks
-    // gated_block_ready comes from block_ready_gate (which wraps arb_block_ready)
+    // Magic block active flag — forces dev_block_ready LOW during magic block
+    // processing so bus_interface gets a proper LOW→HIGH edge when CPU finishes.
+    // Without this, arb_block_ready is already HIGH from the last normal read,
+    // and dev_block_ready never transitions, so br_rise never fires.
+    reg magic_active, magic_req_prev;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n) begin
+            magic_active   <= 1'b0;
+            magic_req_prev <= 1'b0;
+        end else begin
+            magic_req_prev <= magic_block_req;
+            if (magic_block_req & ~magic_req_prev)
+                magic_active <= 1'b1;   // rising edge of magic request
+            if (cpu_br_s2)
+                magic_active <= 1'b0;   // CPU done, release
+        end
+    end
+
     wire gated_block_ready;
-    assign dev_block_ready = gated_block_ready | cpu_br_s2;
+    assign dev_block_ready = magic_active ? cpu_br_s2 : gated_block_ready;
 
     // Mailbox signals (bus side)
     wire [7:0]  mbox_bus_status_flags;
@@ -475,7 +491,7 @@ module flash_hamr_top (
     // GPIO mapping
     // =========================================================================
     assign GPIO5  = cpu_gpio[0];
-    assign GPIO6  = cpu_gpio[1];
+    assign GPIO6  = mbox_bus_status_flags[0];  // DEBUG: sd_ready after mailbox CDC
     assign GPIO7  = uart_txd;
     assign GPIO8  = boot_done;
     assign GPIO10 = 1'b0;

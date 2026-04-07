@@ -21,7 +21,7 @@
 
 module spi_master #(
     parameter DIV_SLOW = 63,   // 25MHz / (2*64) ≈ 195 kHz
-    parameter DIV_FAST = 3     // 25MHz / (2*4)  ≈ 3.125 MHz
+    parameter DIV_FAST = 0     // 25MHz / (2*1)  = 12.5 MHz (matches old sd_spi.v)
 )(
     input  wire        clk,        // 25 MHz
     input  wire        rst_n,
