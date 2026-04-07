@@ -1,13 +1,13 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// Flash Hamr — Top Level Module (FAT32 SD card two-device controller)
+// Flash Hamr — Top Level Module (Phase 5: Full integration)
 // =============================================================================
-// S4D1: Menu volume from SPI flash (flash_reader + USRMCLK)
-// S4D2: User image from SD card (sd_controller via GPIO SPI)
+// PicoRV32 CPU + FatFS handles SD card. Apple II bus infrastructure from
+// block_hamr (SDRAM, arbiter, bus_interface, boot_loader, flash_reader).
 //
-// Clock domains:
-//   sig_7M   (7.16 MHz) — Apple II bus, bus_interface
-//   CLK_25MHz (25 MHz)  — SDRAM, SPI flash, SD card
+// SDRAM mux: CPU claims SDRAM via cpu_sdram_claim (same pattern as sd_mount).
+// Block buffer Port A mux: CPU claims via cpu_buf_claim for magic blocks.
+// Magic block intercept: $FFFF/$FFFE -> CPU fills buffer instead of arbiter.
 // =============================================================================
 
 module flash_hamr_top (
@@ -44,7 +44,7 @@ module flash_hamr_top (
     inout  wire       SDRAM_D8, SDRAM_D9, SDRAM_D10, SDRAM_D11,
     inout  wire       SDRAM_D12, SDRAM_D13, SDRAM_D14, SDRAM_D15,
 
-    // ---- SPI Flash (menu volume only) ----
+    // ---- SPI Flash (menu volume) ----
     output wire       FLASH_nCS, FLASH_MOSI,
     input  wire       FLASH_MISO,
     output wire       FLASH_nWP, FLASH_nHOLD,
@@ -53,28 +53,27 @@ module flash_hamr_top (
     output wire       SD_CS, SD_SCK, SD_MOSI,
     input  wire       SD_MISO,
 
-    // ---- GPIO (debug on 5-8, card detect 9) ----
+    // ---- GPIO ----
     output wire       GPIO5, GPIO6, GPIO7, GPIO8,
     input  wire       GPIO9,
     output wire       GPIO10, GPIO11, GPIO12
 );
 
     // =========================================================================
-    // POR (7 MHz)
+    // POR
     // =========================================================================
     assign nRES = 1'b1;
 
-    reg [3:0] por_counter = 4'd0;
-    wire      por_n = &por_counter;
+    reg [3:0] por_counter_7m = 4'd0;
+    wire      por_7m_n = &por_counter_7m;
     always @(posedge sig_7M) begin
-        if (!por_n) por_counter <= por_counter + 4'd1;
+        if (!por_7m_n) por_counter_7m <= por_counter_7m + 4'd1;
     end
 
-    // POR (25 MHz)
-    reg [7:0] por_25_counter = 8'd0;
-    wire      por_25_n = &por_25_counter;
+    reg [7:0] por_counter_25m = 8'd0;
+    wire      por_25m_n = &por_counter_25m;
     always @(posedge CLK_25MHz) begin
-        if (!por_25_n) por_25_counter <= por_25_counter + 8'd1;
+        if (!por_25m_n) por_counter_25m <= por_counter_25m + 8'd1;
     end
 
     // =========================================================================
@@ -91,7 +90,7 @@ module flash_hamr_top (
     // Data Bus
     // =========================================================================
     wire [7:0] rom_data;
-    wire       rom_oe = ~nI_O_SELECT;  // $Cn page ONLY — no $C800 (prevents bus contention)
+    wire       rom_oe;  // driven by addr_decoder
     wire [7:0] bus_data_out;
 
     wire [7:0] data_out_mux = rom_oe ? rom_data : bus_data_out;
@@ -110,35 +109,12 @@ module flash_hamr_top (
     assign GPIO12 = ~lvl_shift_oe;
 
     // =========================================================================
-    // Debug GPIO
-    // =========================================================================
-    wire boot_done, s4d2_mounted, dev_block_ready;
-
-    // Forward declarations for SD init sequencer (defined after boot_loader)
-    wire        sd_ready;
-    wire        sd_error;
-    wire        sd_init_start;
-    wire        fat32_start;
-    wire        sd_init_request;
-    wire        sd_init_done;
-    wire        sd_init_error;
-    // Forward: sequencer state + constants for SD read mux
-    reg [2:0]   sd_seq_state;
-    localparam SD_SEQ_FAT32_FWD = 3'd3, SD_SEQ_FAT32_WAIT_FWD = 3'd4;
-    assign GPIO5  = fat32_dbg_is_fat16; // DEBUG: is FAT16 detected?
-    assign GPIO6  = s4d2_loading;      // DEBUG: mount in progress?
-    assign GPIO7  = sd_init_request; // from bus_interface (KNOWN WORKING output)
-    assign GPIO8  = sd_init_error;   // RAW from sd_controller
-    assign GPIO10 = 1'b0;
-    assign GPIO11 = 1'b0;
-
-    // =========================================================================
     // Address Decoder + Boot ROM
     // =========================================================================
     wire rom_expansion_active;
     addr_decoder u_addr_decoder (
         .addr(addr), .clk(sig_7M), .nI_O_STROBE(nI_O_STROBE),
-        .nI_O_SELECT(nI_O_SELECT), .nRES(por_n),
+        .nI_O_SELECT(nI_O_SELECT), .nRES(por_7m_n),
         .rom_oe(rom_oe), .rom_expansion_active(rom_expansion_active)
     );
 
@@ -146,106 +122,97 @@ module flash_hamr_top (
     boot_rom u_boot_rom (.clk(sig_7M), .addr(rom_addr), .data(rom_data));
 
     // =========================================================================
-    // Catalog BRAM (512 bytes, dual-port)
-    // Port A: fat32_reader writes during scan
-    // Port B: bus_interface reads for registers 9-D
-    // =========================================================================
-    wire [8:0]  cat_wr_addr;
-    wire [7:0]  cat_wr_data, cat_rd_data;
-    wire        cat_wr_en;
-    (* ram_style = "block" *)
-    reg [7:0]   catalog_mem [0:511];
-
-    // Catalog read port mux: sd_mount during loading, bus_interface otherwise
-    wire [8:0]  cat_rd_addr_bus, cat_rd_addr_mount;
-    wire [8:0]  cat_rd_addr = s4d2_loading ? cat_rd_addr_mount : cat_rd_addr_bus;
-
-    reg [7:0] cat_rd_data_r;
-    always @(posedge CLK_25MHz) begin
-        if (cat_wr_en) catalog_mem[cat_wr_addr] <= cat_wr_data;
-        cat_rd_data_r <= catalog_mem[cat_rd_addr];
-    end
-    assign cat_rd_data = cat_rd_data_r;
-
-    // =========================================================================
-    // Chain Map BRAM (4KB, dual-port)
-    // Port A: sd_mount writes during mount
-    // Port B: sd_persist reads during write-back
-    // =========================================================================
-    wire [9:0]  chain_wr_addr, chain_rd_addr;
-    wire [31:0] chain_wr_data, chain_rd_data;
-    wire        chain_wr_en;
-    (* ram_style = "block" *)
-    reg [31:0]  chain_mem [0:1023];
-
-    reg [31:0] chain_rd_data_r;
-    always @(posedge CLK_25MHz) begin
-        if (chain_wr_en) chain_mem[chain_wr_addr] <= chain_wr_data;
-        chain_rd_data_r <= chain_mem[chain_rd_addr];
-    end
-    assign chain_rd_data = chain_rd_data_r;
-
-    // =========================================================================
-    // Bus Interface (7 MHz)
+    // Bus Interface (7 MHz) — regs 0-7 unchanged from block_hamr
     // =========================================================================
     wire [8:0]  buf_addr_b;
     wire [7:0]  buf_rdata_b, buf_wdata_b;
     wire        buf_we_b;
-    wire        dev_block_read_req, dev_block_write_req;
+    wire        dev_block_read_req_raw, dev_block_write_req;
     wire [15:0] dev_block_num;
-    wire        arb_block_ready;
-    wire [15:0] total_blocks;
+    wire        dev_block_ready;
 
-    // SD management signals (sd_error, sd_ready declared in SD init sequencer)
-    wire [3:0]  img_count;
+    // ---- Magic block intercept ----
+    // $FFFF/$FFFE are magic blocks handled by CPU, not arbiter
+    wire is_magic_block = (dev_block_num[15:1] == 15'h7FFF);  // $FFFE or $FFFF
+    wire dev_block_read_req = dev_block_read_req_raw & ~is_magic_block;  // arbiter sees non-magic only
+    wire magic_block_req    = dev_block_read_req_raw & is_magic_block;   // CPU sees magic only
+
+    // CPU signals block ready for magic blocks (25MHz -> 7MHz CDC)
+    wire cpu_block_ready_25;  // from cpu_soc
+    reg  cpu_br_s1, cpu_br_s2;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n) begin cpu_br_s1 <= 0; cpu_br_s2 <= 0; end
+        else begin cpu_br_s1 <= cpu_block_ready_25; cpu_br_s2 <= cpu_br_s1; end
+    end
+
+    // block_ready mux: arbiter for normal blocks, CPU for magic blocks
+    // gated_block_ready comes from block_ready_gate (which wraps arb_block_ready)
+    wire gated_block_ready;
+    assign dev_block_ready = gated_block_ready | cpu_br_s2;
+
+    // Mailbox signals (bus side)
+    wire [7:0]  mbox_bus_status_flags;
+    wire [15:0] mbox_bus_total_blocks;
+    wire [7:0]  sd_cmd_data;
+    wire        sd_cmd_wr;
     wire [3:0]  img_select;
-    wire [3:0]  img_name_idx;
-    wire        mount_request;
-    // sd_init_request declared above as forward declaration
-    wire [15:0] s4d2_block_count;
-    wire        s4d2_is_2mg;
-    wire        s4d2_loading;
 
     bus_interface u_bus_interface (
-        .clk(sig_7M), .rst_n(por_n),
+        .clk(sig_7M), .rst_n(por_7m_n),
         .addr(addr[3:0]),
         .data_in({D7, D6, D5, D4, D3, D2, D1, D0}),
         .data_out(bus_data_out),
         .nDEVICE_SELECT(nDEVICE_SELECT), .R_nW(R_nW),
-        .boot_done(boot_done), .total_blocks(total_blocks),
+        .boot_done(boot_done),
+        .total_blocks(mbox_bus_total_blocks),
         .buf_addr(buf_addr_b), .buf_rdata(buf_rdata_b),
         .buf_wdata(buf_wdata_b), .buf_we(buf_we_b),
-        .block_read_req(dev_block_read_req), .block_write_req(dev_block_write_req),
+        .block_read_req(dev_block_read_req_raw),
+        .block_write_req(dev_block_write_req),
         .block_num(dev_block_num), .block_ready(dev_block_ready),
         .block_num_out(),
-        // SD management
-        .sd_ready(sd_ready), .sd_error_in(sd_error),
-        .s4d2_mounted(s4d2_mounted), .s4d2_loading(s4d2_loading),
-        .img_count(img_count),
-        .cat_rd_addr(cat_rd_addr_bus), .cat_rd_data(cat_rd_data),
-        .img_select(img_select), .img_name_idx(img_name_idx),
-        .mount_request(mount_request), .sd_init_request(sd_init_request),
-        .s4d2_block_count(s4d2_block_count), .s4d2_is_2mg(s4d2_is_2mg),
+        // SD management — status from mailbox
+        .sd_ready(mbox_bus_status_flags[0]),
+        .sd_error_in(mbox_bus_status_flags[1]),
+        .s4d2_mounted(mbox_bus_status_flags[2]),
+        .s4d2_loading(mbox_bus_status_flags[3]),
+        .img_count(mbox_bus_status_flags[7:4]),  // packed into upper nibble
+        // Catalog — unused, catalog comes via magic block reads
+        .cat_rd_addr(), .cat_rd_data(8'd0),
+        .img_select(img_select), .img_name_idx(),
+        // SD commands -> mailbox
+        .mount_request(),
+        .sd_init_request(),
+        .sd_cmd_data(sd_cmd_data),
+        .sd_cmd_wr(sd_cmd_wr),
+        .s4d2_block_count(mbox_bus_total_blocks),
+        .s4d2_is_2mg(1'b0),
         // Debug
-        .dbg_dir_byte0(fat32_dbg_byte0), .dbg_dir_byte8(fat32_dbg_byte8),
-        .dbg_is_fat16(fat32_dbg_is_fat16),
-        .mount_dbg_sectors(mount_dbg_sectors), .mount_dbg_state(mount_dbg_state),
-        .mount_dbg_fat_entry(mount_dbg_fat_entry)
+        .dbg_dir_byte0(8'd0), .dbg_dir_byte8(8'd0),
+        .dbg_is_fat16(1'b0),
+        .mount_dbg_sectors(16'd0), .mount_dbg_state(5'd0),
+        .mount_dbg_fat_entry(16'd0)
     );
 
     // =========================================================================
     // Block Buffer (dual-port BRAM, 7MHz/25MHz)
+    // Port A: 25MHz — muxed between sdram_arbiter and CPU
+    // Port B: 7MHz — bus_interface
     // =========================================================================
     wire [8:0]  buf_addr_a;
     wire [7:0]  buf_wdata_a, buf_rdata_a;
     wire        buf_we_a;
 
-    // Forward declarations for persist buf mux (defined after sd_persist)
-    wire        persist_sdram_claim;
-    wire [8:0]  persist_buf_addr;
-    wire [8:0]  mux_buf_addr_a  = persist_sdram_claim ? persist_buf_addr : buf_addr_a;
-    wire [7:0]  mux_buf_wdata_a = buf_wdata_a;
-    wire        mux_buf_we_a    = persist_sdram_claim ? 1'b0 : buf_we_a;
+    // CPU block buffer access (for magic block fills and persist reads)
+    wire        cpu_buf_claim;
+    wire [8:0]  cpu_buf_addr;
+    wire [7:0]  cpu_buf_wdata;
+    wire        cpu_buf_we;
+
+    // Port A mux: CPU or arbiter (CPU claims during magic block / persist)
+    wire [8:0]  mux_buf_addr_a  = cpu_buf_claim ? cpu_buf_addr  : buf_addr_a;
+    wire [7:0]  mux_buf_wdata_a = cpu_buf_claim ? cpu_buf_wdata : buf_wdata_a;
+    wire        mux_buf_we_a    = cpu_buf_claim ? cpu_buf_we    : buf_we_a;
 
     block_buffer u_block_buffer (
         .clk_a(CLK_25MHz), .addr_a(mux_buf_addr_a), .wdata_a(mux_buf_wdata_a),
@@ -255,7 +222,7 @@ module flash_hamr_top (
     );
 
     // =========================================================================
-    // SDRAM Address/Data Mapping
+    // SDRAM
     // =========================================================================
     wire [12:0] sdram_a;
     wire [15:0] sdram_dq = {SDRAM_D15, SDRAM_D14, SDRAM_D13, SDRAM_D12,
@@ -266,9 +233,7 @@ module flash_hamr_top (
             SDRAM_A7, SDRAM_A6, SDRAM_A5, SDRAM_A4,
             SDRAM_A3, SDRAM_A2, SDRAM_A1, SDRAM_A0} = sdram_a;
 
-    // =========================================================================
-    // SDRAM Controller + Mux
-    // =========================================================================
+    // SDRAM mux: CPU claims during mount/persist (same pattern as sd_mount)
     wire        arb_sdram_req, arb_sdram_write;
     wire [25:0] arb_sdram_addr;
     wire [15:0] arb_sdram_wdata;
@@ -277,22 +242,18 @@ module flash_hamr_top (
     wire        sdram_req_rdata_valid;
     wire        sdram_init_done;
 
-    // SDRAM mux: mount_claim or persist_claim switches from arbiter
-    wire        mount_sdram_req, mount_sdram_write;
-    wire [25:0] mount_sdram_addr;
-    wire [15:0] mount_sdram_wdata;
-    wire        mount_sdram_claim;
+    wire        cpu_sdram_claim;
+    wire        cpu_sdram_req, cpu_sdram_write;
+    wire [25:0] cpu_sdram_addr;
+    wire [15:0] cpu_sdram_wdata;
 
-    // SDRAM mux: mount_claim switches from arbiter (persist reads block_buffer, not SDRAM)
-    wire        wt_claim = mount_sdram_claim;
-
-    wire        mux_sdram_req   = mount_sdram_claim ? mount_sdram_req   : arb_sdram_req;
-    wire        mux_sdram_write = mount_sdram_claim ? mount_sdram_write : arb_sdram_write;
-    wire [25:0] mux_sdram_addr  = mount_sdram_claim ? mount_sdram_addr  : arb_sdram_addr;
-    wire [15:0] mux_sdram_wdata = mount_sdram_claim ? mount_sdram_wdata : arb_sdram_wdata;
+    wire mux_sdram_req   = cpu_sdram_claim ? cpu_sdram_req   : arb_sdram_req;
+    wire mux_sdram_write = cpu_sdram_claim ? cpu_sdram_write : arb_sdram_write;
+    wire [25:0] mux_sdram_addr  = cpu_sdram_claim ? cpu_sdram_addr  : arb_sdram_addr;
+    wire [15:0] mux_sdram_wdata = cpu_sdram_claim ? cpu_sdram_wdata : arb_sdram_wdata;
 
     sdram_controller u_sdram_controller (
-        .clk(CLK_25MHz), .rst_n(por_25_n), .init_done(sdram_init_done),
+        .clk(CLK_25MHz), .rst_n(por_25m_n), .init_done(sdram_init_done),
         .pause_refresh(1'b0),
         .req(mux_sdram_req), .req_write(mux_sdram_write),
         .req_addr(mux_sdram_addr), .req_wdata(mux_sdram_wdata),
@@ -307,7 +268,7 @@ module flash_hamr_top (
     );
 
     // =========================================================================
-    // SPI Flash (menu volume boot only)
+    // SPI Flash (menu volume boot)
     // =========================================================================
     wire        flash_busy, flash_done;
     wire [7:0]  flash_data_out;
@@ -327,7 +288,7 @@ module flash_hamr_top (
     `endif
 
     flash_reader u_flash_reader (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
+        .clk(CLK_25MHz), .rst_n(por_25m_n),
         .start(flash_start), .start_addr(flash_start_addr),
         .byte_count(flash_byte_count),
         .busy(flash_busy), .done(flash_done),
@@ -340,98 +301,20 @@ module flash_hamr_top (
     );
 
     // =========================================================================
-    // SD Card Controller (GPIO SPI)
+    // Boot Loader (SPI flash -> SDRAM at power-on)
     // =========================================================================
-    wire        sd_is_sdhc;
-    wire        sd_sck_w, sd_mosi_w;
-    wire        sd_cs_w;
-
-    // SD read interface (shared: boot_loader/fat32_reader → sd_mount → sd_persist)
-    wire        sd_read_start_bl, sd_read_start_mt, sd_read_start_ps;
-    wire [31:0] sd_read_addr_bl, sd_read_addr_mt, sd_read_addr_ps;
-    wire        sd_read_ready_bl, sd_read_ready_mt, sd_read_ready_ps;
-
-    // SD read mux: fat32_reader during scan, sd_mount during mount, sd_persist otherwise
-    wire fat32_scanning = (sd_seq_state == SD_SEQ_FAT32_FWD) || (sd_seq_state == SD_SEQ_FAT32_WAIT_FWD);
-
-    wire        sd_read_start = fat32_scanning  ? sd_read_start_bl :
-                                s4d2_loading    ? sd_read_start_mt :
-                                                  sd_read_start_ps;
-    wire [31:0] sd_read_addr  = fat32_scanning  ? sd_read_addr_bl :
-                                s4d2_loading    ? sd_read_addr_mt :
-                                                  sd_read_addr_ps;
-    wire        sd_read_ready = fat32_scanning  ? sd_read_ready_bl :
-                                s4d2_loading    ? sd_read_ready_mt :
-                                                  sd_read_ready_ps;
-
-    wire [7:0]  sd_read_data;
-    wire        sd_read_data_valid, sd_read_done, sd_read_error;
-
-    // SD write interface (sd_persist only)
-    wire        sd_write_start_ps;
-    wire [31:0] sd_write_addr_ps;
-    wire [7:0]  sd_write_data_ps;
-    wire        sd_write_data_valid_ps;
-    wire        sd_write_data_req, sd_write_done, sd_write_error;
-
-    assign SD_CS   = sd_cs_w;
-    assign SD_SCK  = sd_sck_w;
-    assign SD_MOSI = sd_mosi_w;
-
-    sd_controller u_sd_controller (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
-        .init_start(sd_init_start), .init_done(sd_init_done),
-        .init_error(sd_init_error), .is_sdhc(sd_is_sdhc),
-        .read_start(sd_read_start), .read_addr(sd_read_addr),
-        .read_data(sd_read_data), .read_data_valid(sd_read_data_valid),
-        .read_data_ready(sd_read_ready), .read_done(sd_read_done),
-        .read_error(sd_read_error),
-        .write_start(sd_write_start_ps), .write_addr(sd_write_addr_ps),
-        .write_data(sd_write_data_ps), .write_data_valid(sd_write_data_valid_ps),
-        .write_data_req(sd_write_data_req), .write_done(sd_write_done),
-        .write_error(sd_write_error),
-        .sd_sck(sd_sck_w), .sd_mosi(sd_mosi_w), .sd_miso(SD_MISO), .sd_cs(sd_cs_w)
-    );
-
-    // =========================================================================
-    // FAT32 Reader
-    // =========================================================================
-    wire        fat32_done, fat32_error;
-    wire [31:0] fat32_data_start, fat32_fat_start;
-    wire [7:0]  fat32_spc;
-    wire [31:0] fat32_root_cluster;
-
-    fat32_reader u_fat32_reader (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
-        .start(fat32_start), .done(fat32_done), .error(fat32_error),
-        .file_count(img_count),
-        .sd_read_start(sd_read_start_bl), .sd_read_addr(sd_read_addr_bl),
-        .sd_read_data(sd_read_data), .sd_read_data_valid(sd_read_data_valid),
-        .sd_read_data_ready(sd_read_ready_bl), .sd_read_done(sd_read_done),
-        .sd_read_error(sd_read_error),
-        .fat32_partition_start(), .fat32_fat_start(fat32_fat_start),
-        .fat32_data_start(fat32_data_start), .fat32_spc(fat32_spc),
-        .fat32_root_cluster(fat32_root_cluster),
-        .cat_wr_addr(cat_wr_addr), .cat_wr_data(cat_wr_data), .cat_wr_en(cat_wr_en),
-        .dbg_dir_byte0(fat32_dbg_byte0), .dbg_dir_byte8(fat32_dbg_byte8),
-        .dbg_is_fat16(fat32_dbg_is_fat16)
-    );
-    wire [7:0] fat32_dbg_byte0, fat32_dbg_byte8;
-    wire       fat32_dbg_is_fat16;
-
-    // =========================================================================
-    // Boot Loader
-    // =========================================================================
+    wire        boot_done;
+    wire [15:0] boot_total_blocks;
     wire        boot_sdram_req, boot_sdram_write;
     wire [25:0] boot_sdram_addr;
     wire [15:0] boot_sdram_wdata;
     wire        boot_sdram_ready;
 
     boot_loader u_boot_loader (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
+        .clk(CLK_25MHz), .rst_n(por_25m_n),
         .sdram_init_done(sdram_init_done),
         .boot_done(boot_done),
-        .total_blocks(total_blocks),
+        .total_blocks(boot_total_blocks),
         .flash_start(flash_start), .flash_addr(flash_start_addr),
         .flash_count(flash_byte_count), .flash_busy(flash_busy),
         .flash_data(flash_data_out), .flash_data_valid(flash_data_valid),
@@ -442,93 +325,17 @@ module flash_hamr_top (
     );
 
     // =========================================================================
-    // SD Init Sequencer — triggered by register write ($02 to reg 8)
-    // Runs: sd_controller.init() → fat32_reader.scan() → sets sd_ready
+    // SDRAM Arbiter (DO NOT MODIFY)
     // =========================================================================
-    // CDC: sd_init_request (7MHz level) → 25MHz domain
-    // sd_init_request stays HIGH until sd_ready/sd_error clears it in bus_interface
-    reg sd_init_r1 = 1'b0, sd_init_r2 = 1'b0, sd_init_r3 = 1'b0;
-    always @(posedge CLK_25MHz) begin
-        sd_init_r1 <= sd_init_request;
-        sd_init_r2 <= sd_init_r1;
-        sd_init_r3 <= sd_init_r2;
-    end
-    wire sd_init_trigger = sd_init_r2 & ~sd_init_r3;  // rising edge in 25MHz domain
-    reg         sd_ready_r = 1'b0;
-    reg         sd_error_r = 1'b0;
-    assign      sd_ready = sd_ready_r;
+    wire arb_block_ready;
 
-    // sd_seq_state declared above as forward declaration
-    localparam SD_SEQ_IDLE = 3'd0,
-               SD_SEQ_INIT = 3'd1,
-               SD_SEQ_INIT_GAP = 3'd6,  // 1-cycle gap for controller to clear init_error
-               SD_SEQ_INIT_WAIT = 3'd2,
-               SD_SEQ_FAT32 = 3'd3,
-               SD_SEQ_FAT32_WAIT = 3'd4,
-               SD_SEQ_DONE = 3'd5;
-
-    assign  sd_error = sd_error_r;
-
-    always @(posedge CLK_25MHz or negedge por_25_n) begin
-        if (!por_25_n) begin
-            sd_seq_state <= SD_SEQ_IDLE;
-            sd_ready_r   <= 1'b0;
-            sd_error_r   <= 1'b0;
-        end else begin
-            case (sd_seq_state)
-                SD_SEQ_IDLE: begin
-                    if (sd_init_trigger) begin
-                        sd_ready_r   <= 1'b0;
-                        sd_error_r   <= 1'b0;
-                        sd_seq_state <= SD_SEQ_INIT;
-                    end
-                end
-                SD_SEQ_INIT: begin
-                    // sd_init_start fires this cycle (combinational wire)
-                    sd_seq_state <= SD_SEQ_INIT_GAP;
-                end
-                SD_SEQ_INIT_GAP: begin
-                    sd_seq_state <= SD_SEQ_INIT_WAIT;
-                end
-                SD_SEQ_INIT_WAIT: begin
-                    if (sd_init_done) begin
-                        sd_seq_state <= SD_SEQ_FAT32;
-                    end else if (sd_init_error) begin
-                        sd_error_r   <= 1'b1;
-                        sd_seq_state <= SD_SEQ_DONE;
-                    end
-                end
-                SD_SEQ_FAT32: begin
-                    // fat32_start pulse handled below
-                    sd_seq_state <= SD_SEQ_FAT32_WAIT;
-                end
-                SD_SEQ_FAT32_WAIT: begin
-                    if (fat32_done) begin
-                        sd_ready_r <= 1'b1;
-                        if (fat32_error)
-                            sd_error_r <= 1'b1;
-                        sd_seq_state <= SD_SEQ_DONE;
-                    end
-                end
-                SD_SEQ_DONE: begin
-                    sd_seq_state <= SD_SEQ_IDLE;
-                end
-            endcase
-        end
-    end
-
-    assign sd_init_start = (sd_seq_state == SD_SEQ_INIT);
-    assign fat32_start   = (sd_seq_state == SD_SEQ_FAT32);
-
-    // =========================================================================
-    // SDRAM Arbiter
-    // =========================================================================
     sdram_arbiter u_sdram_arbiter (
-        .clk(CLK_25MHz), .rst_n(por_25_n), .boot_done(boot_done),
+        .clk(CLK_25MHz), .rst_n(por_25m_n), .boot_done(boot_done),
         .boot_req(boot_sdram_req), .boot_write(boot_sdram_write),
         .boot_addr(boot_sdram_addr), .boot_wdata(boot_sdram_wdata),
         .boot_ready(boot_sdram_ready),
-        .dev_block_read_req(dev_block_read_req), .dev_block_write_req(dev_block_write_req),
+        .dev_block_read_req(dev_block_read_req),
+        .dev_block_write_req(dev_block_write_req),
         .dev_block_num(dev_block_num), .dev_block_ready(arb_block_ready),
         .buf_addr_a(buf_addr_a), .buf_wdata_a(buf_wdata_a),
         .buf_we_a(buf_we_a), .buf_rdata_a(buf_rdata_a),
@@ -539,75 +346,139 @@ module flash_hamr_top (
     );
 
     // =========================================================================
-    // SD Mount
+    // Block Ready Gate (renamed write_through — own module, DO NOT MERGE)
     // =========================================================================
-    wire [15:0] mount_data_offset;
-    wire [31:0] sd_image_first_cluster;
+    wire [15:0] persist_block;
+    wire        persist_wr;
+    wire        persist_done_toggle;  // from mailbox (25MHz toggle, synced in gate)
 
-    // CDC for mount_request (7MHz pulse → 25MHz edge detect)
-    reg mount_req_s1 = 1'b0, mount_req_s2 = 1'b0, mount_req_s3 = 1'b0;
+    block_ready_gate u_block_ready_gate (
+        .clk(sig_7M), .rst_n(por_7m_n), .boot_done(boot_done),
+        .arb_block_ready(arb_block_ready),
+        .gated_block_ready(gated_block_ready),
+        .dev_block_write_req(dev_block_write_req),
+        .dev_block_num(dev_block_num),
+        .persist_block(persist_block),
+        .persist_wr(persist_wr),
+        .persist_done(persist_done_toggle),
+        .persist_enabled(mbox_bus_status_flags[2])  // enabled when s4d2_mounted
+    );
+
+    // =========================================================================
+    // Mailbox (toggle CDC between bus_interface 7MHz and CPU 25MHz)
+    // =========================================================================
+    wire [7:0]  mbox_cpu_cmd, mbox_cpu_arg0;
+    wire        mbox_cpu_cmd_pending;
+    wire [15:0] mbox_cpu_persist_block;
+    wire        mbox_cpu_persist_pending;
+
+    // CPU status outputs (directly from cpu_soc)
+    wire [7:0]  cpu_status_flags;
+    wire [15:0] cpu_total_blocks;
+    wire        cpu_status_wr;
+    wire        cpu_cmd_ack;
+    wire        cpu_persist_done;
+
+    mailbox u_mailbox (
+        // 7 MHz side
+        .clk_bus(sig_7M), .rst_bus_n(por_7m_n),
+        .bus_cmd(sd_cmd_data), .bus_arg0({4'd0, img_select}),
+        .bus_cmd_wr(sd_cmd_wr),
+        .bus_status_flags(mbox_bus_status_flags),
+        .bus_total_blocks(mbox_bus_total_blocks),
+        .bus_persist_block(persist_block),
+        .bus_persist_wr(persist_wr),
+        .bus_persist_done_toggle(persist_done_toggle),
+        // 25 MHz side
+        .clk_cpu(CLK_25MHz), .rst_cpu_n(por_25m_n),
+        .cpu_cmd(mbox_cpu_cmd), .cpu_arg0(mbox_cpu_arg0),
+        .cpu_cmd_pending(mbox_cpu_cmd_pending),
+        .cpu_status_flags(cpu_status_flags),
+        .cpu_total_blocks(cpu_total_blocks),
+        .cpu_status_wr(cpu_status_wr),
+        .cpu_persist_block(mbox_cpu_persist_block),
+        .cpu_persist_pending(mbox_cpu_persist_pending),
+        .cpu_cmd_ack(cpu_cmd_ack),
+        .cpu_persist_done(cpu_persist_done)
+    );
+
+    // =========================================================================
+    // SD Card — driven by PicoRV32 SPI master
+    // =========================================================================
+    wire cpu_sd_cs, cpu_sd_sck, cpu_sd_mosi;
+    assign SD_CS   = cpu_sd_cs;
+    assign SD_SCK  = cpu_sd_sck;
+    assign SD_MOSI = cpu_sd_mosi;
+
+    // =========================================================================
+    // PicoRV32 CPU SoC
+    // =========================================================================
+    wire [7:0] cpu_gpio;
+    wire       uart_txd;
+
+    // CDC magic_block_req (7MHz) -> 25MHz for CPU
+    reg mbr_s1 = 0, mbr_s2 = 0;
     always @(posedge CLK_25MHz) begin
-        mount_req_s1 <= mount_request;
-        mount_req_s2 <= mount_req_s1;
-        mount_req_s3 <= mount_req_s2;
+        mbr_s1 <= magic_block_req;
+        mbr_s2 <= mbr_s1;
     end
-    wire mount_req_pulse = mount_req_s2 & ~mount_req_s3;
 
-    sd_mount u_sd_mount (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
-        .mount_request(mount_req_pulse), .img_select(img_select),
-        .s4d2_mounted(s4d2_mounted), .s4d2_loading(s4d2_loading),
-        .s4d2_block_count(s4d2_block_count),
-        .is_2mg(s4d2_is_2mg), .data_offset(mount_data_offset),
-        .cat_rd_addr(cat_rd_addr_mount), .cat_rd_data(cat_rd_data),
-        .fat32_data_start(fat32_data_start), .fat32_fat_start(fat32_fat_start),
-        .fat32_spc(fat32_spc), .fat_is_fat16(fat32_dbg_is_fat16),
-        .sd_read_start(sd_read_start_mt), .sd_read_addr(sd_read_addr_mt),
-        .sd_read_data(sd_read_data), .sd_read_data_valid(sd_read_data_valid),
-        .sd_read_data_ready(sd_read_ready_mt), .sd_read_done(sd_read_done),
-        .sdram_req(mount_sdram_req), .sdram_req_write(mount_sdram_write),
-        .sdram_req_addr(mount_sdram_addr), .sdram_req_wdata(mount_sdram_wdata),
-        .sdram_req_ready(sdram_req_ready),
-        .sdram_claim(mount_sdram_claim),
-        .chain_wr_addr(chain_wr_addr), .chain_wr_data(chain_wr_data),
-        .chain_wr_en(chain_wr_en),
-        .sd_image_first_cluster(sd_image_first_cluster),
-        .dbg_sector_count(mount_dbg_sectors),
-        .dbg_mount_state(mount_dbg_state),
-        .dbg_fat_entry(mount_dbg_fat_entry)
+    // CDC dev_block_num (7MHz, stable during request) -> 25MHz
+    reg [15:0] magic_block_num_s1, magic_block_num_s2;
+    always @(posedge CLK_25MHz) begin
+        magic_block_num_s1 <= dev_block_num;
+        magic_block_num_s2 <= magic_block_num_s1;
+    end
+
+    cpu_soc u_cpu_soc (
+        .clk(CLK_25MHz),
+        .rst_n(por_25m_n),
+        .gpio_out(cpu_gpio),
+        .uart_txd(uart_txd),
+        .spi_sck(cpu_sd_sck),
+        .spi_mosi(cpu_sd_mosi),
+        .spi_miso(SD_MISO),
+        .spi_cs(cpu_sd_cs),
+        // Mailbox
+        .mbox_cmd(mbox_cpu_cmd),
+        .mbox_arg0(mbox_cpu_arg0),
+        .mbox_cmd_pending(mbox_cpu_cmd_pending),
+        .mbox_status_flags(cpu_status_flags),
+        .mbox_total_blocks(cpu_total_blocks),
+        .mbox_status_wr(cpu_status_wr),
+        .mbox_cmd_ack(cpu_cmd_ack),
+        .mbox_persist_block(mbox_cpu_persist_block),
+        .mbox_persist_pending(mbox_cpu_persist_pending),
+        .mbox_persist_done(cpu_persist_done),
+        // Block buffer
+        .buf_claim(cpu_buf_claim),
+        .buf_addr(cpu_buf_addr),
+        .buf_wdata(cpu_buf_wdata),
+        .buf_we(cpu_buf_we),
+        .buf_rdata(buf_rdata_a),
+        // Magic block request (from 7MHz, CDC'd)
+        .magic_block_req(mbr_s2),
+        .magic_block_num(magic_block_num_s2),
+        .magic_block_ready(cpu_block_ready_25),
+        // SDRAM port
+        .sdram_claim(cpu_sdram_claim),
+        .sdram_req(cpu_sdram_req),
+        .sdram_write(cpu_sdram_write),
+        .sdram_addr(cpu_sdram_addr),
+        .sdram_wdata(cpu_sdram_wdata),
+        .sdram_ready(sdram_req_ready),
+        .sdram_rdata(sdram_req_rdata),
+        .sdram_rdata_valid(sdram_req_rdata_valid)
     );
-    wire [15:0] mount_dbg_sectors;
-    wire [4:0]  mount_dbg_state;
-    wire [15:0] mount_dbg_fat_entry;
 
     // =========================================================================
-    // Write-Through + SD Persist
+    // GPIO mapping
     // =========================================================================
-    wire        fp_start;
-    wire [15:0] fp_block_num;
-    wire        fp_busy;
-
-    write_through u_write_through (
-        .clk(CLK_25MHz), .rst_n(por_25_n), .boot_done(boot_done),
-        .arb_block_ready(arb_block_ready), .gated_block_ready(dev_block_ready),
-        .dev_block_write_req(dev_block_write_req), .dev_block_num(dev_block_num),
-        .fp_start(fp_start), .fp_block_num(fp_block_num), .fp_busy(fp_busy),
-        .persist_enabled(s4d2_mounted)
-    );
-
-    sd_persist u_sd_persist (
-        .clk(CLK_25MHz), .rst_n(por_25_n),
-        .start(fp_start), .block_num(fp_block_num), .busy(fp_busy),
-        .is_2mg(s4d2_is_2mg), .data_offset(mount_data_offset),
-        .persist_enabled(s4d2_mounted),
-        .fat32_data_start(fat32_data_start), .fat32_spc(fat32_spc),
-        .chain_rd_addr(chain_rd_addr), .chain_rd_data(chain_rd_data),
-        .buf_rd_addr(persist_buf_addr), .buf_rd_data(buf_rdata_a),
-        .sdram_claim(persist_sdram_claim),
-        .sd_write_start(sd_write_start_ps), .sd_write_addr(sd_write_addr_ps),
-        .sd_write_data(sd_write_data_ps),
-        .sd_write_data_valid(sd_write_data_valid_ps),
-        .sd_write_data_req(sd_write_data_req), .sd_write_done(sd_write_done)
-    );
+    assign GPIO5  = cpu_gpio[0];
+    assign GPIO6  = cpu_gpio[1];
+    assign GPIO7  = uart_txd;
+    assign GPIO8  = boot_done;
+    assign GPIO10 = 1'b0;
+    assign GPIO11 = 1'b0;
 
 endmodule

@@ -144,7 +144,10 @@ TOP := $(DESIGN)_top
 
 synth: $(JSON)
 
-$(JSON): $(VERILOG_SRC) $(MEM_FILES) | $(BUILD_DIR) $(REPORT_DIR)
+# For flash_hamr: firmware.mem is a synthesis dependency
+FW_MEM_DEP := $(if $(filter flash_hamr,$(DESIGN)),$(FW_MEM),)
+
+$(JSON): $(VERILOG_SRC) $(MEM_FILES) $(FW_MEM_DEP) | $(BUILD_DIR) $(REPORT_DIR)
 	@echo "=== Synthesizing $(DESIGN) with Yosys ==="
 	@echo "Synthesis started at $$(date)" > $(SYNTH_LOG)
 	@echo "Design: $(DESIGN)" >> $(SYNTH_LOG)
@@ -480,6 +483,63 @@ esp-clean:
 
 esp-menuconfig: esp-check
 	cd $(ESP_FW_DIR)/$(ESP_PROJECT) && idf.py menuconfig
+
+# =============================================================================
+# RISC-V Firmware (PicoRV32 for Flash Hamr)
+# =============================================================================
+# Requires: riscv32-unknown-elf-gcc (brew install riscv-tools)
+# =============================================================================
+
+# Auto-detect RISC-V toolchain prefix (riscv64 can target RV32I with -march=rv32i)
+ifneq ($(wildcard $(HOME)/oss-cad-suite/bin/riscv32-unknown-elf-gcc),)
+    RISCV_PREFIX := $(HOME)/oss-cad-suite/bin/riscv32-unknown-elf-
+else ifneq ($(shell which riscv32-unknown-elf-gcc 2>/dev/null),)
+    RISCV_PREFIX := riscv32-unknown-elf-
+else
+    RISCV_PREFIX := riscv64-unknown-elf-
+endif
+
+RISCV_CC      := $(RISCV_PREFIX)gcc
+RISCV_OBJCOPY := $(RISCV_PREFIX)objcopy
+RISCV_OBJDUMP := $(RISCV_PREFIX)objdump
+RISCV_SIZE    := $(RISCV_PREFIX)size
+
+FW_DIR     := $(GATEWARE_DIR)/flash_hamr/firmware
+FW_SRCS_C  := $(wildcard $(FW_DIR)/*.c)
+FW_SRCS_S  := $(wildcard $(FW_DIR)/*.S)
+FW_ELF     := $(BUILD_DIR)/firmware.elf
+FW_BIN     := $(BUILD_DIR)/firmware.bin
+FW_MEM     := $(GATEWARE_DIR)/flash_hamr/firmware.mem
+FW_MAP     := $(BUILD_DIR)/firmware.map
+FW_LST     := $(BUILD_DIR)/firmware.lst
+
+RISCV_CFLAGS  := -march=rv32i -mabi=ilp32 -Os -Wall -Wextra -nostdlib -ffreestanding -ffunction-sections -fdata-sections
+RISCV_LIBGCC  := $(shell $(RISCV_CC) -march=rv32i -mabi=ilp32 -print-libgcc-file-name)
+RISCV_LDFLAGS := -T $(FW_DIR)/linker.ld -nostdlib -Wl,--gc-sections -Wl,-Map,$(FW_MAP)
+
+.PHONY: firmware firmware-clean firmware-size
+
+firmware: $(FW_MEM)
+
+$(FW_ELF): $(FW_SRCS_C) $(FW_SRCS_S) $(FW_DIR)/linker.ld | $(BUILD_DIR)
+	@echo "=== Compiling PicoRV32 firmware ==="
+	$(RISCV_CC) $(RISCV_CFLAGS) $(RISCV_LDFLAGS) -o $@ $(FW_SRCS_S) $(FW_SRCS_C) $(RISCV_LIBGCC)
+	@$(RISCV_SIZE) $@
+
+$(FW_BIN): $(FW_ELF)
+	$(RISCV_OBJCOPY) -O binary $< $@
+	$(RISCV_OBJDUMP) -d $< > $(FW_LST)
+
+$(FW_MEM): $(FW_BIN)
+	python3 scripts/bin2mem.py $< $@ 4 32768
+	@echo "Firmware ready: $@ ($$(wc -c < $(FW_BIN)) bytes code)"
+
+firmware-size: $(FW_ELF)
+	$(RISCV_SIZE) $@
+
+firmware-clean:
+	@rm -f $(FW_ELF) $(FW_BIN) $(FW_MEM) $(FW_MAP) $(FW_LST)
+	@echo "Firmware build cleaned"
 
 # =============================================================================
 # Cleanup

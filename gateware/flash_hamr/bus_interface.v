@@ -75,6 +75,10 @@ module bus_interface (
     output reg         mount_request,
     output reg         sd_init_request,   // level: set by POKE, cleared when sd_ready/sd_error
 
+    // Mailbox command output (any write to reg 8)
+    output reg  [7:0]  sd_cmd_data,       // command byte written to reg 8
+    output reg         sd_cmd_wr,         // pulse: reg 8 was written
+
     // Mounted image block count
     input  wire [15:0] s4d2_block_count,
     input  wire        s4d2_is_2mg,
@@ -285,8 +289,11 @@ module bus_interface (
             img_name_idx    <= 5'd0;
             mount_request   <= 1'b0;
             sd_init_request <= 1'b0;
+            sd_cmd_data     <= 8'd0;
+            sd_cmd_wr       <= 1'b0;
         end else begin
             mount_request   <= 1'b0;
+            sd_cmd_wr       <= 1'b0;
             // sd_init_request: set by POKE $02, stays HIGH until cleared
             // by POKE $00, or by writing $02 again (re-trigger).
             // Do NOT auto-clear on sd_ready — that races with the CDC.
@@ -367,6 +374,9 @@ module bus_interface (
                             sd_init_request <= 1'b1;
                         if (wr_data_latch == 8'h00)
                             sd_init_request <= 1'b0;  // manual clear
+                        // Mailbox: forward any reg 8 write to CPU
+                        sd_cmd_data <= wr_data_latch;
+                        sd_cmd_wr   <= 1'b1;
                     end
                     4'h9: begin  // IMG_SELECT
                         img_select <= wr_data_latch[3:0];

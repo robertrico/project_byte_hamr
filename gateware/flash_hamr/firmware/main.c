@@ -1,0 +1,453 @@
+/* main.c — PicoRV32 firmware for Flash Hamr
+ *
+ * Phase 7: Full mount — stream SD card image to SDRAM
+ */
+
+#include "hal.h"
+#include "spi_sd.h"
+#include "ff.h"
+
+/* Mailbox registers */
+#define MBOX_REG_CMD       (*(volatile uint32_t *)0x30000000)
+#define MBOX_REG_ARG0      (*(volatile uint32_t *)0x30000004)
+#define MBOX_REG_STATUS    (*(volatile uint32_t *)0x30000008)
+#define MBOX_REG_TOTAL_BLK (*(volatile uint32_t *)0x3000000C)
+
+/* Status flags */
+#define FL_SD_READY     (1 << 0)
+#define FL_SD_ERROR     (1 << 1)
+#define FL_S4D2_MOUNTED (1 << 2)
+#define FL_S4D2_LOADING (1 << 3)
+#define FL_CPU_BUSY     (1 << 4)
+
+/* Mailbox commands */
+#define MCMD_MOUNT   0x01
+#define MCMD_SD_INIT 0x02
+
+/* SDRAM layout: S4D1 at offset 0, S4D2 at block 2048 */
+#define UNIT2_OFFSET_BLOCKS 2048
+#define UNIT2_OFFSET_BYTES  (UNIT2_OFFSET_BLOCKS * 512)  /* 0x100000 */
+
+/* ================================================================ */
+
+static FATFS fs;
+static uint8_t card_type;
+
+#define MAX_IMAGES 15
+
+typedef struct {
+    char     fname[13];
+    uint32_t fsize;
+    uint8_t  flags;       /* bit 0: is_2mg */
+} image_entry_t;
+
+static image_entry_t catalog[MAX_IMAGES];
+static uint8_t num_images;
+static uint8_t status_flags;
+
+static void delay(volatile uint32_t count) { while (count--) ; }
+
+static int has_ext(const char *fname, const char *ext) {
+    const char *p = fname;
+    while (*p && *p != '.') p++;
+    if (*p != '.') return 0;
+    p++;
+    for (int i = 0; i < 3; i++) {
+        char a = p[i], b = ext[i];
+        if (a >= 'a' && a <= 'z') a -= 32;
+        if (b >= 'a' && b <= 'z') b -= 32;
+        if (a != b) return 0;
+    }
+    return 1;
+}
+
+static void set_status(uint8_t flags) {
+    status_flags = flags;
+    MBOX_REG_STATUS = flags | ((num_images & 0x0F) << 4);
+}
+
+/* ================================================================
+ * Fill catalog block buffer ($FFFF)
+ * ================================================================ */
+static void fill_catalog_buffer(void) {
+    BBUF_CTRL = BBUF_CTRL_CLAIM;
+    BBUF_ADDR = 0;
+
+    /* Header */
+    BBUF_WDATA = num_images;
+    BBUF_WDATA = 0;  /* page 0 */
+    BBUF_WDATA = 1;  /* 1 page total */
+    for (int i = 3; i < 32; i++) BBUF_WDATA = 0;
+
+    /* Entries */
+    for (int e = 0; e < MAX_IMAGES; e++) {
+        if (e < num_images) {
+            const char *fn = catalog[e].fname;
+            int fi = 0;
+            for (int c = 0; c < 8; c++) {
+                if (fn[fi] && fn[fi] != '.') BBUF_WDATA = fn[fi++];
+                else BBUF_WDATA = ' ';
+            }
+            if (fn[fi] == '.') fi++;
+            for (int c = 0; c < 3; c++) {
+                if (fn[fi]) BBUF_WDATA = fn[fi++];
+                else BBUF_WDATA = ' ';
+            }
+            BBUF_WDATA = catalog[e].flags;
+            uint16_t blocks = (uint16_t)(catalog[e].fsize >> 9);
+            BBUF_WDATA = blocks & 0xFF;
+            BBUF_WDATA = (blocks >> 8) & 0xFF;
+            uint32_t sz = catalog[e].fsize;
+            BBUF_WDATA = sz & 0xFF;
+            BBUF_WDATA = (sz >> 8) & 0xFF;
+            BBUF_WDATA = (sz >> 16) & 0xFF;
+            BBUF_WDATA = (sz >> 24) & 0xFF;
+            for (int i = 18; i < 32; i++) BBUF_WDATA = 0;
+        } else {
+            for (int i = 0; i < 32; i++) BBUF_WDATA = 0;
+        }
+    }
+    BBUF_CTRL = 0;
+}
+
+/* ================================================================
+ * SD init + catalog scan
+ * ================================================================ */
+static int do_sd_init(void) {
+    FRESULT fr;
+    DIR dir;
+    FILINFO fno;
+    num_images = 0;
+
+    fr = f_mount(&fs, "", 1);
+    if (fr != FR_OK) {
+        uart_puts("f_mount FAIL: ");
+        uart_put_hex8(fr);
+        uart_puts("\r\n");
+        return -1;
+    }
+
+    fr = f_opendir(&dir, "/");
+    if (fr != FR_OK) return -1;
+
+    while (num_images < MAX_IMAGES) {
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0) break;
+        if (fno.fattrib & (AM_DIR | AM_HID | AM_SYS)) continue;
+
+        int is_po  = has_ext(fno.fname, "PO");
+        int is_2mg = has_ext(fno.fname, "2MG");
+        if (!is_po && !is_2mg) continue;
+
+        int j;
+        for (j = 0; fno.fname[j] && j < 12; j++)
+            catalog[num_images].fname[j] = fno.fname[j];
+        catalog[num_images].fname[j] = 0;
+        catalog[num_images].fsize = fno.fsize;
+        catalog[num_images].flags = is_2mg ? 1 : 0;
+
+        uart_puts("  ");
+        uart_puts(catalog[num_images].fname);
+        uart_puts("\r\n");
+        num_images++;
+    }
+    f_closedir(&dir);
+
+    uart_puts("Found ");
+    uart_putc('0' + num_images);
+    uart_puts(" images\r\n");
+    return 0;
+}
+
+/* ================================================================
+ * Mount image — stream from SD to SDRAM
+ * ================================================================ */
+static uint8_t sector_buf[512];
+static FIL mounted_fil;
+static uint8_t mounted_is_2mg;
+static uint32_t mounted_data_offset;
+static uint16_t mounted_block_count;
+static uint8_t file_is_open;
+
+static int do_mount(uint8_t idx) {
+    if (idx >= num_images) {
+        uart_puts("Mount: bad index\r\n");
+        return -1;
+    }
+
+    uart_puts("Mounting: ");
+    uart_puts(catalog[idx].fname);
+    uart_puts("\r\n");
+
+    set_status(FL_SD_READY | FL_S4D2_LOADING | FL_CPU_BUSY);
+
+    /* Build path: "/" + filename */
+    char path[16] = "/";
+    int pi = 1;
+    for (int i = 0; catalog[idx].fname[i] && pi < 14; i++)
+        path[pi++] = catalog[idx].fname[i];
+    path[pi] = 0;
+
+    /* Close any previously mounted file */
+    if (file_is_open) {
+        f_close(&mounted_fil);
+        file_is_open = 0;
+    }
+
+    FRESULT fr = f_open(&mounted_fil, path, FA_READ | FA_WRITE);
+    if (fr != FR_OK) {
+        uart_puts("f_open FAIL: ");
+        uart_put_hex8(fr);
+        uart_puts("\r\n");
+        set_status(FL_SD_READY | FL_SD_ERROR);
+        return -1;
+    }
+
+    uint32_t file_size = f_size(&mounted_fil);
+    mounted_data_offset = 0;
+    mounted_is_2mg = catalog[idx].flags & 1;
+
+    /* .2mg header detection */
+    if (mounted_is_2mg) {
+        UINT br;
+        fr = f_read(&mounted_fil, sector_buf, 64, &br);
+        if (fr != FR_OK || br < 64) {
+            uart_puts("2mg header read fail\r\n");
+            f_close(&mounted_fil);
+            set_status(FL_SD_READY | FL_SD_ERROR);
+            return -1;
+        }
+
+        if (sector_buf[0] == '2' && sector_buf[1] == 'I' &&
+            sector_buf[2] == 'M' && sector_buf[3] == 'G') {
+            mounted_data_offset = sector_buf[24] | (sector_buf[25] << 8) |
+                                  (sector_buf[26] << 16) | (sector_buf[27] << 24);
+            uint32_t data_len = sector_buf[28] | (sector_buf[29] << 8) |
+                                (sector_buf[30] << 16) | (sector_buf[31] << 24);
+            mounted_block_count = (uint16_t)(data_len >> 9);
+            uart_puts("2MG: offset=");
+            uart_put_hex32(mounted_data_offset);
+            uart_puts(" blocks=");
+            uart_put_hex32(mounted_block_count);
+            uart_puts("\r\n");
+        } else {
+            uart_puts("2mg: bad magic\r\n");
+            mounted_is_2mg = 0;
+            mounted_data_offset = 0;
+            mounted_block_count = (uint16_t)(file_size >> 9);
+        }
+
+        f_lseek(&mounted_fil, mounted_data_offset);
+    } else {
+        mounted_block_count = (uint16_t)(file_size >> 9);
+    }
+
+    uart_puts("Streaming ");
+    uart_put_hex32(mounted_block_count);
+    uart_puts(" blocks to SDRAM...\r\n");
+
+    sdram_claim();
+
+    uint32_t sdram_byte_addr = UNIT2_OFFSET_BYTES;
+    uint32_t blocks_written = 0;
+
+    for (uint32_t b = 0; b < mounted_block_count; b++) {
+        UINT br;
+        fr = f_read(&mounted_fil, sector_buf, 512, &br);
+        if (fr != FR_OK || br == 0) break;
+
+        /* Pad short read with zeros */
+        for (UINT i = br; i < 512; i++)
+            sector_buf[i] = 0;
+
+        /* Write 256 words (512 bytes) to SDRAM */
+        for (int w = 0; w < 256; w++) {
+            uint16_t word = sector_buf[w * 2] | (sector_buf[w * 2 + 1] << 8);
+            sdram_write_word(sdram_byte_addr, word);
+            sdram_byte_addr += 2;
+        }
+
+        blocks_written++;
+
+        /* Progress dot every 256 blocks */
+        if ((blocks_written & 0xFF) == 0)
+            uart_putc('.');
+    }
+
+    sdram_release();
+    /* Keep file open for persist writes */
+    file_is_open = 1;
+
+    uart_puts("\r\nMounted: ");
+    uart_put_hex32(blocks_written);
+    uart_puts(" blocks written\r\n");
+
+    MBOX_REG_TOTAL_BLK = UNIT2_OFFSET_BLOCKS + mounted_block_count;
+
+    set_status(FL_SD_READY | FL_S4D2_MOUNTED);
+    return 0;
+}
+
+/* ================================================================
+ * Main
+ * ================================================================ */
+int main(void) {
+    uart_puts("\r\n=== Flash Hamr Phase 8 ===\r\n");
+
+    /* Auto-init SD */
+    int rc = sd_init(&card_type);
+    if (rc != SD_OK) {
+        uart_puts("SD init failed\r\n");
+        set_status(FL_SD_ERROR);
+        goto loop;
+    }
+
+    rc = do_sd_init();
+    if (rc != 0) {
+        set_status(FL_SD_ERROR);
+        goto loop;
+    }
+
+    set_status(FL_SD_READY);
+
+    /* SDRAM quick test */
+    sdram_claim();
+    sdram_write_word(0x100000, 0xCAFE);
+    uint16_t v = sdram_read_word(0x100000);
+    sdram_release();
+    uart_puts("SDRAM: ");
+    uart_put_hex32(v);
+    uart_puts(v == 0xCAFE ? " OK\r\n" : " FAIL\r\n");
+
+loop:
+    uart_puts("Command loop\r\n");
+
+    /* Track mailbox cmd_pending edge */
+    uint8_t last_pending = 0;
+
+    while (1) {
+        /* Check for magic block request */
+        uint32_t ms = BBUF_MAGIC_STATUS;
+        if (ms & BBUF_MAGIC_PENDING) {
+            uint16_t blk = ms & 0xFFFF;
+            if (blk == 0xFFFF) {
+                fill_catalog_buffer();
+            } else {
+                /* Unknown magic block — zeros */
+                BBUF_CTRL = BBUF_CTRL_CLAIM;
+                BBUF_ADDR = 0;
+                for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
+                BBUF_CTRL = 0;
+            }
+            BBUF_MAGIC_DONE = 1;
+        }
+
+        /* Check for persist request from block_ready_gate */
+        uint32_t ps = (*(volatile uint32_t *)0x30000014);  /* PERSIST_PEND */
+        if (ps & 1) {
+            uint16_t pblk = (*(volatile uint32_t *)0x30000010) & 0xFFFF;  /* PERSIST_BLK */
+
+            uart_puts("Persist blk=");
+            uart_put_hex32(pblk);
+
+            if (file_is_open && pblk >= UNIT2_OFFSET_BLOCKS) {
+                /* Read 512 bytes from block buffer */
+                BBUF_CTRL = BBUF_CTRL_CLAIM;
+                BBUF_ADDR = 0;
+                /* Need 1 dummy read for BRAM latency, then 512 real reads */
+                (void)BBUF_RDATA;  /* prime the pipeline */
+                for (int i = 0; i < 512; i++)
+                    sector_buf[i] = (uint8_t)BBUF_RDATA;
+                BBUF_CTRL = 0;
+
+                /* Compute file offset */
+                uint32_t rel_block = pblk - UNIT2_OFFSET_BLOCKS;
+                uint32_t file_off = mounted_data_offset + (rel_block * 512);
+
+                /* Write to SD via FatFS */
+                UINT bw;
+                uart_puts(" seek=");
+                uart_put_hex32(file_off);
+
+                FRESULT pfr = f_lseek(&mounted_fil, file_off);
+                uart_puts(" lseek=");
+                uart_put_hex8(pfr);
+
+                if (pfr == FR_OK) {
+                    pfr = f_write(&mounted_fil, sector_buf, 512, &bw);
+                    uart_puts(" write=");
+                    uart_put_hex8(pfr);
+                    uart_puts("/");
+                    uart_put_hex32(bw);
+                }
+
+                if (pfr == FR_OK) {
+                    pfr = f_sync(&mounted_fil);
+                    uart_puts(" sync=");
+                    uart_put_hex8(pfr);
+                }
+
+                if (pfr == FR_OK)
+                    uart_puts(" OK\r\n");
+                else {
+                    uart_puts(" FAIL\r\n");
+                }
+            } else {
+                uart_puts(" skip (not mounted)\r\n");
+            }
+
+            /* Signal persist done to block_ready_gate */
+            (*(volatile uint32_t *)0x3000001C) = 1;  /* PERSIST_DONE */
+        }
+
+        /* Check for mailbox command (poll CMD register for changes) */
+        /* The cmd_pending mechanism is edge-based in HW.
+         * For firmware, we read cmd_pending from the mbox peripheral. */
+        uint32_t cmd_status = (*(volatile uint32_t *)0x30000000);
+        uint8_t cmd = cmd_status & 0xFF;
+
+        /* Detect new command by checking the pending flag
+         * (MBOX_REG_CMD read returns cmd byte; we check pending separately) */
+        /* Simple approach: act on non-zero cmd, then ack */
+        /* Actually, let's use the mbox_cmd_pending wire exposed as a readable bit.
+         * For now, use a simpler approach: the 6502 writes cmd to reg 8,
+         * which triggers sd_cmd_wr -> mailbox -> cmd_pending in HW.
+         * We check it via the pending detection in BBUF_MAGIC_STATUS-style polling.
+         *
+         * Actually, cmd_pending is already in the mbox peripheral at offset +0.
+         * But our current mbox peripheral just returns the cmd byte, not the pending flag.
+         * Let's add a simple pending check: read CMD, if non-zero and not last_cmd, act on it.
+         */
+
+        /* Poll: check if cmd byte changed */
+        if (cmd != 0 && cmd != last_pending) {
+            last_pending = cmd;
+
+            uart_puts("CMD: ");
+            uart_put_hex8(cmd);
+            uart_puts("\r\n");
+
+            if (cmd == MCMD_SD_INIT) {
+                /* Re-init SD card */
+                f_mount(0, "", 0);  /* unmount */
+                rc = sd_init(&card_type);
+                if (rc == SD_OK) {
+                    do_sd_init();
+                    set_status(FL_SD_READY);
+                } else {
+                    set_status(FL_SD_ERROR);
+                }
+            } else if (cmd == MCMD_MOUNT) {
+                uint8_t idx = (*(volatile uint32_t *)0x30000004) & 0xFF;
+                uart_puts("Mount idx=");
+                uart_put_hex8(idx);
+                uart_puts("\r\n");
+                do_mount(idx);
+            }
+        }
+
+        delay(1000);
+    }
+
+    return 0;
+}
