@@ -38,9 +38,12 @@ static void spi_fast(void) {
     SPI_CTRL = SPI_CTRL & ~0x04u; /* slow_mode = 0 */
 }
 
-/* Wait for card to go non-busy (response != 0xFF means data, 0xFF means busy/idle) */
+/* Wait for card to go non-busy (response != 0xFF means data, 0xFF means busy/idle).
+ * SD spec TAAC allows up to 100ms read latency. At 12.5MHz SPI (~1μs/byte
+ * with CPU overhead), 200000 iterations ≈ 200ms — generous margin for cards
+ * that are slow after idle periods (internal GC, wear leveling). */
 static uint8_t sd_wait_response(void) {
-    for (int i = 0; i < 4096; i++) {
+    for (int i = 0; i < 200000; i++) {
         uint8_t r = spi_xfer(0xFF);
         if (r != 0xFF)
             return r;
@@ -317,8 +320,9 @@ int sd_write_sector(uint32_t sector, const uint8_t *buf) {
     spi_xfer(0xFF);
 
     /* Read data response token: xxx0_sss1
-     * sss = 010 → accepted, 101 → CRC error, 110 → write error */
-    r = spi_xfer(0xFF);
+     * sss = 010 → accepted, 101 → CRC error, 110 → write error
+     * Some cards need a few clocks before the response appears. */
+    r = sd_wait_response();
     if ((r & 0x1F) != 0x05) {
         sd_cs_deassert();
         return -3;

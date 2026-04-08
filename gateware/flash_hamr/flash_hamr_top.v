@@ -173,6 +173,8 @@ module flash_hamr_top (
     wire        sd_cmd_wr;
     wire [3:0]  img_select;
 
+    wire [7:0] bus_dbg_wr_count, bus_dbg_rd_count;
+
     bus_interface u_bus_interface (
         .clk(sig_7M), .rst_n(por_7m_n),
         .addr(addr[3:0]),
@@ -187,6 +189,8 @@ module flash_hamr_top (
         .block_write_req(dev_block_write_req),
         .block_num(dev_block_num), .block_ready(dev_block_ready),
         .block_num_out(),
+        .dbg_wr_count_out(bus_dbg_wr_count),
+        .dbg_rd_count_out(bus_dbg_rd_count),
         // SD management — status from mailbox
         .sd_ready(mbox_bus_status_flags[0]),
         .sd_error_in(mbox_bus_status_flags[1]),
@@ -368,6 +372,8 @@ module flash_hamr_top (
     wire        persist_wr;
     wire        persist_done_toggle;  // from mailbox (25MHz toggle, synced in gate)
 
+    wire [7:0] dbg_trigger_count;
+
     block_ready_gate u_block_ready_gate (
         .clk(sig_7M), .rst_n(por_7m_n), .boot_done(boot_done),
         .arb_block_ready(arb_block_ready),
@@ -377,7 +383,8 @@ module flash_hamr_top (
         .persist_block(persist_block),
         .persist_wr(persist_wr),
         .persist_done(persist_done_toggle),
-        .persist_enabled(mbox_bus_status_flags[2])  // enabled when s4d2_mounted
+        .persist_enabled(mbox_bus_status_flags[2]),  // enabled when s4d2_mounted
+        .dbg_trigger_count(dbg_trigger_count)
     );
 
     // =========================================================================
@@ -446,6 +453,37 @@ module flash_hamr_top (
         magic_block_num_s2 <= magic_block_num_s1;
     end
 
+    // CDC debug signals (7MHz) -> 25MHz for firmware to read
+    // These are counters that change slowly, so 2-FF sync on each bit is safe.
+    reg [7:0] dbg_wr_s1, dbg_wr_s2;
+    reg [7:0] dbg_trig_s1, dbg_trig_s2;
+    reg       dbg_holding_s1, dbg_holding_s2;
+    reg       dbg_gated_s1, dbg_gated_s2;
+    reg       dbg_arb_s1, dbg_arb_s2;
+    reg       dbg_wr_req_s1, dbg_wr_req_s2;
+    always @(posedge CLK_25MHz) begin
+        dbg_wr_s1      <= bus_dbg_wr_count;  dbg_wr_s2      <= dbg_wr_s1;
+        dbg_trig_s1    <= dbg_trigger_count;  dbg_trig_s2    <= dbg_trig_s1;
+        dbg_holding_s1 <= u_block_ready_gate.holding;
+        dbg_holding_s2 <= dbg_holding_s1;
+        dbg_gated_s1   <= gated_block_ready;  dbg_gated_s2   <= dbg_gated_s1;
+        dbg_arb_s1     <= arb_block_ready;    dbg_arb_s2     <= dbg_arb_s1;
+        dbg_wr_req_s1  <= dev_block_write_req; dbg_wr_req_s2 <= dbg_wr_req_s1;
+    end
+
+    wire [31:0] dbg_bus_state = {
+        8'd0,                          // [31:24] reserved
+        dbg_trig_s2,                   // [23:16] gate trigger count
+        dbg_wr_s2,                     // [15:8]  bus CMD_WRITE count
+        2'd0,                          // [7:6]   reserved
+        dbg_wr_req_s2,                // [5]     block_write_req
+        dbg_arb_s2,                    // [4]     arb_block_ready
+        dbg_gated_s2,                  // [3]     gated_block_ready
+        dbg_holding_s2,                // [2]     holding
+        mbox_bus_status_flags[2],      // [1]     persist_enabled
+        boot_done                      // [0]     boot_done
+    };
+
     cpu_soc u_cpu_soc (
         .clk(CLK_25MHz),
         .rst_n(por_25m_n),
@@ -472,6 +510,9 @@ module flash_hamr_top (
         .buf_wdata(cpu_buf_wdata),
         .buf_we(cpu_buf_we),
         .buf_rdata(buf_rdata_a),
+        // Magic block request (from 7MHz, CDC'd)
+        // Debug
+        .dbg_bus_state(dbg_bus_state),
         // Magic block request (from 7MHz, CDC'd)
         .magic_block_req(mbr_s2),
         .magic_block_num(magic_block_num_s2),

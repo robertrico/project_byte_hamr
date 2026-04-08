@@ -56,6 +56,9 @@ module cpu_soc (
     input  wire [15:0] magic_block_num,
     output reg         magic_block_ready,
 
+    // Debug inputs (CDC'd from 7MHz in top-level)
+    input  wire [31:0] dbg_bus_state,
+
     // SDRAM port (directly to top-level mux)
     output reg         sdram_claim,
     output reg         sdram_req,
@@ -451,7 +454,8 @@ module cpu_soc (
         end
     end
 
-    wire [31:0] gpio_rdata = {24'd0, gpio_out};
+    // GPIO reads: offset 0 = gpio_out, offset 4 = debug bus state
+    wire [31:0] gpio_rdata = (mem_addr[2]) ? dbg_bus_state : {24'd0, gpio_out};
 
     // =========================================================================
     // Bus mux — read data and ready

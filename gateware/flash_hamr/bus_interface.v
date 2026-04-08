@@ -57,6 +57,10 @@ module bus_interface (
     // Block number exposed for write-through controller
     output wire [15:0] block_num_out,
 
+    // Debug counters
+    output wire [7:0] dbg_wr_count_out,
+    output wire [7:0] dbg_rd_count_out,
+
     // ---- SD card management (registers 8-F) ----
     // Status inputs
     input  wire        sd_ready,
@@ -108,8 +112,12 @@ module bus_interface (
     reg [1:0] state;
     reg error;
     reg auto_inc;
+    reg [7:0] dbg_write_count;   // counts CMD_WRITE_BLOCK commands
+    reg [7:0] dbg_read_count;    // counts CMD_READ_BLOCK commands
 
     assign block_num_out = block_num;
+    assign dbg_wr_count_out = dbg_write_count;
+    assign dbg_rd_count_out = dbg_read_count;
 
     wire ready = (state == S_IDLE) & boot_done;
 
@@ -264,9 +272,9 @@ module bus_interface (
             4'hA: data_out = cat_rd_data;  // IMG_NAME_CHAR (catalog BRAM read)
             4'hB: data_out = s4d2_blkcnt_s2[7:0];
             4'hC: data_out = s4d2_blkcnt_s2[15:8];
-            4'hD: data_out = mount_sectors_s2[7:0];  // DEBUG: sectors read (low byte)
-            4'hE: data_out = mount_fat_s2[7:0];    // DEBUG: FAT entry value lo
-            4'hF: data_out = mount_fat_s2[15:8];   // DEBUG: FAT entry value hi
+            4'hD: data_out = dbg_write_count;           // DEBUG: CMD_WRITE count
+            4'hE: data_out = dbg_read_count;            // DEBUG: CMD_READ count
+            4'hF: data_out = {block_ready, block_write_req, block_read_req, state, 3'b0}; // DEBUG: state
             default: data_out = 8'h00;
         endcase
     end
@@ -291,6 +299,8 @@ module bus_interface (
             sd_init_request <= 1'b0;
             sd_cmd_data     <= 8'd0;
             sd_cmd_wr       <= 1'b0;
+            dbg_write_count <= 8'd0;
+            dbg_read_count  <= 8'd0;
         end else begin
             mount_request   <= 1'b0;
             sd_cmd_wr       <= 1'b0;
@@ -337,10 +347,12 @@ module bus_interface (
                                 CMD_READ_BLOCK: begin
                                     block_read_req <= 1'b1;
                                     state <= S_BUSY;
+                                    dbg_read_count <= dbg_read_count + 8'd1;
                                 end
                                 CMD_WRITE_BLOCK: begin
                                     block_write_req <= 1'b1;
                                     state <= S_BUSY;
+                                    dbg_write_count <= dbg_write_count + 8'd1;
                                 end
                             endcase
                         end

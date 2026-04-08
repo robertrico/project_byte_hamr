@@ -35,20 +35,35 @@ module block_ready_gate #(
     input  wire        persist_done,   // level: toggled by CPU, edge-detected here
 
     // Control
-    input  wire        persist_enabled
+    input  wire        persist_enabled,
+
+    // Debug
+    output reg  [7:0]  dbg_trigger_count
 );
 
     // =========================================================================
-    // Edge detection on arb_block_ready (25MHz -> 7MHz via existing 2-FF in arbiter)
+    // Edge detection on arb_block_ready (25MHz -> 7MHz)
     // =========================================================================
+    // br_d1/br_prev: 2-FF edge detector for trigger logic (fires on cycle N+1)
+    // arb_ready_delayed: 1-FF delay for the gated OUTPUT path (goes HIGH on N+1)
+    //
+    // Key insight (from block_hamr comparison): block_hamr's write_through runs
+    // at 25MHz so trigger fires on the SAME cycle arb rises — no glitch.
+    // Here at 7MHz, arb_block_ready arrives asynchronously. By delaying arb
+    // through 1 register for the output, trigger fires BEFORE the delayed
+    // signal goes HIGH, so gated_block_ready is suppressed before bus_interface
+    // ever sees it.
     reg br_d1, br_prev;
+    reg arb_ready_delayed;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            br_d1   <= 1'b0;
-            br_prev <= 1'b0;
+            br_d1             <= 1'b0;
+            br_prev           <= 1'b0;
+            arb_ready_delayed <= 1'b0;
         end else begin
-            br_d1   <= arb_block_ready;
-            br_prev <= br_d1;
+            br_d1             <= arb_block_ready;
+            br_prev           <= br_d1;
+            arb_ready_delayed <= arb_block_ready;
         end
     end
     wire br_rise = br_d1 & ~br_prev;
@@ -92,18 +107,20 @@ module block_ready_gate #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            holding      <= 1'b0;
-            persist_block <= 16'd0;
-            persist_wr   <= 1'b0;
-            persist_wr_d1 <= 1'b0;
+            holding          <= 1'b0;
+            persist_block    <= 16'd0;
+            persist_wr       <= 1'b0;
+            persist_wr_d1    <= 1'b0;
+            dbg_trigger_count <= 8'd0;
         end else begin
             persist_wr    <= 1'b0;  // default: clear pulse
             persist_wr_d1 <= persist_wr;
 
             if (!holding && trigger) begin
-                holding       <= 1'b1;
-                persist_block <= dev_block_num;
-                persist_wr    <= 1'b1;
+                holding          <= 1'b1;
+                persist_block    <= dev_block_num;
+                persist_wr       <= 1'b1;
+                dbg_trigger_count <= dbg_trigger_count + 8'd1;
             end
 
             if (holding && pd_edge && !persist_wr && !persist_wr_d1)
@@ -111,6 +128,11 @@ module block_ready_gate #(
         end
     end
 
-    assign gated_block_ready = holding ? 1'b0 : arb_block_ready;
+    // Use arb_ready_delayed (1-cycle behind arb_block_ready) for the output.
+    // The trigger fires from br_d1/br_prev (same pipeline depth as the delay),
+    // so trigger=1 on the SAME cycle arb_ready_delayed goes HIGH — gated is
+    // suppressed before bus_interface ever sees it. This matches block_hamr's
+    // 25MHz write_through.v architecture where trigger and output are synchronous.
+    assign gated_block_ready = (holding || trigger) ? 1'b0 : arb_ready_delayed;
 
 endmodule

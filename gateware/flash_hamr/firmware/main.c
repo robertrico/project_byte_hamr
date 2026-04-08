@@ -281,6 +281,16 @@ static int do_mount(uint8_t idx) {
     /* Keep file open for persist writes */
     file_is_open = 1;
 
+    /* SD keepalive — rewind file and read 1 sector to prime the SPI
+     * interface after the mount streaming gap.  Some SDSC cards need
+     * an SPI transaction to "wake up" after idle, otherwise the first
+     * persist f_lseek/f_write fails (tok=0x00 = MISO stuck LOW). */
+    {
+        UINT tbr;
+        f_lseek(&mounted_fil, 0);
+        f_read(&mounted_fil, sector_buf, 512, &tbr);
+    }
+
     uart_puts("\r\nMounted: ");
     uart_put_hex32(blocks_written);
     uart_puts(" blocks written\r\n");
@@ -326,12 +336,31 @@ loop:
     uart_puts("Command loop\r\n");
 
     uint8_t last_pending = 0;
+    uint16_t persist_count = 0;
+    uint32_t loop_count = 0;
 
     while (1) {
+        loop_count++;
+
+        /* Heartbeat every ~32768 iterations (~5s) — print debug state */
+        if ((loop_count & 0x7FFF) == 0) {
+            uint32_t dbg = (*(volatile uint32_t *)0x70000004);
+            uart_puts("[W=");
+            uart_put_hex8((dbg >> 8) & 0xFF);   /* CMD_WRITE count */
+            uart_puts(" T=");
+            uart_put_hex8((dbg >> 16) & 0xFF);  /* gate trigger count */
+            uart_puts(" f=");
+            uart_put_hex8(dbg & 0xFF);           /* flags: boot/persist_en/holding/gated/arb/wr_req */
+            uart_puts("]");
+        }
+
         /* Check for magic block request */
         uint32_t ms = BBUF_MAGIC_STATUS;
         if (ms & BBUF_MAGIC_PENDING) {
             uint16_t blk = ms & 0xFFFF;
+            uart_puts("M:");
+            uart_put_hex32(blk);
+            uart_puts("\r\n");
             if (blk == 0xFFFF) {
                 fill_catalog_buffer();
             } else {
@@ -347,80 +376,53 @@ loop:
         /* Check for persist request from block_ready_gate */
         uint32_t ps = (*(volatile uint32_t *)0x30000014);  /* PERSIST_PEND */
         if (ps & 1) {
+            persist_count++;
             uint16_t pblk = (*(volatile uint32_t *)0x30000010) & 0xFFFF;  /* PERSIST_BLK */
-
-            uart_puts("Persist blk=");
-            uart_put_hex32(pblk);
+            FRESULT pfr = FR_INT_ERR;
 
             if (file_is_open) {
+                /* HOT PATH — no UART until after PERSIST_DONE.
+                 * Every microsecond here counts: ProDOS wait_ready
+                 * times out at ~1.28 seconds. */
+
                 /* Read 512 bytes from block buffer */
                 BBUF_CTRL = BBUF_CTRL_CLAIM;
                 BBUF_ADDR = 0;
-                /* No dummy read needed — BRAM latency is covered by the
-                 * bus transaction gap between ADDR write and first RDATA read */
                 for (int i = 0; i < 512; i++)
                     sector_buf[i] = (uint8_t)BBUF_RDATA;
                 BBUF_CTRL = 0;
 
-                /* Compute file offset */
-                uint32_t file_off = mounted_data_offset + ((uint32_t)pblk * 512);
-
                 /* Write to SD via FatFS */
+                uint32_t file_off = mounted_data_offset + ((uint32_t)pblk * 512);
                 UINT bw;
-                uart_puts(" seek=");
-                uart_put_hex32(file_off);
-
-                FRESULT pfr = f_lseek(&mounted_fil, file_off);
-                uart_puts(" lseek=");
-                uart_put_hex8(pfr);
-
-                if (pfr == FR_OK) {
-                    pfr = f_write(&mounted_fil, sector_buf, 512, &bw);
-                    uart_puts(" write=");
-                    uart_put_hex8(pfr);
-                    uart_puts("/");
-                    uart_put_hex32(bw);
-                }
-
-                if (pfr == FR_OK) {
-                    pfr = f_sync(&mounted_fil);
-                    uart_puts(" sync=");
-                    uart_put_hex8(pfr);
-                }
-
+                pfr = f_lseek(&mounted_fil, file_off);
                 if (pfr == FR_OK)
-                    uart_puts(" OK\r\n");
-                else {
-                    uart_puts(" FAIL\r\n");
-                }
-            } else {
-                uart_puts(" skip (not mounted)\r\n");
+                    pfr = f_write(&mounted_fil, sector_buf, 512, &bw);
+                if (pfr == FR_OK)
+                    pfr = f_sync(&mounted_fil);
             }
 
-            /* Signal persist done to block_ready_gate */
+            /* Release bus FIRST, then print debug */
             (*(volatile uint32_t *)0x3000001C) = 1;  /* PERSIST_DONE */
+
+            /* Now safe to print — bus is released, ProDOS can continue */
+            uart_puts("P#");
+            uart_put_hex8(persist_count & 0xFF);
+            uart_puts(" b=");
+            uart_put_hex32(pblk);
+            if (pfr == FR_OK)
+                uart_puts(" OK\r\n");
+            else {
+                uart_puts(" E=");
+                uart_put_hex8(pfr);
+                uart_puts("\r\n");
+            }
         }
 
-        /* Check for mailbox command (poll CMD register for changes) */
-        /* The cmd_pending mechanism is edge-based in HW.
-         * For firmware, we read cmd_pending from the mbox peripheral. */
+        /* Check for mailbox command */
         uint32_t cmd_status = (*(volatile uint32_t *)0x30000000);
         uint8_t cmd = cmd_status & 0xFF;
 
-        /* Detect new command by checking the pending flag
-         * (MBOX_REG_CMD read returns cmd byte; we check pending separately) */
-        /* Simple approach: act on non-zero cmd, then ack */
-        /* Actually, let's use the mbox_cmd_pending wire exposed as a readable bit.
-         * For now, use a simpler approach: the 6502 writes cmd to reg 8,
-         * which triggers sd_cmd_wr -> mailbox -> cmd_pending in HW.
-         * We check it via the pending detection in BBUF_MAGIC_STATUS-style polling.
-         *
-         * Actually, cmd_pending is already in the mbox peripheral at offset +0.
-         * But our current mbox peripheral just returns the cmd byte, not the pending flag.
-         * Let's add a simple pending check: read CMD, if non-zero and not last_cmd, act on it.
-         */
-
-        /* Poll: check if cmd byte changed */
         if (cmd != 0 && cmd != last_pending) {
             last_pending = cmd;
 
@@ -429,8 +431,7 @@ loop:
             uart_puts("\r\n");
 
             if (cmd == MCMD_SD_INIT) {
-                /* Re-init SD card */
-                f_mount(0, "", 0);  /* unmount */
+                f_mount(0, "", 0);
                 rc = sd_init(&card_type);
                 if (rc == SD_OK) {
                     do_sd_init();
