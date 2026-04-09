@@ -1,10 +1,9 @@
 // =============================================================================
 // Flash Hamr - Pin Constraints
 // =============================================================================
-// FAT32 SD card two-device controller:
-//   S4D1: Menu volume from SPI flash (USRMCLK)
-//   S4D2: User image from SD card (GPIO SPI)
-// Two clock domains: sig_7M (Apple II) + CLK_25MHz (SDRAM/SPI)
+// PicoRV32 + FatFS SD card block device controller
+// Reads .po disk images from FAT32 SD card, serves ProDOS blocks via SDRAM cache
+// Two clock domains: sig_7M (Apple II) + CLK_25MHz (SDRAM/SPI/CPU)
 // =============================================================================
 
 // =============================================================================

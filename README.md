@@ -12,15 +12,15 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 
 ## Features
 
-- Lattice ECP5-85F FPGA (85K LUTs, BGA381 package)
+- Lattice ECP5-85F FPGA (84K LUTs, BGA381 package)
 - 64MB SDRAM (AS4C32M16SB-7TCNTR)
 - 128Mb SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
 - JTAG header for development/debugging
-- 20-pin GPIO header for FPGA and peripheral expansion
+- 13-pin GPIO header for FPGA and peripheral expansion
 - Full Apple II bus interface with bidirectional level shifting
 - Dual power input (USB or Apple II bus) with automatic switching
-- On-board 100MHz oscillator
+- On-board 25MHz oscillator
 - Open-source hardware and gateware
 
 ## Specifications
@@ -33,7 +33,7 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 | SDRAM | 64MB, 16-bit bus |
 | Flash | 128Mb SPI |
 | USB | Full-speed via FT231XQ |
-| GPIO | 20 pins, 3.3V |
+| GPIO | 13 pins, 3.3V |
 | Power | +5V from USB or Apple II slot |
 | Dimensions | Standard Apple II card form factor |
 
@@ -116,8 +116,12 @@ project_byte_hamr/
 │   ├── constraints/        # FPGA pin constraints (LPF)
 │   ├── signal_check/       # Board bring-up test
 │   ├── sdram_test/         # Register-driven SDRAM access
+│   ├── sdram_bank/         # SDRAM bank-switching controller
 │   ├── pattern_rom/        # SDRAM-backed pattern ROM
-│   └── logic_hamr_v1/      # 8-channel logic analyzer
+│   ├── logic_hamr/         # 8-channel logic analyzer
+│   ├── smart_hamr/         # SmartPort/IWM disk controller (ESP32 companion)
+│   ├── block_hamr/         # ProDOS block device (SDRAM + SPI flash persist)
+│   └── flash_hamr/         # SD card block device (PicoRV32 + FatFS)
 ├── software/
 │   ├── ASM/                # 6502 assembly source (Merlin32)
 │   ├── LOGICHAMR/          # Logic analyzer disk contents
@@ -203,8 +207,12 @@ make clean              # Remove build files
 |--------|-------------|
 | [signal_check](gateware/signal_check/SIGNAL_CHECK.md) | Board bring-up test (SDRAM, GPIO, bus monitor) |
 | sdram_test | Register-driven SDRAM access from Apple II |
-| pattern_rom | SDRAM-backed pattern ROM for display testing |
-| [logic_hamr_v1](gateware/logic_hamr_v1/README.md) | 8-channel logic analyzer with HIRES display |
+| [sdram_bank](gateware/sdram_bank/README.md) | SDRAM bank-switching controller |
+| [pattern_rom](gateware/pattern_rom/README.md) | SDRAM-backed pattern ROM for display testing |
+| [logic_hamr](gateware/logic_hamr/README.md) | 8-channel logic analyzer with HIRES display |
+| [smart_hamr](gateware/smart_hamr/README.md) | SmartPort/IWM disk controller with ESP32 companion |
+| [block_hamr](gateware/block_hamr/README.md) | ProDOS block device with SDRAM and SPI flash persistence |
+| [flash_hamr](gateware/flash_hamr/) | SD card ProDOS block device (PicoRV32 + FatFS) |
 
 ## Testing
 
@@ -214,7 +222,7 @@ Bringup sequence for new boards:
 2. Power rail verification (+5V, +3.3V, +2.5V, +1.1V)
 3. USB enumeration (FTDI detection)
 4. FPGA configuration with [signal_check](gateware/signal_check/SIGNAL_CHECK.md)
-5. Oscillator verification (100MHz on scope)
+5. Oscillator verification (25MHz on scope)
 6. Apple II bus communication (PEEK/POKE test)
 7. Full system integration
 
