@@ -270,6 +270,9 @@ int sd_read_sector(uint32_t sector, uint8_t *buf) {
     r = sd_cmd(17, sector);
 
     if (r != 0x00) {
+        uart_puts("!R17 R1=");
+        uart_put_hex8(r);
+        uart_putc(' ');
         sd_cs_deassert();
         return -1;
     }
@@ -277,6 +280,9 @@ int sd_read_sector(uint32_t sector, uint8_t *buf) {
     /* Wait for data token 0xFE */
     r = sd_wait_response();
     if (r != 0xFE) {
+        uart_puts("!R17 tok=");
+        uart_put_hex8(r);
+        uart_putc(' ');
         sd_cs_deassert();
         return -2;
     }
@@ -304,6 +310,9 @@ int sd_write_sector(uint32_t sector, const uint8_t *buf) {
     r = sd_cmd(24, sector);
 
     if (r != 0x00) {
+        uart_puts("!W24 R1=");
+        uart_put_hex8(r);
+        uart_putc(' ');
         sd_cs_deassert();
         return -1;
     }
@@ -324,6 +333,9 @@ int sd_write_sector(uint32_t sector, const uint8_t *buf) {
      * Some cards need a few clocks before the response appears. */
     r = sd_wait_response();
     if ((r & 0x1F) != 0x05) {
+        uart_puts("!W24 resp=");
+        uart_put_hex8(r);
+        uart_putc(' ');
         sd_cs_deassert();
         return -3;
     }
