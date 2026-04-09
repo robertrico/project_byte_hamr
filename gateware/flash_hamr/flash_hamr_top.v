@@ -131,35 +131,91 @@ module flash_hamr_top (
     wire [15:0] dev_block_num;
     wire        dev_block_ready;
 
-    // ---- Magic block intercept ----
-    // $FFFF/$FFFE are magic blocks handled by CPU, not arbiter
-    wire is_magic_block = (dev_block_num[15:1] == 15'h7FFF);  // $FFFE or $FFFF
-    wire dev_block_read_req = dev_block_read_req_raw & ~is_magic_block;  // arbiter sees non-magic only
-    wire magic_block_req    = dev_block_read_req_raw & is_magic_block;   // CPU sees magic only
+    // ---- Block read intercept ----
+    // Magic blocks ($FFFF/$FFFE): always intercepted for catalog
+    // On-demand cache: ALL reads intercepted when cache_enabled (after mount)
+    wire is_magic_block = (dev_block_num[15:1] == 15'h7FFF);
 
-    // CPU signals block ready for magic blocks (25MHz -> 7MHz CDC)
-    wire cpu_block_ready_25;  // from cpu_soc
+    // CDC cache_enabled (25MHz) -> 7MHz
+    wire cache_enabled_25;  // from cpu_soc
+    reg  cache_en_s1, cache_en_s2;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n) begin cache_en_s1 <= 0; cache_en_s2 <= 0; end
+        else begin cache_en_s1 <= cache_enabled_25; cache_en_s2 <= cache_en_s1; end
+    end
+
+    wire is_intercepted_base = is_magic_block | cache_en_s2;
+
+    // CPU signals block ready for intercepted reads (25MHz -> 7MHz CDC)
+    wire cpu_block_ready_25;  // from cpu_soc (MAGIC_DONE stretch)
     reg  cpu_br_s1, cpu_br_s2;
     always @(posedge sig_7M or negedge por_7m_n) begin
         if (!por_7m_n) begin cpu_br_s1 <= 0; cpu_br_s2 <= 0; end
         else begin cpu_br_s1 <= cpu_block_ready_25; cpu_br_s2 <= cpu_br_s1; end
     end
 
-    // Magic block active flag — forces dev_block_ready LOW during magic block
-    // processing so bus_interface gets a proper LOW→HIGH edge when CPU finishes.
-    // Without this, arb_block_ready is already HIGH from the last normal read,
-    // and dev_block_ready never transitions, so br_rise never fires.
-    reg magic_active, magic_req_prev;
+    // ---- Cache release: firmware says "data is in SDRAM, let arbiter serve" ----
+    // CDC cache_release pulse (25MHz) -> 7MHz toggle
+    wire cache_release_25;  // from cpu_soc
+    reg  crel_s1, crel_s2, crel_prev;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n) begin crel_s1 <= 0; crel_s2 <= 0; crel_prev <= 0; end
+        else begin crel_s1 <= cache_release_25; crel_s2 <= crel_s1; crel_prev <= crel_s2; end
+    end
+    wire crel_edge = crel_s2 & ~crel_prev;
+
+    // When released: de-intercept current request so arbiter serves it.
+    // Clears when the request completes (block_read_req goes LOW).
+    reg cache_released;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n)
+            cache_released <= 1'b0;
+        else begin
+            if (crel_edge)
+                cache_released <= 1'b1;
+            if (cache_released & ~dev_block_read_req_raw)
+                cache_released <= 1'b0;
+        end
+    end
+
+    // Effective intercept: suppressed during cache release (arbiter handles it)
+    wire is_intercepted = is_intercepted_base & ~cache_released;
+    wire dev_block_read_req = dev_block_read_req_raw & ~is_intercepted;
+    wire magic_block_req    = dev_block_read_req_raw & is_intercepted;
+
+    // ---- Toggle-based CDC for intercepted read requests (7MHz → 25MHz) ----
+    reg magic_req_toggle, magic_req_prev;
+    reg [7:0] dbg_magic_rise_count;
     always @(posedge sig_7M or negedge por_7m_n) begin
         if (!por_7m_n) begin
-            magic_active   <= 1'b0;
-            magic_req_prev <= 1'b0;
+            magic_req_toggle     <= 1'b0;
+            magic_req_prev       <= 1'b0;
+            dbg_magic_rise_count <= 8'd0;
         end else begin
             magic_req_prev <= magic_block_req;
+            if (magic_block_req & ~magic_req_prev) begin
+                magic_req_toggle     <= ~magic_req_toggle;
+                dbg_magic_rise_count <= dbg_magic_rise_count + 8'd1;
+            end
+        end
+    end
+
+    // Magic/cache active flag — forces dev_block_ready LOW during intercepted
+    // reads so bus_interface gets a proper LOW→HIGH edge when CPU finishes.
+    // Also clears on cache_release (arbiter takes over via gated_block_ready).
+    reg magic_active;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n)
+            magic_active <= 1'b0;
+        else begin
             if (magic_block_req & ~magic_req_prev)
-                magic_active <= 1'b1;   // rising edge of magic request
-            if (cpu_br_s2)
-                magic_active <= 1'b0;   // CPU done, release
+                magic_active <= 1'b1;
+            if (magic_active & ~dev_block_read_req_raw)
+                magic_active <= 1'b0;
+            // NOTE: do NOT clear magic_active on crel_edge!
+            // If we clear it, dev_block_ready jumps to gated_block_ready
+            // (already HIGH from arbiter idle) → premature bus S_IDLE.
+            // Instead, firmware fires MAGIC_DONE after the arbiter finishes.
         end
     end
 
@@ -234,10 +290,13 @@ module flash_hamr_top (
     wire [7:0]  mux_buf_wdata_a = cpu_buf_claim ? cpu_buf_wdata : buf_wdata_a;
     wire        mux_buf_we_a    = cpu_buf_claim ? cpu_buf_we    : buf_we_a;
 
+    // Both ports on 25MHz — eliminates dual-clock cross-port visibility issue.
+    // Port B signals (buf_addr_b, buf_we_b) change at 7MHz rate but are
+    // sampled at 25MHz. Multiple samples per 7MHz cycle are idempotent.
     block_buffer u_block_buffer (
         .clk_a(CLK_25MHz), .addr_a(mux_buf_addr_a), .wdata_a(mux_buf_wdata_a),
         .we_a(mux_buf_we_a), .rdata_a(buf_rdata_a),
-        .clk_b(sig_7M), .addr_b(buf_addr_b), .wdata_b(buf_wdata_b),
+        .clk_b(CLK_25MHz), .addr_b(buf_addr_b), .wdata_b(buf_wdata_b),
         .we_b(buf_we_b), .rdata_b(buf_rdata_b)
     );
 
@@ -439,11 +498,11 @@ module flash_hamr_top (
     wire [7:0] cpu_gpio;
     wire       uart_txd;
 
-    // CDC magic_block_req (7MHz) -> 25MHz for CPU
-    reg mbr_s1 = 0, mbr_s2 = 0;
+    // CDC magic_req_toggle (7MHz) -> 25MHz for CPU (toggle-based, reliable)
+    reg mrt_s1 = 0, mrt_s2 = 0;
     always @(posedge CLK_25MHz) begin
-        mbr_s1 <= magic_block_req;
-        mbr_s2 <= mbr_s1;
+        mrt_s1 <= magic_req_toggle;
+        mrt_s2 <= mrt_s1;
     end
 
     // CDC dev_block_num (7MHz, stable during request) -> 25MHz
@@ -454,30 +513,52 @@ module flash_hamr_top (
     end
 
     // CDC debug signals (7MHz) -> 25MHz for firmware to read
-    // These are counters that change slowly, so 2-FF sync on each bit is safe.
     reg [7:0] dbg_wr_s1, dbg_wr_s2;
     reg [7:0] dbg_trig_s1, dbg_trig_s2;
+    reg [7:0] dbg_mrise_s1, dbg_mrise_s2;
+    reg [7:0] dbg_rdcnt_s1, dbg_rdcnt_s2;  // CMD_READ count from bus_interface
     reg       dbg_holding_s1, dbg_holding_s2;
     reg       dbg_gated_s1, dbg_gated_s2;
     reg       dbg_arb_s1, dbg_arb_s2;
     reg       dbg_wr_req_s1, dbg_wr_req_s2;
+    reg       dbg_rd_req_s1, dbg_rd_req_s2;   // block_read_req_raw (live)
+    reg       dbg_mactive_s1, dbg_mactive_s2; // magic_active (live)
+    reg       dbg_intercepted_s1, dbg_intercepted_s2; // is_intercepted (live)
     always @(posedge CLK_25MHz) begin
         dbg_wr_s1      <= bus_dbg_wr_count;  dbg_wr_s2      <= dbg_wr_s1;
         dbg_trig_s1    <= dbg_trigger_count;  dbg_trig_s2    <= dbg_trig_s1;
+        dbg_mrise_s1   <= dbg_magic_rise_count; dbg_mrise_s2 <= dbg_mrise_s1;
+        dbg_rdcnt_s1   <= bus_dbg_rd_count;  dbg_rdcnt_s2   <= dbg_rdcnt_s1;
         dbg_holding_s1 <= u_block_ready_gate.holding;
         dbg_holding_s2 <= dbg_holding_s1;
         dbg_gated_s1   <= gated_block_ready;  dbg_gated_s2   <= dbg_gated_s1;
         dbg_arb_s1     <= arb_block_ready;    dbg_arb_s2     <= dbg_arb_s1;
         dbg_wr_req_s1  <= dev_block_write_req; dbg_wr_req_s2 <= dbg_wr_req_s1;
+        dbg_rd_req_s1  <= dev_block_read_req_raw; dbg_rd_req_s2 <= dbg_rd_req_s1;
+        dbg_mactive_s1 <= magic_active;       dbg_mactive_s2 <= dbg_mactive_s1;
+        dbg_intercepted_s1 <= is_intercepted; dbg_intercepted_s2 <= dbg_intercepted_s1;
     end
 
+    // Debug register layout:
+    // [31:24] magic_rise_count  — how many times magic_block_req rose (7MHz)
+    // [23:16] CMD_READ count    — how many CMD_READs bus_interface processed
+    // [15:8]  reserved
+    // [7]     cache_en_s2       — is cache intercept enabled?
+    // [6]     is_intercepted    — is the current read being intercepted?
+    // [5]     magic_active      — is an intercepted read in progress?
+    // [4]     block_read_req_raw — is bus_interface requesting a read?
+    // [3]     gated_block_ready
+    // [2]     holding
+    // [1]     persist_enabled
+    // [0]     boot_done
     wire [31:0] dbg_bus_state = {
-        8'd0,                          // [31:24] reserved
-        dbg_trig_s2,                   // [23:16] gate trigger count
-        dbg_wr_s2,                     // [15:8]  bus CMD_WRITE count
-        2'd0,                          // [7:6]   reserved
-        dbg_wr_req_s2,                // [5]     block_write_req
-        dbg_arb_s2,                    // [4]     arb_block_ready
+        dbg_mrise_s2,                  // [31:24] magic_block_req rising edges
+        dbg_rdcnt_s2,                  // [23:16] CMD_READ count from bus_interface
+        8'd0,                          // [15:8]  reserved
+        cache_en_s2,                   // [7]     cache_enabled (7MHz CDC'd)
+        dbg_intercepted_s2,            // [6]     is_intercepted
+        dbg_mactive_s2,                // [5]     magic_active
+        dbg_rd_req_s2,                 // [4]     block_read_req_raw
         dbg_gated_s2,                  // [3]     gated_block_ready
         dbg_holding_s2,                // [2]     holding
         mbox_bus_status_flags[2],      // [1]     persist_enabled
@@ -504,8 +585,10 @@ module flash_hamr_top (
         .mbox_persist_block(mbox_cpu_persist_block),
         .mbox_persist_pending(mbox_cpu_persist_pending),
         .mbox_persist_done(cpu_persist_done),
-        // Block buffer
+        // Block buffer + cache control
         .buf_claim(cpu_buf_claim),
+        .cache_enabled(cache_enabled_25),
+        .cache_release(cache_release_25),
         .buf_addr(cpu_buf_addr),
         .buf_wdata(cpu_buf_wdata),
         .buf_we(cpu_buf_we),
@@ -514,7 +597,7 @@ module flash_hamr_top (
         // Debug
         .dbg_bus_state(dbg_bus_state),
         // Magic block request (from 7MHz, CDC'd)
-        .magic_block_req(mbr_s2),
+        .magic_block_req(mrt_s2),  // toggle-based CDC: edge = new request
         .magic_block_num(magic_block_num_s2),
         .magic_block_ready(cpu_block_ready_25),
         // SDRAM port

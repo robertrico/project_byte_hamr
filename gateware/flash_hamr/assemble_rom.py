@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
 """
-assemble_rom.py — Flash Hamr 2-device ProDOS/SmartPort ROM
+assemble_rom.py — Flash Hamr ProDOS block device ROM ($Cn page only)
 
-S4D1 (unit 1): Menu volume from SPI flash
-S4D2 (unit 2): SD card image (UNIT2_OFFSET=2048 blocks)
+Entire driver fits in 256-byte $Cn page. No $C800 expansion ROM.
+This avoids bus contention with the Apple IIe's internal ROM at $C800.
 
-$Cn page: boot/ProDOS/SmartPort entry, signature
-$C800: dispatch, STATUS, READ, WRITE, INIT, wait_ready, boot handler
+S4D1 (unit 1): Menu volume from SPI flash (block count from FPGA regs)
+S4D2 (unit 2): SD card image (block count from FPGA regs)
+
+Register interface ($C080 + slot*16):
+  0: STATUS(R) / COMMAND(W)  — R:{ready,error,5'b0,boot_done} W:$01=READ,$02=WRITE
+  1: DATA_READ(R)             — auto-increment
+  2: BLOCK_LO(R/W)
+  3: BLOCK_HI(R/W)
+  5: DATA_WRITE(W)            — auto-increment (separate addr avoids STA dummy-read bug)
+  6: TOTAL_BLOCKS_LO(R)       — S4D1 block count (from mailbox)
+  7: TOTAL_BLOCKS_HI(R)
+  8: SD_CMD(W)                — mailbox command ($01=mount, $02=sd_init)
+  B: S4D2_BLOCKS_LO(R)
+  C: S4D2_BLOCKS_HI(R)
 """
 
 SLOT = 4
 
-# Zero page
+# Zero page (ProDOS standard)
 ZP_CMD    = 0x42
 ZP_UNIT   = 0x43
 ZP_BUF    = 0x44
 ZP_BUF_H  = 0x45
 ZP_BLK    = 0x46
 ZP_BLK_H  = 0x47
-ZP_SLOT   = 0x58
-ZP_TEMP   = 0x3A
+ZP_TEMP   = 0x3A  # safe ZP for long wait_ready
 
-# Screen holes
-SH_PFLAG  = 0x0478  # +slot: MSB=1 ProDOS, 0=SmartPort
-SH_UCNT   = 0x07F8  # +slot: unit count
-SH_SPLO   = 0x05F8  # +slot: SP return lo
-SH_SPHI   = 0x0678  # +slot: SP return hi
-
-# I/O (indexed by X = slot*16)
+# I/O registers (indexed by X = slot*16)
 IO_CMD    = 0xC080
 IO_DATA   = 0xC081
 IO_BLLO   = 0xC082
@@ -35,26 +40,15 @@ IO_BLHI   = 0xC083
 IO_DATAW  = 0xC085
 IO_CNTLO  = 0xC086
 IO_CNTHI  = 0xC087
-IO_SDSTAT = 0xC088
 IO_D2BLLO = 0xC08B
 IO_D2BLHI = 0xC08C
 
 ERR_NONE = 0x00; ERR_IO = 0x27; ERR_NODEV = 0x28; ERR_BADCMD = 0x01
 CMD_READ = 0x01; CMD_WRITE = 0x02
-U2_LO = 0x00; U2_HI = 0x08  # UNIT2_OFFSET = 2048
-D1_BLLO = 0x18; D1_BLHI = 0x01  # 280 blocks
 
 rom = bytearray(4096)
 rom[:] = b'\xFF' * 4096
 
-def w8(addr, val):
-    rom[addr - 0xC000] = val & 0xFF
-
-def w16(addr, lo, hi):
-    rom[addr - 0xC000] = lo & 0xFF
-    rom[addr - 0xC000 + 1] = hi & 0xFF
-
-# Simple assembler with raw byte emission
 pc = [0]
 labels = {}
 fixups = []
@@ -82,11 +76,11 @@ def jump(op, name):
 def LDA_i(v): imm(0xA9, v)
 def LDX_i(v): imm(0xA2, v)
 def LDY_i(v): imm(0xA0, v)
+def CPX_i(v): imm(0xE0, v)  # CPX — signature bytes (same operand as LDX)
 def CMP_i(v): imm(0xC9, v)
 def ADC_i(v): imm(0x69, v)
 def SBC_i(v): imm(0xE9, v)
 def AND_i(v): imm(0x29, v)
-def EOR_i(v): imm(0x49, v)
 def LDA_z(a): zpg(0xA5, a)
 def STA_z(a): zpg(0x85, a)
 def STX_z(a): zpg(0x86, a)
@@ -107,7 +101,6 @@ def BNE(n): branch(0xD0, n)
 def BCS(n): branch(0xB0, n)
 def BCC(n): branch(0x90, n)
 def BMI(n): branch(0x30, n)
-def BPL(n): branch(0x10, n)
 def JMP_l(n): jump(0x4C, n)
 def JSR_l(n): jump(0x20, n)
 def CLC(): emit(0x18)
@@ -122,7 +115,6 @@ def TXA(): emit(0x8A)
 def PHA(): emit(0x48)
 def PLA(): emit(0x68)
 def ASL_A(): emit(0x0A)
-def NOP(): emit(0xEA)
 
 def resolve():
     for fix_pc, name, kind in fixups:
@@ -137,180 +129,87 @@ def resolve():
             rom[off - 1] = (target >> 8) & 0xFF
 
 # ==========================================================================
-# $Cn page
+# $Cn page — entire driver
 # ==========================================================================
 org(0xC400)
 
-# ID bytes
-LDX_i(0x20)        # $Cn01 = $20
-LDX_i(0x00)        # $Cn03 = $00
-LDX_i(0x03)        # $Cn05 = $03
-CMP_i(0x00)        # $Cn07 = $00
-BCS('cn14')        # carry set = boot request
+# ---- Signature bytes (ProDOS checks $Cn01, $Cn03, $Cn05) ----
+# Use CPX so the operand bytes match LDX but opcode is different (old ROM style)
+CPX_i(0x20)        # $Cn01 = $20: block device
+CPX_i(0x00)        # $Cn03 = $00
+CPX_i(0x03)        # $Cn05 = $03
 
-# ProDOS entry ($Cn09)
+# $Cn06-$Cn07: boot detection — CPX with slot*16, if X matches we have our slot
+CPX_i(SLOT << 4)   # $Cn07 = $40 (slot*16, used by old ROM for slot detection)
+
+# ---- Boot entry: carry set from Apple II ROM scan ----
+LDA_i(SLOT << 4)   # A = slot*16
+JMP_l('boot')      # boot handler
+
+# ---- ProDOS entry ($CnFF points here) ----
 label('prodos_entry')
-SEC()
-BCS('cn0e')
+LDX_i(SLOT << 4)   # X = slot*16
+JMP_l('dispatch')   # command dispatch
 
-# SmartPort entry ($Cn0C = prodos_entry + 3)
-label('sp_entry')
-CLC()
+# ---- Boot handler ----
+label('boot')
+TAX()               # X = slot*16 (from LDA above)
+STX_z(ZP_UNIT)      # save for later
+LDA_i(CMD_READ); STA_z(ZP_CMD)
+LDA_i(0x00); STA_z(ZP_BLK); STA_z(ZP_BLK_H)
+STA_z(ZP_BUF)
+LDA_i(0x08); STA_z(ZP_BUF_H)  # buffer = $0800
+JSR_l('dispatch')   # read block 0 to $0800
+JMP_a(0x0801)       # jump to boot code
 
-# Common entry
-label('cn0e')
-LDX_i(SLOT)
-# ROR SH_PFLAG,X — rotate carry into MSB
-emit(0x7E, SH_PFLAG & 0xFF, (SH_PFLAG >> 8) & 0xFF)  # ROR abs,X
-CLC()
-
-label('cn14')
-LDA_i(0xC0 + SLOT)
-STA_a(0x07F8)      # claim $C800
-LDX_i(SLOT)
-LDA_a(0xCFFF)      # deactivate other ROMs
-JMP_l('shared_entry')
-
-# ---- Trampolines in $Cn page (always served, no expansion flag needed) ----
-# $C800 code jumps here to release $C800 before returning
-
-label('cn_rts_trampoline')
-LDA_a(0xCFFF)      # clear expansion flag
-RTS()              # return to ProDOS/caller
-
-label('cn_boot_trampoline')
-LDA_a(0xCFFF)      # clear expansion flag
-JMP_a(0x0801)      # jump to boot code
-
-# Pad and signature
-while here() < 0xC4FB: emit(0x00)
-emit(0x00)         # $CnFB
-emit(0x00, 0x00)   # $CnFC-FD
-emit(0x17)         # $CnFE: status+rw+smartport (same as Block Hamr)
-emit(labels['prodos_entry'] & 0xFF)  # $CnFF
-
-# ==========================================================================
-# $C800 shared ROM
-# ==========================================================================
-org(0xC800)
-
-label('shared_entry')
-BCC('execute_command')
-JMP_l('boot')
-
-label('execute_command')
-CLD()
-STX_z(ZP_SLOT)
-JSR_l('get_slot_x')
-
-LDY_i(SLOT)
-LDA_ay(SH_PFLAG)
-BMI('prodos_cmd')
-
-# ---- SmartPort inline param decode ----
-PLA()
-STA_ay(SH_SPLO)
-CLC(); ADC_i(3); TAX()
-PLA()
-STA_ay(SH_SPHI)
-ADC_i(0); PHA(); TXA(); PHA()
-
-LDA_ay(SH_SPLO); STA_z(ZP_BUF)
-LDA_ay(SH_SPHI); STA_z(ZP_BUF_H)
-
-LDY_i(1)
-LDA_iy(ZP_BUF);  STA_z(ZP_CMD)   # command
-INY()
-LDA_iy(ZP_BUF);  TAX()            # param list lo
-INY()
-LDA_iy(ZP_BUF);  STA_z(ZP_BUF_H) # param list hi
-STX_z(ZP_BUF)                     # param list lo
-
-# Read from param list
-LDY_i(1); LDA_iy(ZP_BUF); PHA()   # unit → stack
-INY(); LDA_iy(ZP_BUF); TAX()      # buf lo → X
-INY(); LDA_iy(ZP_BUF); PHA()      # buf hi → stack
-INY(); LDA_iy(ZP_BUF); STA_z(ZP_BLK)   # block lo
-INY(); LDA_iy(ZP_BUF); STA_z(ZP_BLK_H) # block hi
-
-PLA(); STA_z(ZP_BUF_H)            # buf hi
-STX_z(ZP_BUF)                     # buf lo
-PLA(); STA_z(ZP_UNIT)             # unit
-
-# ---- ProDOS dispatch ----
-label('prodos_cmd')
-JSR_l('get_slot_x')
-
+# ---- Command dispatch ----
+label('dispatch')
 LDA_z(ZP_CMD)
 BEQ('cmd_status')
 CMP_i(CMD_READ)
 BEQ('cmd_read')
 CMP_i(CMD_WRITE)
-BNE('not_write')
-JMP_l('cmd_write')
-label('not_write')
-CMP_i(0x05)
-BNE('not_init')
-JMP_l('cmd_init')
-label('not_init')
-
-LDA_i(ERR_BADCMD); SEC()
-JMP_l('cmd_done')
+BEQ('cmd_write')
+# Unknown command
+SEC(); LDA_i(ERR_BADCMD); RTS()
 
 # ---- STATUS ----
 label('cmd_status')
-LDA_ax(IO_CMD); AND_i(0x01)
+LDA_ax(IO_CMD); AND_i(0x01)  # check boot_done
 BEQ('status_offline')
-LDA_z(ZP_UNIT); CMP_i(2)
-BEQ('status_u2')
-# Unit 1
-LDX_i(D1_BLLO); LDY_i(D1_BLHI)
-LDA_i(ERR_NONE); CLC()
-JMP_l('cmd_done')
-label('status_u2')
-JSR_l('get_slot_x')
-LDA_ax(IO_D2BLLO); PHA()
-LDA_ax(IO_D2BLHI); TAY()
-PLA(); TAX()
-LDA_i(ERR_NONE); CLC()
-JMP_l('cmd_done')
+# Read block count from FPGA registers (works for both units)
+LDA_ax(IO_CNTHI); TAY()      # Y = blocks hi
+LDA_ax(IO_CNTLO); TAX()      # X = blocks lo
+LDA_i(ERR_NONE); CLC(); RTS()
 label('status_offline')
-LDA_i(ERR_NODEV); SEC()
-JMP_l('cmd_done')
-
-# ---- Unit offset helper ----
-label('apply_offset')
-LDA_z(ZP_UNIT); CMP_i(2); BNE('ao_done')
-CLC()
-LDA_z(ZP_BLK); ADC_i(U2_LO); STA_z(ZP_BLK)
-LDA_z(ZP_BLK_H); ADC_i(U2_HI); STA_z(ZP_BLK_H)
-label('ao_done')
-RTS()
+LDA_i(ERR_NODEV); SEC(); RTS()
 
 # ---- READ ----
 label('cmd_read')
-JSR_l('apply_offset')
-JSR_l('get_slot_x')
 LDA_z(ZP_BLK);   STA_ax(IO_BLLO)
 LDA_z(ZP_BLK_H); STA_ax(IO_BLHI)
 LDA_i(CMD_READ);  STA_ax(IO_CMD)
 JSR_l('wait_ready')
-BCS('cmd_done')
+BCS('read_done')
 LDY_i(0x00)
 label('rd1')
 LDA_ax(IO_DATA); STA_iy(ZP_BUF); INY(); BNE('rd1')
 INC_z(ZP_BUF_H)
+JSR_l('rd_page2')
+DEC_z(ZP_BUF_H)
+LDA_i(ERR_NONE); CLC()
+label('read_done')
+RTS()
+
+# Second page read (reusable subroutine saves bytes)
+label('rd_page2')
 LDY_i(0x00)
 label('rd2')
 LDA_ax(IO_DATA); STA_iy(ZP_BUF); INY(); BNE('rd2')
-DEC_z(ZP_BUF_H)
-LDA_i(ERR_NONE); CLC()
-JMP_l('cmd_done')
+RTS()
 
 # ---- WRITE ----
 label('cmd_write')
-JSR_l('apply_offset')
-JSR_l('get_slot_x')
 LDA_z(ZP_BLK);   STA_ax(IO_BLLO)
 LDA_z(ZP_BLK_H); STA_ax(IO_BLHI)
 LDY_i(0x00)
@@ -323,21 +222,12 @@ LDA_iy(ZP_BUF); STA_ax(IO_DATAW); INY(); BNE('wr2')
 DEC_z(ZP_BUF_H)
 LDA_i(CMD_WRITE); STA_ax(IO_CMD)
 JSR_l('wait_ready')
-BCS('cmd_done')
+BCS('write_done')
 LDA_i(ERR_NONE); CLC()
-JMP_l('cmd_done')
+label('write_done')
+RTS()
 
-# ---- INIT ----
-label('cmd_init')
-LDY_i(SLOT)
-LDA_i(2); STA_ay(SH_UCNT)  # 2 units
-LDA_i(ERR_NONE); CLC()
-# fall through
-
-label('cmd_done')
-JMP_l('cn_rts_trampoline')  # release $C800 + RTS (in $Cn page)
-
-# ---- wait_ready ----
+# ---- wait_ready (short: ~16ms timeout for normal ops) ----
 label('wait_ready')
 LDY_i(0x00)
 label('wr_out')
@@ -347,6 +237,7 @@ PHA()
 LDA_ax(IO_CMD); BMI('wr_ok')
 PLA(); SEC(); SBC_i(1); BNE('wr_in')
 DEY(); BNE('wr_out')
+# Timeout
 PLA(); LDA_i(ERR_IO); SEC(); RTS()
 label('wr_ok')
 AND_i(0x40); BNE('wr_err')
@@ -354,57 +245,24 @@ PLA(); LDA_i(ERR_NONE); CLC(); RTS()
 label('wr_err')
 PLA(); LDA_i(ERR_IO); SEC(); RTS()
 
-# ---- get_slot_x ----
-label('get_slot_x')
-LDA_i(SLOT)
-ASL_A(); ASL_A(); ASL_A(); ASL_A()
-TAX(); RTS()
+# ---- Pad and signature ----
+cn_used = here() - 0xC400
+assert cn_used <= 251, f"$Cn page overflow: {cn_used} bytes used, max 251"
 
-# ---- Boot ----
-label('boot')
-STX_z(ZP_SLOT)
-LDY_i(SLOT)
-LDA_i(0xAA); STA_ay(SH_PFLAG)  # ProDOS mode
-
-JSR_l('get_slot_x')
-LDA_i(0x00); STA_ax(IO_BLLO); STA_ax(IO_BLHI)
-LDA_i(CMD_READ); STA_ax(IO_CMD)
-JSR_l('wait_ready'); BCS('boot_err')
-
-LDY_i(0x00)
-label('bc1')
-LDA_ax(IO_DATA); STA_ay(0x0800); INY(); BNE('bc1')
-label('bc2')
-LDA_ax(IO_DATA); STA_ay(0x0900); INY(); BNE('bc2')
-
-# Verify boot block
-LDA_a(0x0800); CMP_i(0x01); BNE('boot_err')
-LDA_a(0x0801); BEQ('boot_err')
-
-# Init
-LDY_i(SLOT)
-LDA_i(2); STA_ay(SH_UCNT)  # 2 units
-JSR_l('get_slot_x')
-JMP_l('cn_boot_trampoline')  # release $C800 + JMP $0801 (in $Cn page)
-
-label('boot_err')
-SEC(); RTS()
-
-# ---- ID string ----
-while here() < 0xCFDB: emit(0x00)
-label('id_string')
-for c in "FLASH HAMR": emit(ord(c))
-emit(0x00)
+while here() < 0xC4FB: emit(0x00)
+emit(0x00)         # $CnFB: SmartPort device type
+emit(0x00, 0x00)   # $CnFC-FD: block count (0 = requires STATUS)
+emit(0x17)         # $CnFE: read+write+SmartPort, 2 volumes (matches old working ROM)
+emit(labels['prodos_entry'] & 0xFF)  # $CnFF: ProDOS entry point
 
 # ==========================================================================
 resolve()
 
-c8_used = labels.get('id_string', here()) - 0xC800
-print(f"$C800 code: {c8_used} bytes ({2048 - c8_used} free)")
+print(f"$Cn page: {cn_used} bytes used ({251 - cn_used} free)")
 print(f"\nLabels:")
 for name, addr in sorted(labels.items(), key=lambda x: x[1]):
     print(f"  {name:24s} = ${addr:04X}")
-print(f"\n$CnFE = $BF, $CnFF = ${labels['prodos_entry'] & 0xFF:02X}")
+print(f"\n$CnFE = $17, $CnFF = ${labels['prodos_entry'] & 0xFF:02X}")
 
 with open("hamr_rom.mem", "w") as f:
     for i in range(4096):

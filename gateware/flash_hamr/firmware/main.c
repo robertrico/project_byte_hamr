@@ -44,6 +44,7 @@ typedef struct {
 static image_entry_t catalog[MAX_IMAGES];
 static uint8_t num_images;
 static uint8_t status_flags;
+static uint8_t file_is_open;
 
 static void delay(volatile uint32_t count) { while (count--) ; }
 
@@ -70,7 +71,10 @@ static void set_status(uint8_t flags) {
  * Fill catalog block buffer ($FFFF)
  * ================================================================ */
 static void fill_catalog_buffer(void) {
-    BBUF_CTRL = BBUF_CTRL_CLAIM;
+    /* Always preserve cache_enabled — clearing it after mount
+     * would de-intercept subsequent block reads. */
+    uint32_t ctrl_base = file_is_open ? BBUF_CTRL_CACHE_EN : 0;
+    BBUF_CTRL = BBUF_CTRL_CLAIM | ctrl_base;
     BBUF_ADDR = 0;
 
     /* Header */
@@ -107,7 +111,7 @@ static void fill_catalog_buffer(void) {
             for (int i = 0; i < 32; i++) BBUF_WDATA = 0;
         }
     }
-    BBUF_CTRL = 0;
+    BBUF_CTRL = ctrl_base;
 }
 
 /* ================================================================
@@ -160,15 +164,46 @@ static int do_sd_init(void) {
 }
 
 /* ================================================================
- * Mount image — stream from SD to SDRAM
+ * On-demand block reads — SD direct (no SDRAM cache)
+ * ================================================================
+ * Mount just opens the file (instant). Reads are intercepted by
+ * the CPU and served directly from SD → block buffer.
+ * Writes go through the arbiter → SDRAM, then persist to SD.
  * ================================================================ */
 static uint8_t sector_buf[512];
 static FIL mounted_fil;
 static uint8_t mounted_is_2mg;
 static uint32_t mounted_data_offset;
 static uint16_t mounted_block_count;
-static uint8_t file_is_open;
 
+/* Serve a block read: SD → block buffer (CPU fills Port A directly).
+ * Same pattern as fill_catalog_buffer — proven working. */
+static int serve_block(uint16_t blk) {
+    uint32_t file_off = mounted_data_offset + ((uint32_t)blk * 512);
+    UINT br;
+
+    FRESULT fr = f_lseek(&mounted_fil, file_off);
+    if (fr == FR_OK)
+        fr = f_read(&mounted_fil, sector_buf, 512, &br);
+
+    BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
+    BBUF_ADDR = 0;
+
+    if (fr != FR_OK) {
+        for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
+        BBUF_CTRL = BBUF_CTRL_CACHE_EN;
+        return -1;
+    }
+
+    for (UINT i = br; i < 512; i++) sector_buf[i] = 0;
+    for (int i = 0; i < 512; i++) BBUF_WDATA = sector_buf[i];
+    BBUF_CTRL = BBUF_CTRL_CACHE_EN;
+    return 0;
+}
+
+/* ================================================================
+ * Mount image — on-demand (no streaming)
+ * ================================================================ */
 static int do_mount(uint8_t idx) {
     if (idx >= num_images) {
         uart_puts("Mount: bad index\r\n");
@@ -180,6 +215,9 @@ static int do_mount(uint8_t idx) {
     uart_puts("\r\n");
 
     set_status(FL_SD_READY | FL_S4D2_LOADING | FL_CPU_BUSY);
+
+    /* Disable cache during mount setup */
+    BBUF_CTRL = 0;
 
     /* Build path: "/" + filename */
     char path[16] = "/";
@@ -236,66 +274,20 @@ static int do_mount(uint8_t idx) {
             mounted_data_offset = 0;
             mounted_block_count = (uint16_t)(file_size >> 9);
         }
-
-        f_lseek(&mounted_fil, mounted_data_offset);
     } else {
         mounted_block_count = (uint16_t)(file_size >> 9);
     }
 
-    uart_puts("Streaming ");
-    uart_put_hex32(mounted_block_count);
-    uart_puts(" blocks to SDRAM...\r\n");
-
-    sdram_claim();
-
-    /* Write to SDRAM starting at block 0 — overwrites the menu volume.
-     * After reboot (JMP $Cs00), ProDOS boots from the mounted image.
-     * The menu volume is re-loaded from flash on next power cycle. */
-    uint32_t sdram_byte_addr = 0;
-    uint32_t blocks_written = 0;
-
-    for (uint32_t b = 0; b < mounted_block_count; b++) {
-        UINT br;
-        fr = f_read(&mounted_fil, sector_buf, 512, &br);
-        if (fr != FR_OK || br == 0) break;
-
-        /* Pad short read with zeros */
-        for (UINT i = br; i < 512; i++)
-            sector_buf[i] = 0;
-
-        /* Write 256 words (512 bytes) to SDRAM */
-        for (int w = 0; w < 256; w++) {
-            uint16_t word = sector_buf[w * 2] | (sector_buf[w * 2 + 1] << 8);
-            sdram_write_word(sdram_byte_addr, word);
-            sdram_byte_addr += 2;
-        }
-
-        blocks_written++;
-
-        /* Progress dot every 256 blocks */
-        if ((blocks_written & 0xFF) == 0)
-            uart_putc('.');
-    }
-
-    sdram_release();
-    /* Keep file open for persist writes */
     file_is_open = 1;
 
-    /* SD keepalive — rewind file and read 1 sector to prime the SPI
-     * interface after the mount streaming gap.  Some SDSC cards need
-     * an SPI transaction to "wake up" after idle, otherwise the first
-     * persist f_lseek/f_write fails (tok=0x00 = MISO stuck LOW). */
-    {
-        UINT tbr;
-        f_lseek(&mounted_fil, 0);
-        f_read(&mounted_fil, sector_buf, 512, &tbr);
-    }
-
-    uart_puts("\r\nMounted: ");
-    uart_put_hex32(blocks_written);
-    uart_puts(" blocks written\r\n");
+    uart_puts("Mounted: ");
+    uart_put_hex32(mounted_block_count);
+    uart_puts(" blocks (on-demand)\r\n");
 
     MBOX_REG_TOTAL_BLK = mounted_block_count;
+
+    /* Enable cache intercept — all block reads now go through CPU */
+    BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 
     set_status(FL_SD_READY | FL_S4D2_MOUNTED);
     return 0;
@@ -305,7 +297,7 @@ static int do_mount(uint8_t idx) {
  * Main
  * ================================================================ */
 int main(void) {
-    uart_puts("\r\n=== Flash Hamr Phase 8 ===\r\n");
+    uart_puts("\r\n=== Flash Hamr Phase 10 ===\r\n");
 
     /* Auto-init SD */
     int rc = sd_init(&card_type);
@@ -338,39 +330,71 @@ loop:
     uint8_t last_pending = 0;
     uint16_t persist_count = 0;
     uint32_t loop_count = 0;
+    uint16_t magic_count = 0;
+    uint8_t last_toggle = 0;  /* firmware tracks toggle for edge detection */
 
     while (1) {
         loop_count++;
 
-        /* Heartbeat every ~32768 iterations (~5s) — print debug state */
-        if ((loop_count & 0x7FFF) == 0) {
+        /* Debug heartbeat: compare FW vs HW counts + intercept state */
+        if ((loop_count & 0xFFFFF) == 0 && loop_count > 0) {
             uint32_t dbg = (*(volatile uint32_t *)0x70000004);
-            uart_puts("[W=");
-            uart_put_hex8((dbg >> 8) & 0xFF);   /* CMD_WRITE count */
-            uart_puts(" T=");
-            uart_put_hex8((dbg >> 16) & 0xFF);  /* gate trigger count */
-            uart_puts(" f=");
-            uart_put_hex8(dbg & 0xFF);           /* flags: boot/persist_en/holding/gated/arb/wr_req */
-            uart_puts("]");
+            uint8_t hw_magic = (dbg >> 24) & 0xFF;  // [31:24] magic rises
+            uint8_t hw_reads = (dbg >> 16) & 0xFF;  // [23:16] CMD_READ count
+            uint8_t flags    = dbg & 0xFF;           // [7:0] flags
+            uart_puts("\r\n~M");
+            uart_put_hex8(magic_count & 0xFF);
+            uart_putc('/');
+            uart_put_hex8(hw_magic);
+            uart_puts(" RD=");
+            uart_put_hex8(hw_reads);
+            uart_puts(" F=");
+            uart_put_hex8(flags);
+            // F bits: [7]cache_en [6]intercepted [5]mactive [4]rd_req
+            //         [3]gated_rdy [2]holding [1]persist_en [0]boot_done
+            uart_puts("\r\n");
         }
 
-        /* Check for magic block request */
+        /* Check for intercepted block read (magic blocks + cache reads) */
         uint32_t ms = BBUF_MAGIC_STATUS;
-        if (ms & BBUF_MAGIC_PENDING) {
+        uint8_t cur_toggle = (ms >> 17) & 1;
+        if (cur_toggle != last_toggle) {
+            last_toggle = cur_toggle;
+            magic_count++;
             uint16_t blk = ms & 0xFFFF;
-            uart_puts("M:");
-            uart_put_hex32(blk);
-            uart_puts("\r\n");
+
             if (blk == 0xFFFF) {
+                /* Catalog */
                 fill_catalog_buffer();
+            } else if (file_is_open && blk < mounted_block_count) {
+                /* Block read: SD → buffer directly */
+                serve_block(blk);
             } else {
-                /* Unknown magic block — zeros */
-                BBUF_CTRL = BBUF_CTRL_CLAIM;
+                /* Out of range — zeros */
+                BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
                 BBUF_ADDR = 0;
                 for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
-                BBUF_CTRL = 0;
+                BBUF_CTRL = BBUF_CTRL_CACHE_EN;
             }
+
             BBUF_MAGIC_DONE = 1;
+
+            /* Log AFTER bus is released — include first 4 data bytes */
+            uart_putc(blk == 0xFFFF ? 'C' : (blk < mounted_block_count ? 'R' : '?'));
+            uart_put_hex8((blk >> 8) & 0xFF);
+            uart_put_hex8(blk & 0xFF);
+            if (blk != 0xFFFF) {
+                uart_putc(':');
+                for (int i = 0; i < 4; i++)
+                    uart_put_hex8(sector_buf[i]);
+            }
+            /* Snapshot debug state right after MAGIC_DONE */
+            {
+                uint32_t dbg = (*(volatile uint32_t *)0x70000004);
+                uart_puts(" D=");
+                uart_put_hex32(dbg);
+            }
+            uart_puts("\r\n");
         }
 
         /* Check for persist request from block_ready_gate */
@@ -386,11 +410,11 @@ loop:
                  * times out at ~1.28 seconds. */
 
                 /* Read 512 bytes from block buffer */
-                BBUF_CTRL = BBUF_CTRL_CLAIM;
+                BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
                 BBUF_ADDR = 0;
                 for (int i = 0; i < 512; i++)
                     sector_buf[i] = (uint8_t)BBUF_RDATA;
-                BBUF_CTRL = 0;
+                BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 
                 /* Write to SD via FatFS */
                 uint32_t file_off = mounted_data_offset + ((uint32_t)pblk * 512);
@@ -448,7 +472,7 @@ loop:
             }
         }
 
-        delay(1000);
+        /* No delay — tight polling for on-demand cache responsiveness */
     }
 
     return 0;

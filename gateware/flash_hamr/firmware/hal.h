@@ -82,7 +82,10 @@ static inline uint16_t sdram_read_word(uint32_t byte_addr) {
 #define BBUF_MAGIC_DONE   (*(volatile uint32_t *)(BBUF_BASE + 0x14))
 
 #define BBUF_CTRL_CLAIM    (1 << 0)
-#define BBUF_MAGIC_PENDING (1 << 16)  /* bit 16 of MAGIC_STATUS */
+#define BBUF_CTRL_CACHE_EN (1 << 1)  /* enable on-demand cache intercept */
+#define BBUF_CACHE_RELEASE (*(volatile uint32_t *)(BBUF_BASE + 0x18))  /* release to arbiter */
+#define BBUF_MAGIC_PENDING (1 << 16)  /* bit 16 of MAGIC_STATUS (legacy) */
+#define BBUF_MAGIC_TOGGLE  (1 << 17)  /* bit 17: raw toggle from 7MHz CDC */
 
 /* GPIO (directly memory-mapped) */
 #define GPIO_BASE       0x70000000

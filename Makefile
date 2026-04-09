@@ -144,8 +144,16 @@ TOP := $(DESIGN)_top
 
 synth: $(JSON)
 
-# For flash_hamr: firmware.mem is a synthesis dependency
+# For flash_hamr: firmware.mem and hamr_rom.mem are synthesis dependencies
 FW_MEM_DEP := $(if $(filter flash_hamr,$(DESIGN)),$(FW_MEM),)
+
+# Auto-regenerate hamr_rom.mem from assemble_rom.py when source changes
+HAMR_ROM_MEM := $(GATEWARE_DIR)/flash_hamr/hamr_rom.mem
+HAMR_ROM_PY  := $(GATEWARE_DIR)/flash_hamr/assemble_rom.py
+
+$(HAMR_ROM_MEM): $(HAMR_ROM_PY)
+	@echo "=== Assembling Flash Hamr boot ROM ==="
+	cd $(GATEWARE_DIR)/flash_hamr && python3 assemble_rom.py
 
 $(JSON): $(VERILOG_SRC) $(MEM_FILES) $(FW_MEM_DEP) | $(BUILD_DIR) $(REPORT_DIR)
 	@echo "=== Synthesizing $(DESIGN) with Yosys ==="

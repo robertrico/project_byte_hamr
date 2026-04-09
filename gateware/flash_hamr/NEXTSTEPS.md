@@ -1,129 +1,115 @@
 # Flash Hamr — Next Steps
 
 ## Context
+Branch: `PicoRV32FatFs`. PicoRV32 + FatFS SD card controller.
 Full plan: `/Users/hambook/.claude/plans/merry-wandering-mccarthy.md`
 
-PicoRV32 + FatFS SD card controller. Phases 1-9 substantially complete.
-Branch: `PicoRV32FatFs`. Commit history has Phase 1-8 in one commit,
-Phase 9 (picker + mount rewrite) in the next.
+## What Works (hardware verified, commit f6eb302)
+- Streaming mount: SD → SDRAM, ProDOS boots, CATALOG, CopyII+ (53-block sapling)
+- Persist: CREATE DEV + SAVE TEST = 8 persists, all survive cold reboot
+- Picker UI, .PO and .2MG support, 12.5MHz SPI, SDSC byte-addressing card
 
-## What Works (hardware verified)
-- PicoRV32 CPU at 25MHz, UART TX debug on GPIO7 (115200 baud)
-- SPI master at 12.5 MHz talks to SD card (SDSC + SDHC)
-- FatFS mounts FAT16/FAT32, scans root dir for .PO/.2MG files
-- Mailbox CDC (toggle-based) bridges 7MHz Apple II bus ↔ 25MHz CPU
-- Magic block intercept: READ_BLOCK $FFFF → CPU fills block buffer with catalog
-- Picker (A.PICKER.SYSTEM on flash volume) shows catalog, user selects image
-- Mount: streams SD → SDRAM at block 0 via FatFS f_read + SDRAM port
-- JMP $C400 reboots into mounted image — ProDOS boots, CATALOG works
-- Persist WORKS: CREATE, SAVE survive cold reboot (Phase 10)
+## Current: On-Demand Cache — Direct Buffer Fill Fix
 
-## Bug: CREATE/SAVE I/O ERROR — FIXED (Phase 10)
+### Goal
+Phase 10: replace streaming mount with on-demand cache. Mount is instant (just
+f_open). Reads are intercepted by CPU, fetched from SD on miss, served from
+SDRAM on hit. SDRAM acts as block cache.
 
-Three bugs were found and fixed:
+### Previous Bug
+After mount + reboot, 6502 read stale data from block buffer Port B.
+Two approaches failed: (1) CPU direct write to buffer, (2) CACHE_RELEASE
+to let arbiter do SDRAM→buffer. Both returned stale picker data at $0800.
 
-### Bug 1: gated_block_ready glitch (block_ready_gate.v)
-block_hamr's write_through runs at 25MHz (same domain as arbiter), so the
-trigger fires on the EXACT cycle arb_block_ready rises — no glitch.
-flash_hamr's block_ready_gate runs at 7MHz. arb_block_ready (25MHz) passes
-directly through the combinational gated output for 1-2 cycles before the
-7MHz edge detector fires the trigger. bus_interface captures this glitch
-and prematurely exits S_BUSY.
+### Fix Applied (this session)
+**Key insight**: `fill_catalog_buffer()` writes to Port A and the 6502
+reads correct data from Port B — proven working. Persist reads also work
+(Port B write → Port A read). Both BRAM directions are functional.
 
-**Fix**: Use `arb_ready_delayed` (1-FF registered copy of arb_block_ready) for
-the gated output. The edge detector and delay register sample at the same
-clock edge, so trigger fires BEFORE the delayed signal goes HIGH.
-```verilog
-assign gated_block_ready = (holding || trigger) ? 1'b0 : arb_ready_delayed;
+The CACHE_RELEASE approach had too many CDC handshake opportunities for
+failure (7MHz cache_released → combinational is_intercepted → arbiter
+25MHz CDC edge detection → arbiter transfer → firmware timed delay).
+The original "Approach 1" failure was likely a firmware bug (possibly
+toggling cache_enabled OFF during buffer fill via `BBUF_CTRL = BBUF_CTRL_CLAIM`
+without `| BBUF_CTRL_CACHE_EN`), misdiagnosed as a BRAM port mapping issue.
+
+**New approach**: CPU fills block buffer directly for ALL cache reads,
+using the exact same pattern as catalog fill:
+- **Cache miss**: SD → sector_buf → SDRAM (cache) + buffer (immediate read)
+- **Cache hit**: SDRAM → buffer (CPU reads SDRAM, writes to buffer)
+- **Out of range**: fill buffer with zeros
+- **CACHE_RELEASE eliminated** — firmware never writes BBUF_CACHE_RELEASE
+
+The buffer fill sequence is identical to catalog fill:
+```c
+BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;  // claim + keep cache on
+BBUF_ADDR = 0;
+for (i = 0; i < 512; i++) BBUF_WDATA = data[i];
+BBUF_CTRL = BBUF_CTRL_CACHE_EN;                      // release claim
+BBUF_MAGIC_DONE = 1;                                  // signal 6502
 ```
 
-### Bug 2: UART blocking during persist (main.c)
-The old code printed 45+ UART chars (~4ms) BEFORE f_write/f_sync. Combined
-with SD card busy time, the total exceeded the slot ROM's ~1.28s wait_ready
-timeout. ProDOS timed out before persist finished.
+### Performance
+- Cache miss: ~5-20ms (SD read dominates, buffer fill adds ~40μs)
+- Cache hit: ~200μs (CPU reads 256 SDRAM words + writes 512 buffer bytes)
+- Boot (20 blocks, all miss): ~200ms. Subsequent: all hits, ~4ms
 
-**Fix**: Move ALL UART output to after PERSIST_DONE. The hot path is now:
-buffer read → f_lseek → f_write → f_sync → PERSIST_DONE → then print.
+### Architecture Overview
 
-### Bug 3: SD card SPI idle wake-up (spi_sd.c / main.c)
-After mount streams 280 blocks to SDRAM, the SD card is idle for seconds
-(ProDOS boots, user types commands). Some SDSC cards need an SPI transaction
-to "wake up" — the first CMD17 after idle returns tok=0x00 (MISO stuck LOW).
+```
+6502 CMD_READ → bus_interface (7MHz) → block_read_req
+  → is_intercepted? (cache_en_s2 = 1)
+    YES: magic_block_req → toggle CDC → firmware sees request
+         firmware: SD → sector_buf → SDRAM (cache_miss)
+         then: CACHE_RELEASE → arbiter reads SDRAM → buffer (Port A)
+         then: MAGIC_DONE → cpu_br_s2 → dev_block_ready → bus S_IDLE
+    NO:  arbiter reads SDRAM → buffer → gated_block_ready → bus S_IDLE
+  → 6502 reads 512 bytes from DATA register (Port B)
+```
 
-**Fix**: f_lseek(0) + f_read(512) after mount primes the SPI interface.
-Also increased sd_wait_response timeout from 4096 to 200000 iterations
-(~4ms → ~200ms) for cards with slow TAAC.
+### Architecture Overview (updated)
 
-### Status: VERIFIED on hardware
-CREATE DEV (3 writes) + SAVE TEST (5 writes) = 8 persists, all OK.
-Data survives cold reboot.
+```
+6502 CMD_READ → bus_interface (7MHz) → block_read_req
+  → is_intercepted? (cache_en_s2 = 1)
+    YES: magic_block_req → toggle CDC → firmware sees request
+         MISS: SD → sector_buf → SDRAM + block buffer (CPU fills both)
+         HIT:  SDRAM → block buffer (CPU reads SDRAM, writes buffer)
+         then: MAGIC_DONE → cpu_br_s2 → dev_block_ready → bus S_IDLE
+    NO:  arbiter reads SDRAM → buffer → gated_block_ready → bus S_IDLE
+  → 6502 reads 512 bytes from DATA register (Port B)
+```
 
-## Other known issues
+### Key Registers
+- BBUF_CTRL (+0x0C): bit 0 = buf_claim, bit 1 = cache_enabled
+- BBUF_MAGIC_STATUS (+0x10): bit 17 = toggle, bits 15:0 = block_num
+- BBUF_MAGIC_DONE (+0x14): write = signal block ready (stretch pulse)
+- BBUF_CACHE_RELEASE (+0x18): UNUSED (RTL exists but firmware never writes it)
 
-### Picker timeout for large images
-The mount poll loop in `assemble_picker.py` has a 60-second timeout, but
-large images (PD8.PO = 8MB) take ~17 seconds at 12.5MHz SPI. Should be OK.
-The 32MB .2MG takes ~2 minutes which exceeds the timeout.
-**Fix**: Either increase timeout or (better) implement on-demand block reads
-instead of preloading entire image to SDRAM.
+### Key Signals (7MHz domain)
+- cache_en_s2: CDC'd cache_enabled from CPU
+- is_intercepted: is_magic_block | (cache_en_s2 & ~cache_released)
+- magic_active: set on magic_block_req rise, cleared when block_read_req drops
+- dev_block_ready: magic_active ? cpu_br_s2 : gated_block_ready
 
-### Double SD init on boot
-The firmware calls `sd_init()` directly, then `f_mount()` calls `disk_initialize()`
-which calls `sd_init()` again. Harmless but wastes ~500ms.
-**Fix**: Skip the direct `sd_init()` call, let `f_mount()` handle it.
-
-### On-demand reads (future optimization)
-Current architecture preloads entire disk image to SDRAM. With FatFS, the CPU
-could intercept each READ_BLOCK, f_lseek to the right offset, f_read 512 bytes,
-and return via block buffer. No SDRAM needed for disk data. Boot would be instant
-for any size image. Writes would f_write directly to SD.
-This is a significant architecture change but eliminates the SDRAM bottleneck.
-
-## File map
+## File Map
 
 ### RTL (gateware/flash_hamr/)
-- `flash_hamr_top.v` — top level with SDRAM mux, magic block intercept, all wiring
-- `cpu_soc.v` — PicoRV32 + bus decoder + IMEM/DMEM + all peripherals
-- `picorv32.v` — CPU core (downloaded, unmodified)
-- `spi_master.v` — SPI Mode 0, dual-speed (195kHz/12.5MHz)
-- `uart_tx.v` — 115200 baud TX-only
-- `mailbox.v` — toggle-CDC between 7MHz bus and 25MHz CPU
-- `block_ready_gate.v` — persist gating (renamed write_through, own module)
-- `sdram_controller.v` — SDRAM driver (unchanged from block_hamr)
-- `sdram_arbiter.v` — DO NOT MODIFY (Yosys synthesis corruption)
-- `block_buffer.v` — 512B dual-port BRAM (unchanged)
-- `bus_interface.v` — Apple II register interface (minor mods: sd_cmd_data/wr ports)
-- `boot_loader.v` — SPI flash → SDRAM at power-on (unchanged)
-- `flash_reader.v` — SPI flash reader (unchanged)
-- `addr_decoder.v`, `boot_rom.v` — slot ROM (unchanged)
-- `assemble_rom.py` — slot ROM assembler (unchanged)
+- `flash_hamr_top.v` — top level, cache intercept, CDC, SDRAM mux
+- `cpu_soc.v` — PicoRV32 + peripherals + BBUF/SDRAM/mailbox registers
+- `block_ready_gate.v` — persist gating (arb_ready_delayed fix)
+- `block_buffer.v` — 512B dual-port BRAM (Port A/B both work — catalog proves it)
+- `bus_interface.v` — Apple II register interface + debug counters
+- `sdram_arbiter.v` — DO NOT MODIFY
+- `mailbox.v` — toggle-CDC between bus_interface and CPU
 
 ### Firmware (gateware/flash_hamr/firmware/)
-- `main.c` — command loop: SD init, catalog, mount, persist
-- `spi_sd.c/h` — SD card SPI driver (CMD0/8/55/41/58/17/24)
-- `diskio.c` — FatFS disk I/O hooks
-- `ff.c/h`, `ffconf.h`, `diskio.h` — elm-chan FatFS R0.15
-- `hal.h` — peripheral register addresses + UART helpers
-- `libc_stubs.c` — memcpy, memset, memcmp, strchr, strlen
-- `crt0.S` — startup (stack, BSS zero, data copy)
-- `linker.ld` — memory map (IMEM 32KB @ 0x00000000, DMEM 16KB @ 0x10000000)
+- `main.c` — on-demand cache: CPU fills buffer directly for hit/miss
+- `spi_sd.c` — SD SPI driver (200ms timeout)
+- `hal.h` — register defines (BBUF_CACHE_RELEASE still defined but unused)
 
-### Picker (gateware/flash_hamr/)
-- `assemble_picker.py` — 6502 picker assembler (produces picker.sys)
-- `build_menu.sh` — builds menu.po (PRODOS + A.PICKER.SYSTEM)
-- `picker.sys` — assembled binary
-- `menu.po` — base volume for SPI flash
-
-### Build
-- `make firmware` — compile C → .elf → .bin → firmware.mem
-- `make DESIGN=flash_hamr` — synthesize (includes firmware as dependency)
-- `make DESIGN=flash_hamr prog-flash-with-image DISK_IMAGE=gateware/flash_hamr/menu.po`
-- `scripts/bin2mem.py` — binary to $readmemh hex converter
-
-### Key constants
-- Slot 4 hardcoded (picker + assemble_rom.py)
-- SPI clock: 195kHz init, 12.5MHz data
-- IMEM: 32KB, DMEM: 16KB
-- SDRAM: mount writes at byte address 0 (overwrites menu volume)
-- Firmware ~16KB, Picker ~800 bytes
-- Resources: ~3,400 LUTs (4%), 24 BRAM (11%)
+### Key Constants
+- Slot 4, SPI 12.5MHz, IMEM 32KB, DMEM 16KB
+- Cache bitmap: 8KB in DMEM (supports up to 32MB / 65536 blocks)
+- wait_ready timeout: ~1.28s, sd_wait_response: 200ms
+- MAGIC_DONE stretch: 15 cycles (600ns)

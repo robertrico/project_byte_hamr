@@ -46,6 +46,8 @@ module cpu_soc (
 
     // Block buffer Port A (directly to top-level mux)
     output reg         buf_claim,
+    output reg         cache_enabled,
+    output wire        cache_release,  // stretched pulse: release current request to arbiter
     output reg  [8:0]  buf_addr,
     output reg  [7:0]  buf_wdata,
     output reg         buf_we,
@@ -54,7 +56,7 @@ module cpu_soc (
     // Magic block request (CDC'd from 7MHz)
     input  wire        magic_block_req,
     input  wire [15:0] magic_block_num,
-    output reg         magic_block_ready,
+    output wire        magic_block_ready,
 
     // Debug inputs (CDC'd from 7MHz in top-level)
     input  wire [31:0] dbg_bus_state,
@@ -255,12 +257,17 @@ module cpu_soc (
     reg [31:0] bbuf_rdata;
     reg        bbuf_ready;
 
-    // Magic block request edge detection (level from top, detect rising edge)
-    reg mbr_prev;
-    wire mbr_edge = magic_block_req & ~mbr_prev;
-    reg  mbr_pending;  // latched until CPU services it
-    reg [3:0] mbr_stretch;  // stretch pulse for 25MHz->7MHz CDC
-    assign magic_block_ready = (mbr_stretch != 4'd0);
+    // Magic block request: toggle CDC from 7MHz.
+    // Stretch must span enough 7MHz cycles for bus_interface's 3-stage
+    // edge detector (br_d1→br_d2→br_prev). 127 cycles @ 25MHz = 5.08μs
+    // = ~35 cycles @ 7MHz — plenty of margin.
+    reg [6:0] mbr_stretch;
+    assign magic_block_ready = (mbr_stretch != 7'd0);
+
+    // Cache release: firmware signals "data is in SDRAM, let arbiter serve it"
+    // Stretched like mbr_stretch — 15 cycles = 600ns, spans ~4 7MHz cycles.
+    reg [3:0] crel_stretch;
+    assign cache_release = (crel_stretch != 4'd0);
 
     reg bbuf_post_inc;
 
@@ -268,16 +275,20 @@ module cpu_soc (
         if (!rst_n) begin
             bbuf_ready        <= 1'b0;
             buf_claim         <= 1'b0;
+            cache_enabled     <= 1'b0;
+            crel_stretch      <= 4'd0;
             buf_addr          <= 9'd0;
             buf_wdata         <= 8'd0;
             buf_we            <= 1'b0;
-            mbr_prev          <= 1'b0;
-            mbr_pending       <= 1'b0;
-            mbr_stretch       <= 4'd0;
+            mbr_stretch       <= 7'd0;
             bbuf_post_inc     <= 1'b0;
         end else begin
             bbuf_ready        <= 1'b0;
             buf_we            <= 1'b0;
+
+            // Stretch counter for cache_release CDC (25MHz → 7MHz)
+            if (crel_stretch != 4'd0)
+                crel_stretch <= crel_stretch - 4'd1;
 
             // Post-increment: advance buf_addr AFTER the BRAM write cycle
             if (bbuf_post_inc) begin
@@ -286,13 +297,8 @@ module cpu_soc (
             end
 
             // Stretch counter countdown for magic_block_ready CDC
-            if (mbr_stretch != 4'd0)
-                mbr_stretch <= mbr_stretch - 4'd1;
-            mbr_prev          <= magic_block_req;
-
-            // Latch magic block request
-            if (mbr_edge)
-                mbr_pending <= 1'b1;
+            if (mbr_stretch != 7'd0)
+                mbr_stretch <= mbr_stretch - 7'd1;
 
             if (mem_valid && sel_bbuf && !bbuf_ready) begin
                 bbuf_ready <= 1'b1;
@@ -317,20 +323,28 @@ module cpu_soc (
                         bbuf_rdata    <= {24'd0, buf_rdata};
                         bbuf_post_inc <= 1'b1;  // increment after read
                     end
-                    3'd3: begin  // CTRL (+0x0C) bit0=claim
-                        bbuf_rdata <= {31'd0, buf_claim};
-                        if (mem_wstrb != 4'h0)
-                            buf_claim <= mem_wdata[0];
-                    end
-                    3'd4: begin  // MAGIC_STATUS (+0x10) R: {pending, block_num}
-                        bbuf_rdata <= {15'd0, mbr_pending, magic_block_num};
-                    end
-                    3'd5: begin  // MAGIC_DONE (+0x14) W: signal block ready, clear pending
-                        bbuf_rdata <= 32'd0;
+                    3'd3: begin  // CTRL (+0x0C) bit0=claim, bit1=cache_enabled
+                        bbuf_rdata <= {30'd0, cache_enabled, buf_claim};
                         if (mem_wstrb != 4'h0) begin
-                            mbr_stretch       <= 4'd15; // stretch pulse for CDC
-                            mbr_pending       <= 1'b0;
+                            buf_claim     <= mem_wdata[0];
+                            cache_enabled <= mem_wdata[1];
                         end
+                    end
+                    3'd4: begin  // MAGIC_STATUS (+0x10) R: {toggle, block_num}
+                        // Bit 17 = raw toggle from 7MHz CDC. Firmware compares
+                        // with its local copy to detect new requests. No
+                        // hardware edge detector — avoids SET/CLEAR races.
+                        bbuf_rdata <= {14'd0, magic_block_req, 1'b0, magic_block_num};
+                    end
+                    3'd5: begin  // MAGIC_DONE (+0x14) W: signal block ready (CPU fills buffer)
+                        bbuf_rdata <= 32'd0;
+                        if (mem_wstrb != 4'h0)
+                            mbr_stretch <= 7'd127;  // 5.08μs — ~35 cycles at 7MHz
+                    end
+                    3'd6: begin  // CACHE_RELEASE (+0x18) W: release to arbiter (SDRAM→buffer)
+                        bbuf_rdata <= 32'd0;
+                        if (mem_wstrb != 4'h0)
+                            crel_stretch <= 4'd15;  // 600ns stretched pulse
                     end
                     default: bbuf_rdata <= 32'd0;
                 endcase
