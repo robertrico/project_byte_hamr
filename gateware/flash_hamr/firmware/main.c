@@ -164,10 +164,11 @@ static int do_sd_init(void) {
 }
 
 /* ================================================================
- * On-demand block reads — SD direct (no SDRAM cache)
+ * On-demand block reads with SDRAM cache
  * ================================================================
- * Mount just opens the file (instant). Reads are intercepted by
- * the CPU and served directly from SD → block buffer.
+ * Mount just opens the file (instant). Reads are intercepted:
+ *   MISS: SD → sector_buf → SDRAM + block buffer
+ *   HIT:  SDRAM → block buffer
  * Writes go through the arbiter → SDRAM, then persist to SD.
  * ================================================================ */
 static uint8_t sector_buf[512];
@@ -176,9 +177,35 @@ static uint8_t mounted_is_2mg;
 static uint32_t mounted_data_offset;
 static uint16_t mounted_block_count;
 
-/* Serve a block read: SD → block buffer (CPU fills Port A directly).
- * Same pattern as fill_catalog_buffer — proven working. */
-static int serve_block(uint16_t blk) {
+/* Cache bitmap: 1 bit per block. 8KB = 65536 blocks = 32MB max. */
+#define CACHE_BITMAP_SIZE 8192
+static uint8_t cache_bitmap[CACHE_BITMAP_SIZE];
+
+static inline int block_is_cached(uint16_t blk) {
+    return (cache_bitmap[blk >> 3] >> (blk & 7)) & 1;
+}
+static inline void block_set_cached(uint16_t blk) {
+    cache_bitmap[blk >> 3] |= (1 << (blk & 7));
+}
+
+/* Fill block buffer from SDRAM (cache hit).
+ * CPU reads 256 words from SDRAM, writes 512 bytes to buffer Port A. */
+static void serve_from_sdram(uint16_t blk) {
+    uint32_t sdram_base = (uint32_t)blk << 9;
+    BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
+    BBUF_ADDR = 0;
+    sdram_claim();
+    for (int w = 0; w < 256; w++) {
+        uint16_t word = sdram_read_word(sdram_base + w * 2);
+        BBUF_WDATA = word & 0xFF;
+        BBUF_WDATA = (word >> 8) & 0xFF;
+    }
+    sdram_release();
+    BBUF_CTRL = BBUF_CTRL_CACHE_EN;
+}
+
+/* Read block from SD, store in SDRAM + block buffer (cache miss). */
+static int serve_from_sd(uint16_t blk) {
     uint32_t file_off = mounted_data_offset + ((uint32_t)blk * 512);
     UINT br;
 
@@ -186,18 +213,31 @@ static int serve_block(uint16_t blk) {
     if (fr == FR_OK)
         fr = f_read(&mounted_fil, sector_buf, 512, &br);
 
-    BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
-    BBUF_ADDR = 0;
-
     if (fr != FR_OK) {
+        BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
+        BBUF_ADDR = 0;
         for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
         BBUF_CTRL = BBUF_CTRL_CACHE_EN;
         return -1;
     }
-
     for (UINT i = br; i < 512; i++) sector_buf[i] = 0;
+
+    /* Write to SDRAM cache */
+    uint32_t sdram_base = (uint32_t)blk << 9;
+    sdram_claim();
+    for (int w = 0; w < 256; w++) {
+        uint16_t word = sector_buf[w * 2] | (sector_buf[w * 2 + 1] << 8);
+        sdram_write_word(sdram_base + w * 2, word);
+    }
+    sdram_release();
+
+    /* Write to block buffer (same pattern as catalog fill) */
+    BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
+    BBUF_ADDR = 0;
     for (int i = 0; i < 512; i++) BBUF_WDATA = sector_buf[i];
     BBUF_CTRL = BBUF_CTRL_CACHE_EN;
+
+    block_set_cached(blk);
     return 0;
 }
 
@@ -277,6 +317,10 @@ static int do_mount(uint8_t idx) {
     } else {
         mounted_block_count = (uint16_t)(file_size >> 9);
     }
+
+    /* Clear cache bitmap */
+    for (int i = 0; i < CACHE_BITMAP_SIZE; i++)
+        cache_bitmap[i] = 0;
 
     file_is_open = 1;
 
@@ -363,12 +407,18 @@ loop:
             magic_count++;
             uint16_t blk = ms & 0xFFFF;
 
+            uint8_t was_hit = 0;
             if (blk == 0xFFFF) {
                 /* Catalog */
                 fill_catalog_buffer();
             } else if (file_is_open && blk < mounted_block_count) {
-                /* Block read: SD → buffer directly */
-                serve_block(blk);
+                /* Cache read */
+                if (block_is_cached(blk)) {
+                    serve_from_sdram(blk);
+                    was_hit = 1;
+                } else {
+                    serve_from_sd(blk);
+                }
             } else {
                 /* Out of range — zeros */
                 BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
@@ -379,22 +429,13 @@ loop:
 
             BBUF_MAGIC_DONE = 1;
 
-            /* Log AFTER bus is released — include first 4 data bytes */
-            uart_putc(blk == 0xFFFF ? 'C' : (blk < mounted_block_count ? 'R' : '?'));
+            /* Compact log: C=catalog, *=miss, .=hit, ?=out-of-range */
+            if (blk == 0xFFFF) uart_putc('C');
+            else if (blk >= mounted_block_count) uart_putc('?');
+            else uart_putc(was_hit ? '.' : '*');
             uart_put_hex8((blk >> 8) & 0xFF);
             uart_put_hex8(blk & 0xFF);
-            if (blk != 0xFFFF) {
-                uart_putc(':');
-                for (int i = 0; i < 4; i++)
-                    uart_put_hex8(sector_buf[i]);
-            }
-            /* Snapshot debug state right after MAGIC_DONE */
-            {
-                uint32_t dbg = (*(volatile uint32_t *)0x70000004);
-                uart_puts(" D=");
-                uart_put_hex32(dbg);
-            }
-            uart_puts("\r\n");
+            uart_putc(' ');
         }
 
         /* Check for persist request from block_ready_gate */
@@ -428,6 +469,10 @@ loop:
 
             /* Release bus FIRST, then print debug */
             (*(volatile uint32_t *)0x3000001C) = 1;  /* PERSIST_DONE */
+
+            /* Mark block as cached — arbiter wrote it to SDRAM */
+            if (pfr == FR_OK)
+                block_set_cached(pblk);
 
             /* Now safe to print — bus is released, ProDOS can continue */
             uart_puts("P#");

@@ -258,6 +258,7 @@ endif
 # Simulation files - main design testbench + any helper testbench modules
 SIM_MAIN_TB := $(DESIGN_DIR)/$(DESIGN)_tb.v
 SIM_AUX_TB  := $(filter-out $(SIM_MAIN_TB),$(wildcard $(DESIGN_DIR)/*_tb.v))
+SIM_MODELS  := $(wildcard $(DESIGN_DIR)/sim/*.v)
 SIM_OUT := $(BUILD_DIR)/$(DESIGN)_tb.vvp
 VCD     := $(BUILD_DIR)/$(DESIGN)_tb.vcd
 
@@ -270,7 +271,7 @@ $(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_D
 	@echo "=== Compiling Testbench ==="
 	@# Copy any .mem files to build directory for simulation
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
-	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB)
+	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB)
 
 wave: sim
 	@echo "=== Opening Waveform Viewer ==="
