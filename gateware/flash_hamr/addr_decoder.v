@@ -36,6 +36,11 @@ module addr_decoder (
     // - Set when our slot's I/O space is accessed (nI_O_SELECT low)
     // - Cleared when $CFFF is accessed
     // - Cleared on reset
+    //
+    // Note: on the Apple IIe, when the motherboard's $C800 latch switches
+    // to "internal" (e.g., 80-col at slot 3), nI_O_STROBE does NOT reach
+    // the expansion bus — so our card won't drive even if rom_expansion_active
+    // is still set. Bus contention only occurs with other EXTERNAL cards.
     always @(posedge clk or negedge nRES) begin
         if (~nRES) begin
             rom_expansion_active <= 1'b0;

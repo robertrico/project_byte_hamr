@@ -1,38 +1,34 @@
 #!/usr/bin/env python3
 """
-assemble_rom.py — Flash Hamr ProDOS block device ROM ($Cn page only)
+assemble_rom.py — Flash Hamr ProDOS block device ROM
 
-Entire driver fits in 256-byte $Cn page. No $C800 expansion ROM.
-This avoids bus contention with the Apple IIe's internal ROM at $C800.
+$Cn page: signature, entry points, trampolines (~40 bytes)
+$C800: full driver (dispatch, read, write, status, boot, wait_ready)
 
-S4D1 (unit 1): Menu volume from SPI flash (block count from FPGA regs)
-S4D2 (unit 2): SD card image (block count from FPGA regs)
+The addr_decoder.v clears rom_expansion_active when another slot
+accesses $C800, preventing bus contention with the Apple IIe's
+internal ROM (80-col firmware at slot 3, etc.).
 
 Register interface ($C080 + slot*16):
-  0: STATUS(R) / COMMAND(W)  — R:{ready,error,5'b0,boot_done} W:$01=READ,$02=WRITE
-  1: DATA_READ(R)             — auto-increment
+  0: STATUS(R) / COMMAND(W)
+  1: DATA_READ(R) auto-increment
   2: BLOCK_LO(R/W)
   3: BLOCK_HI(R/W)
-  5: DATA_WRITE(W)            — auto-increment (separate addr avoids STA dummy-read bug)
-  6: TOTAL_BLOCKS_LO(R)       — S4D1 block count (from mailbox)
+  5: DATA_WRITE(W) auto-increment
+  6: TOTAL_BLOCKS_LO(R)
   7: TOTAL_BLOCKS_HI(R)
-  8: SD_CMD(W)                — mailbox command ($01=mount, $02=sd_init)
-  B: S4D2_BLOCKS_LO(R)
-  C: S4D2_BLOCKS_HI(R)
 """
 
 SLOT = 4
 
-# Zero page (ProDOS standard)
 ZP_CMD    = 0x42
 ZP_UNIT   = 0x43
 ZP_BUF    = 0x44
 ZP_BUF_H  = 0x45
 ZP_BLK    = 0x46
 ZP_BLK_H  = 0x47
-ZP_TEMP   = 0x3A  # safe ZP for long wait_ready
+ZP_TEMP   = 0x3A
 
-# I/O registers (indexed by X = slot*16)
 IO_CMD    = 0xC080
 IO_DATA   = 0xC081
 IO_BLLO   = 0xC082
@@ -40,8 +36,6 @@ IO_BLHI   = 0xC083
 IO_DATAW  = 0xC085
 IO_CNTLO  = 0xC086
 IO_CNTHI  = 0xC087
-IO_D2BLLO = 0xC08B
-IO_D2BLHI = 0xC08C
 
 ERR_NONE = 0x00; ERR_IO = 0x27; ERR_NODEV = 0x28; ERR_BADCMD = 0x01
 CMD_READ = 0x01; CMD_WRITE = 0x02
@@ -72,13 +66,11 @@ def jump(op, name):
     emit(op, 0x00, 0x00)
     fixups.append((pc[0], name, 'abs'))
 
-# Instructions
 def LDA_i(v): imm(0xA9, v)
 def LDX_i(v): imm(0xA2, v)
 def LDY_i(v): imm(0xA0, v)
-def CPX_i(v): imm(0xE0, v)  # CPX — signature bytes (same operand as LDX)
+def CPX_i(v): imm(0xE0, v)
 def CMP_i(v): imm(0xC9, v)
-def ADC_i(v): imm(0x69, v)
 def SBC_i(v): imm(0xE9, v)
 def AND_i(v): imm(0x29, v)
 def LDA_z(a): zpg(0xA5, a)
@@ -129,60 +121,77 @@ def resolve():
             rom[off - 1] = (target >> 8) & 0xFF
 
 # ==========================================================================
-# $Cn page — entire driver
+# $Cn page — thin wrapper, jumps to $C800 for real work
 # ==========================================================================
 org(0xC400)
 
-# ---- Signature bytes (ProDOS checks $Cn01, $Cn03, $Cn05) ----
-# Use CPX so the operand bytes match LDX but opcode is different (old ROM style)
+# Signature bytes
 CPX_i(0x20)        # $Cn01 = $20: block device
 CPX_i(0x00)        # $Cn03 = $00
 CPX_i(0x03)        # $Cn05 = $03
+CPX_i(SLOT << 4)   # $Cn07 = $40
 
-# $Cn06-$Cn07: boot detection — CPX with slot*16, if X matches we have our slot
-CPX_i(SLOT << 4)   # $Cn07 = $40 (slot*16, used by old ROM for slot detection)
+# Boot entry (carry set from Apple II ROM scan)
+LDA_i(0xC0 + SLOT)
+STA_a(0x07F8)      # claim $C800
+LDX_i(SLOT)
+LDA_a(0xCFFF)      # deactivate other $C800 ROMs
+JMP_l('boot')      # → $C800
 
-# ---- Boot entry: carry set from Apple II ROM scan ----
-LDA_i(SLOT << 4)   # A = slot*16
-JMP_l('boot')      # boot handler
-
-# ---- ProDOS entry ($CnFF points here) ----
+# ProDOS entry ($CnFF points here)
 label('prodos_entry')
+LDA_i(0xC0 + SLOT)
+STA_a(0x07F8)      # claim $C800
 LDX_i(SLOT << 4)   # X = slot*16
-JMP_l('dispatch')   # command dispatch
+LDA_a(0xCFFF)      # deactivate other $C800 ROMs
+JMP_l('dispatch')   # → $C800
 
-# ---- Boot handler ----
-label('boot')
-TAX()               # X = slot*16 (from LDA above)
-STX_z(ZP_UNIT)      # save for later
-LDA_i(CMD_READ); STA_z(ZP_CMD)
-LDA_i(0x00); STA_z(ZP_BLK); STA_z(ZP_BLK_H)
-STA_z(ZP_BUF)
-LDA_i(0x08); STA_z(ZP_BUF_H)  # buffer = $0800
-JSR_l('dispatch')   # read block 0 to $0800
-JMP_a(0x0801)       # jump to boot code
+# ---- Trampolines: $C800 code returns here to release expansion ROM ----
+label('cn_rts')
+LDA_a(0xCFFF)      # deactivate $C800
+RTS()
 
-# ---- Command dispatch ----
+label('cn_boot_jmp')
+LDA_a(0xCFFF)      # deactivate $C800
+JMP_a(0x0801)
+
+# Pad and signature
+cn_used = here() - 0xC400
+while here() < 0xC4FB: emit(0x00)
+emit(0x00)         # $CnFB
+emit(0x00, 0x00)   # $CnFC-FD
+emit(0x17)         # $CnFE
+emit(labels['prodos_entry'] & 0xFF)  # $CnFF
+
+# ==========================================================================
+# $C800 shared ROM — full driver
+# ==========================================================================
+org(0xC800)
+
+# ---- Command dispatch (ProDOS entry) ----
 label('dispatch')
 LDA_z(ZP_CMD)
 BEQ('cmd_status')
 CMP_i(CMD_READ)
 BEQ('cmd_read')
 CMP_i(CMD_WRITE)
-BEQ('cmd_write')
-# Unknown command
-SEC(); LDA_i(ERR_BADCMD); RTS()
+BNE('bad_cmd')
+JMP_l('cmd_write')
+label('bad_cmd')
+SEC(); LDA_i(ERR_BADCMD)
+JMP_l('cn_rts')
 
 # ---- STATUS ----
 label('cmd_status')
-LDA_ax(IO_CMD); AND_i(0x01)  # check boot_done
+LDA_ax(IO_CMD); AND_i(0x01)
 BEQ('status_offline')
-# Read block count from FPGA registers (works for both units)
-LDA_ax(IO_CNTHI); TAY()      # Y = blocks hi
-LDA_ax(IO_CNTLO); TAX()      # X = blocks lo
-LDA_i(ERR_NONE); CLC(); RTS()
+LDA_ax(IO_CNTHI); TAY()
+LDA_ax(IO_CNTLO); TAX()
+LDA_i(ERR_NONE); CLC()
+JMP_l('cn_rts')
 label('status_offline')
-LDA_i(ERR_NODEV); SEC(); RTS()
+LDA_i(ERR_NODEV); SEC()
+JMP_l('cn_rts')
 
 # ---- READ ----
 label('cmd_read')
@@ -190,23 +199,19 @@ LDA_z(ZP_BLK);   STA_ax(IO_BLLO)
 LDA_z(ZP_BLK_H); STA_ax(IO_BLHI)
 LDA_i(CMD_READ);  STA_ax(IO_CMD)
 JSR_l('wait_ready')
-BCS('read_done')
+BCS('read_err')
 LDY_i(0x00)
 label('rd1')
 LDA_ax(IO_DATA); STA_iy(ZP_BUF); INY(); BNE('rd1')
 INC_z(ZP_BUF_H)
-JSR_l('rd_page2')
-DEC_z(ZP_BUF_H)
-LDA_i(ERR_NONE); CLC()
-label('read_done')
-RTS()
-
-# Second page read (reusable subroutine saves bytes)
-label('rd_page2')
 LDY_i(0x00)
 label('rd2')
 LDA_ax(IO_DATA); STA_iy(ZP_BUF); INY(); BNE('rd2')
-RTS()
+DEC_z(ZP_BUF_H)
+LDA_i(ERR_NONE); CLC()
+JMP_l('cn_rts')
+label('read_err')
+JMP_l('cn_rts')
 
 # ---- WRITE ----
 label('cmd_write')
@@ -222,22 +227,22 @@ LDA_iy(ZP_BUF); STA_ax(IO_DATAW); INY(); BNE('wr2')
 DEC_z(ZP_BUF_H)
 LDA_i(CMD_WRITE); STA_ax(IO_CMD)
 JSR_l('wait_ready')
-BCS('write_done')
+BCS('write_err')
 LDA_i(ERR_NONE); CLC()
-label('write_done')
-RTS()
+JMP_l('cn_rts')
+label('write_err')
+JMP_l('cn_rts')
 
-# ---- wait_ready (short: ~16ms timeout for normal ops) ----
+# ---- wait_ready ----
 label('wait_ready')
 LDY_i(0x00)
-label('wr_out')
+label('wro')
 LDA_i(0x00)
-label('wr_in')
+label('wri')
 PHA()
 LDA_ax(IO_CMD); BMI('wr_ok')
-PLA(); SEC(); SBC_i(1); BNE('wr_in')
-DEY(); BNE('wr_out')
-# Timeout
+PLA(); SEC(); SBC_i(1); BNE('wri')
+DEY(); BNE('wro')
 PLA(); LDA_i(ERR_IO); SEC(); RTS()
 label('wr_ok')
 AND_i(0x40); BNE('wr_err')
@@ -245,20 +250,27 @@ PLA(); LDA_i(ERR_NONE); CLC(); RTS()
 label('wr_err')
 PLA(); LDA_i(ERR_IO); SEC(); RTS()
 
-# ---- Pad and signature ----
-cn_used = here() - 0xC400
-assert cn_used <= 251, f"$Cn page overflow: {cn_used} bytes used, max 251"
+# ---- Boot handler ----
+label('boot')
+LDA_i(SLOT << 4); TAX()
+STX_z(ZP_UNIT)
+LDA_i(CMD_READ); STA_z(ZP_CMD)
+LDA_i(0x00); STA_z(ZP_BLK); STA_z(ZP_BLK_H); STA_z(ZP_BUF)
+LDA_i(0x08); STA_z(ZP_BUF_H)
+# Read block 0 via dispatch (reuses cmd_read)
+JSR_l('dispatch')
+JMP_l('cn_boot_jmp')
 
-while here() < 0xC4FB: emit(0x00)
-emit(0x00)         # $CnFB: SmartPort device type
-emit(0x00, 0x00)   # $CnFC-FD: block count (0 = requires STATUS)
-emit(0x17)         # $CnFE: read+write+SmartPort, 2 volumes (matches old working ROM)
-emit(labels['prodos_entry'] & 0xFF)  # $CnFF: ProDOS entry point
+# ---- ID string ----
+while here() < 0xCFDB: emit(0x00)
+for c in "FLASH HAMR": emit(ord(c))
+emit(0x00)
 
 # ==========================================================================
 resolve()
 
-print(f"$Cn page: {cn_used} bytes used ({251 - cn_used} free)")
+c8_used = here() - 0xC800
+print(f"$Cn page: {cn_used} bytes, $C800: {c8_used} bytes ({2048 - c8_used} free)")
 print(f"\nLabels:")
 for name, addr in sorted(labels.items(), key=lambda x: x[1]):
     print(f"  {name:24s} = ${addr:04X}")
