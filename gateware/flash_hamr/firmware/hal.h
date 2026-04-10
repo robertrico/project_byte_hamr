@@ -28,6 +28,11 @@
 #define MBOX_PERSIST_BLK (*(volatile uint32_t *)(MBOX_BASE + 0x10))
 #define MBOX_TOTAL_BLK  (*(volatile uint32_t *)(MBOX_BASE + 0x14))
 
+/* Multi-drive registers */
+#define MBOX_BOOT_UNIT  (*(volatile uint32_t *)(MBOX_BASE + 0x20))
+#define MBOX_UNIT_BLKCNT(n) (*(volatile uint32_t *)(MBOX_BASE + 0x24 + (n)*4))
+#define MBOX_UNIT_OFFSET(n) (*(volatile uint32_t *)(MBOX_BASE + 0x34 + ((n)-1)*4))
+
 /* Mailbox flag bits */
 #define FLAG_SD_READY    (1 << 0)
 #define FLAG_SD_ERROR    (1 << 1)

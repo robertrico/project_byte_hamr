@@ -81,3 +81,5 @@ __pycache__/
 gateware/smart_hamr/fuji/
 
 gateware/smart_hamr/MERLIN-8_PRODOS.dsk
+
+gateware/flash_hamr/_FileInformation.txt

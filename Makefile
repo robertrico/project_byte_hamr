@@ -156,6 +156,32 @@ $(HAMR_ROM_MEM): $(HAMR_ROM_SRC)
 	cd $(GATEWARE_DIR)/flash_hamr && $(MERLIN32) $(MERLIN_LIB) hamr_rom.S
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/flash_hamr/hamr_rom.bin $@
 
+# Flash Hamr menu volume (picker + ProDOS)
+FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
+PICKER_SRC     := $(FLASH_HAMR_DIR)/picker.S
+PICKER_BIN     := $(FLASH_HAMR_DIR)/picker.bin
+PICKER_SYS     := $(FLASH_HAMR_DIR)/picker.sys
+MENU_PO        := $(FLASH_HAMR_DIR)/menu.po
+PRODOS_SRC     := software/SMARTPORT/ProDOS_2_4_1.po
+AC_JAR         := /Users/hambook/Development/AppleCommander-ac-13.0.jar
+AC             := java -jar $(AC_JAR)
+
+$(PICKER_SYS): $(PICKER_SRC)
+	@echo "=== Assembling Flash Hamr picker (Merlin32) ==="
+	cd $(FLASH_HAMR_DIR) && $(MERLIN32) $(MERLIN_LIB) picker.S
+	cp $(PICKER_BIN) $@
+
+$(MENU_PO): $(PICKER_SYS) $(PRODOS_SRC)
+	@echo "=== Building Flash Hamr menu volume ==="
+	$(AC) -pro140 $@ HAMRDISK
+	dd if=$(PRODOS_SRC) of=$@ bs=512 count=2 conv=notrunc 2>/dev/null
+	$(AC) -g $(PRODOS_SRC) PRODOS > /tmp/prodos_sys.bin
+	$(AC) -p $@ PRODOS SYS 0x2000 < /tmp/prodos_sys.bin
+	$(AC) -p $@ A.PICKER.SYSTEM SYS 0x2000 < $(PICKER_SYS)
+	@echo "Menu volume ready: $@"
+
+menu: $(MENU_PO)
+
 $(JSON): $(VERILOG_SRC) $(MEM_FILES) $(FW_MEM_DEP) | $(BUILD_DIR) $(REPORT_DIR)
 	@echo "=== Synthesizing $(DESIGN) with Yosys ==="
 	@echo "Synthesis started at $$(date)" > $(SYNTH_LOG)
@@ -531,9 +557,11 @@ RISCV_LDFLAGS := -T $(FW_DIR)/linker.ld -nostdlib -Wl,--gc-sections -Wl,-Map,$(F
 
 firmware: $(FW_MEM)
 
-$(FW_ELF): $(FW_SRCS_C) $(FW_SRCS_S) $(FW_DIR)/linker.ld | $(BUILD_DIR)
+# Always rebuild firmware.elf to pick up fresh timestamp
+.PHONY: force_fw
+$(FW_ELF): $(FW_SRCS_C) $(FW_SRCS_S) $(FW_DIR)/linker.ld force_fw | $(BUILD_DIR)
 	@echo "=== Compiling PicoRV32 firmware ==="
-	$(RISCV_CC) $(RISCV_CFLAGS) $(RISCV_LDFLAGS) -o $@ $(FW_SRCS_S) $(FW_SRCS_C) $(RISCV_LIBGCC)
+	$(RISCV_CC) $(RISCV_CFLAGS) -DBUILD_TS='"$(shell date +%Y-%m-%dT%H:%M:%S)"' $(RISCV_LDFLAGS) -o $@ $(FW_SRCS_S) $(FW_SRCS_C) $(RISCV_LIBGCC)
 	@$(RISCV_SIZE) $@
 
 $(FW_BIN): $(FW_ELF)

@@ -203,6 +203,10 @@ module cpu_soc (
     reg persist_pending_latch;
     reg persist_pend_prev;
 
+    // Latch cmd_pending (1-cycle pulse from mailbox) until CPU acks
+    reg cmd_pending_latch;
+    reg cmd_pend_prev;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mbox_ready           <= 1'b0;
@@ -213,6 +217,8 @@ module cpu_soc (
             mbox_persist_done    <= 1'b0;
             persist_pending_latch <= 1'b0;
             persist_pend_prev    <= 1'b0;
+            cmd_pending_latch    <= 1'b0;
+            cmd_pend_prev        <= 1'b0;
             boot_unit            <= 2'd0;
             unit_blkcnt_0        <= 16'd0;
             unit_blkcnt_1        <= 16'd0;
@@ -232,11 +238,16 @@ module cpu_soc (
             if (mbox_persist_pending && !persist_pend_prev)
                 persist_pending_latch <= 1'b1;
 
+            // Latch on rising edge of mbox_cmd_pending
+            cmd_pend_prev <= mbox_cmd_pending;
+            if (mbox_cmd_pending && !cmd_pend_prev)
+                cmd_pending_latch <= 1'b1;
+
             if (mem_valid && sel_mbox && !mbox_ready) begin
                 mbox_ready <= 1'b1;
 
                 case (mem_addr[5:2])
-                    4'd0: mbox_rdata <= {24'd0, mbox_cmd};           // CMD
+                    4'd0: mbox_rdata <= {cmd_pending_latch, 23'd0, mbox_cmd}; // CMD + pending bit
                     4'd1: mbox_rdata <= {24'd0, mbox_arg0};          // ARG0
                     4'd2: begin                                       // STATUS_FLAGS
                         mbox_rdata <= {24'd0, mbox_status_flags};
@@ -256,8 +267,10 @@ module cpu_soc (
                     4'd5: mbox_rdata <= {31'd0, persist_pending_latch}; // PERSIST_PEND (latched)
                     4'd6: begin                                       // CMD_ACK (write-only)
                         mbox_rdata <= 32'd0;
-                        if (mem_wstrb != 4'h0)
-                            mbox_cmd_ack <= 1'b1;
+                        if (mem_wstrb != 4'h0) begin
+                            mbox_cmd_ack      <= 1'b1;
+                            cmd_pending_latch <= 1'b0;
+                        end
                     end
                     4'd7: begin                                       // PERSIST_DONE (write-only)
                         mbox_rdata <= 32'd0;

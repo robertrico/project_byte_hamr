@@ -24,9 +24,9 @@
 #define MCMD_MOUNT   0x01
 #define MCMD_SD_INIT 0x02
 
-/* SDRAM layout: S4D1 at offset 0, S4D2 at block 2048 */
-#define UNIT2_OFFSET_BLOCKS 2048
-#define UNIT2_OFFSET_BYTES  (UNIT2_OFFSET_BLOCKS * 512)  /* 0x100000 */
+/* SDRAM layout: S4D1 at offset 0, mountable units start at block 1024 */
+#define S4D1_BLOCKS         280
+#define MOUNT_BASE_BLOCK    1024
 
 /* ================================================================ */
 
@@ -176,6 +176,7 @@ static FIL mounted_fil;
 static uint8_t mounted_is_2mg;
 static uint32_t mounted_data_offset;
 static uint16_t mounted_block_count;
+static uint16_t mounted_sdram_base;   /* absolute SDRAM block offset for mounted vol */
 
 /* Cache bitmap: 1 bit per block. 8KB = 65536 blocks = 32MB max. */
 #define CACHE_BITMAP_SIZE 8192
@@ -204,9 +205,11 @@ static void serve_from_sdram(uint16_t blk) {
     BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 }
 
-/* Read block from SD, store in SDRAM + block buffer (cache miss). */
+/* Read block from SD, store in SDRAM + block buffer (cache miss).
+ * blk = absolute SDRAM block number (with unit offset applied). */
 static int serve_from_sd(uint16_t blk) {
-    uint32_t file_off = mounted_data_offset + ((uint32_t)blk * 512);
+    uint16_t local_blk = blk - mounted_sdram_base;
+    uint32_t file_off = mounted_data_offset + ((uint32_t)local_blk * 512);
     UINT br;
 
     FRESULT fr = f_lseek(&mounted_fil, file_off);
@@ -244,7 +247,7 @@ static int serve_from_sd(uint16_t blk) {
 /* ================================================================
  * Mount image — on-demand (no streaming)
  * ================================================================ */
-static int do_mount(uint8_t idx) {
+static int do_mount(uint8_t idx, uint8_t slot) {
     if (idx >= num_images) {
         uart_puts("Mount: bad index\r\n");
         return -1;
@@ -252,6 +255,8 @@ static int do_mount(uint8_t idx) {
 
     uart_puts("Mounting: ");
     uart_puts(catalog[idx].fname);
+    uart_puts(" -> unit ");
+    uart_putc('1' + slot);
     uart_puts("\r\n");
 
     set_status(FL_SD_READY | FL_S4D2_LOADING | FL_CPU_BUSY);
@@ -318,15 +323,28 @@ static int do_mount(uint8_t idx) {
         mounted_block_count = (uint16_t)(file_size >> 9);
     }
 
-    /* Clear cache bitmap */
+    /* SDRAM base for this unit (slot 0=S4D2 → unit 1) */
+    mounted_sdram_base = MOUNT_BASE_BLOCK;
+
+    /* Clear cache bitmap, then protect S4D1 blocks */
     for (int i = 0; i < CACHE_BITMAP_SIZE; i++)
         cache_bitmap[i] = 0;
+    for (uint16_t b = 0; b < S4D1_BLOCKS; b++)
+        block_set_cached(b);
 
     file_is_open = 1;
 
     uart_puts("Mounted: ");
     uart_put_hex32(mounted_block_count);
-    uart_puts(" blocks (on-demand)\r\n");
+    uart_puts(" blocks @ SDRAM ");
+    uart_put_hex32(mounted_sdram_base);
+    uart_puts("\r\n");
+
+    /* Write per-unit registers (CDC'd to bus_interface) */
+    uint8_t unit = slot + 1;  /* slot 0 = S4D2 = unit 1 */
+    MBOX_UNIT_BLKCNT(unit) = mounted_block_count;
+    if (unit >= 1)
+        MBOX_UNIT_OFFSET(unit) = mounted_sdram_base;
 
     MBOX_REG_TOTAL_BLK = mounted_block_count;
 
@@ -341,7 +359,10 @@ static int do_mount(uint8_t idx) {
  * Main
  * ================================================================ */
 int main(void) {
-    uart_puts("\r\n=== Flash Hamr Phase 10 ===\r\n");
+#ifndef BUILD_TS
+#define BUILD_TS "unknown"
+#endif
+    uart_puts("\r\n=== Flash Hamr - " BUILD_TS " ===\r\n");
 
     /* Auto-init SD */
     int rc = sd_init(&card_type);
@@ -371,7 +392,6 @@ int main(void) {
 loop:
     uart_puts("Command loop\r\n");
 
-    uint8_t last_pending = 0;
     uint16_t persist_count = 0;
     uint32_t loop_count = 0;
     uint16_t magic_count = 0;
@@ -411,14 +431,15 @@ loop:
             if (blk == 0xFFFF) {
                 /* Catalog */
                 fill_catalog_buffer();
-            } else if (file_is_open && blk < mounted_block_count) {
-                /* Cache read */
-                if (block_is_cached(blk)) {
-                    serve_from_sdram(blk);
-                    was_hit = 1;
-                } else {
-                    serve_from_sd(blk);
-                }
+            } else if (block_is_cached(blk)) {
+                /* Cache hit — serve from SDRAM (covers S4D1 + previously read blocks) */
+                serve_from_sdram(blk);
+                was_hit = 1;
+            } else if (file_is_open &&
+                       blk >= mounted_sdram_base &&
+                       blk < mounted_sdram_base + mounted_block_count) {
+                /* Cache miss — serve from SD */
+                serve_from_sd(blk);
             } else {
                 /* Out of range — zeros */
                 BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
@@ -457,8 +478,9 @@ loop:
                     sector_buf[i] = (uint8_t)BBUF_RDATA;
                 BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 
-                /* Write to SD via FatFS */
-                uint32_t file_off = mounted_data_offset + ((uint32_t)pblk * 512);
+                /* Write to SD via FatFS (use local block for file seek) */
+                uint16_t local_pblk = pblk - mounted_sdram_base;
+                uint32_t file_off = mounted_data_offset + ((uint32_t)local_pblk * 512);
                 UINT bw;
                 pfr = f_lseek(&mounted_fil, file_off);
                 if (pfr == FR_OK)
@@ -488,12 +510,14 @@ loop:
             }
         }
 
-        /* Check for mailbox command */
+        /* Check for mailbox command (toggle-based: bit 31 = new command pending) */
         uint32_t cmd_status = (*(volatile uint32_t *)0x30000000);
         uint8_t cmd = cmd_status & 0xFF;
+        uint8_t cmd_new = (cmd_status >> 31) & 1;
 
-        if (cmd != 0 && cmd != last_pending) {
-            last_pending = cmd;
+        if (cmd_new && cmd != 0) {
+            /* ACK to clear pending latch */
+            (*(volatile uint32_t *)0x30000018) = 1;
 
             uart_puts("CMD: ");
             uart_put_hex8(cmd);
@@ -509,11 +533,15 @@ loop:
                     set_status(FL_SD_ERROR);
                 }
             } else if (cmd == MCMD_MOUNT) {
-                uint8_t idx = (*(volatile uint32_t *)0x30000004) & 0xFF;
+                uint8_t raw = (*(volatile uint32_t *)0x30000004) & 0xFF;
+                uint8_t idx = raw & 0x0F;
+                uint8_t slot = (raw >> 6) & 0x03;
                 uart_puts("Mount idx=");
                 uart_put_hex8(idx);
+                uart_puts(" slot=");
+                uart_put_hex8(slot);
                 uart_puts("\r\n");
-                do_mount(idx);
+                do_mount(idx, slot);
             }
         }
 
