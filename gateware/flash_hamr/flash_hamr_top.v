@@ -228,8 +228,31 @@ module flash_hamr_top (
     wire [7:0]  sd_cmd_data;
     wire        sd_cmd_wr;
     wire [3:0]  img_select;
+    wire [1:0]  mount_slot;
 
     wire [7:0] bus_dbg_wr_count, bus_dbg_rd_count;
+
+    // Per-unit data from cpu_soc (25MHz) — CDC to 7MHz for bus_interface
+    wire [15:0] cpu_unit_blkcnt_0, cpu_unit_blkcnt_1, cpu_unit_blkcnt_2, cpu_unit_blkcnt_3;
+    wire [15:0] cpu_unit_offset_1, cpu_unit_offset_2, cpu_unit_offset_3;
+    reg  [15:0] ub0_s1, ub0_s2, ub1_s1, ub1_s2, ub2_s1, ub2_s2, ub3_s1, ub3_s2;
+    reg  [15:0] uo1_s1, uo1_s2, uo2_s1, uo2_s2, uo3_s1, uo3_s2;
+    always @(posedge sig_7M or negedge por_7m_n) begin
+        if (!por_7m_n) begin
+            {ub0_s1, ub0_s2} <= 32'd0; {ub1_s1, ub1_s2} <= 32'd0;
+            {ub2_s1, ub2_s2} <= 32'd0; {ub3_s1, ub3_s2} <= 32'd0;
+            {uo1_s1, uo1_s2} <= 32'd0; {uo2_s1, uo2_s2} <= 32'd0;
+            {uo3_s1, uo3_s2} <= 32'd0;
+        end else begin
+            ub0_s1 <= cpu_unit_blkcnt_0; ub0_s2 <= ub0_s1;
+            ub1_s1 <= cpu_unit_blkcnt_1; ub1_s2 <= ub1_s1;
+            ub2_s1 <= cpu_unit_blkcnt_2; ub2_s2 <= ub2_s1;
+            ub3_s1 <= cpu_unit_blkcnt_3; ub3_s2 <= ub3_s1;
+            uo1_s1 <= cpu_unit_offset_1; uo1_s2 <= uo1_s1;
+            uo2_s1 <= cpu_unit_offset_2; uo2_s2 <= uo2_s1;
+            uo3_s1 <= cpu_unit_offset_3; uo3_s2 <= uo3_s1;
+        end
+    end
 
     bus_interface u_bus_interface (
         .clk(sig_7M), .rst_n(por_7m_n),
@@ -252,8 +275,8 @@ module flash_hamr_top (
         .sd_error_in(mbox_bus_status_flags[1]),
         .s4d2_mounted(mbox_bus_status_flags[2]),
         .s4d2_loading(mbox_bus_status_flags[3]),
-        .img_count(mbox_bus_status_flags[7:4]),  // packed into upper nibble
-        // Catalog — unused, catalog comes via magic block reads
+        .img_count(mbox_bus_status_flags[7:4]),
+        // Catalog
         .cat_rd_addr(), .cat_rd_data(8'd0),
         .img_select(img_select), .img_name_idx(),
         // SD commands -> mailbox
@@ -261,13 +284,12 @@ module flash_hamr_top (
         .sd_init_request(),
         .sd_cmd_data(sd_cmd_data),
         .sd_cmd_wr(sd_cmd_wr),
-        .s4d2_block_count(mbox_bus_total_blocks),
-        .s4d2_is_2mg(1'b0),
-        // Debug
-        .dbg_dir_byte0(8'd0), .dbg_dir_byte8(8'd0),
-        .dbg_is_fat16(1'b0),
-        .mount_dbg_sectors(16'd0), .mount_dbg_state(5'd0),
-        .mount_dbg_fat_entry(16'd0)
+        .mount_slot(mount_slot),
+        // Per-unit data (CDC'd above)
+        .unit_blkcnt_0(ub0_s2), .unit_blkcnt_1(ub1_s2),
+        .unit_blkcnt_2(ub2_s2), .unit_blkcnt_3(ub3_s2),
+        .unit_offset_1(uo1_s2), .unit_offset_2(uo2_s2),
+        .unit_offset_3(uo3_s2)
     );
 
     // =========================================================================
@@ -464,7 +486,7 @@ module flash_hamr_top (
     mailbox u_mailbox (
         // 7 MHz side
         .clk_bus(sig_7M), .rst_bus_n(por_7m_n),
-        .bus_cmd(sd_cmd_data), .bus_arg0({4'd0, img_select}),
+        .bus_cmd(sd_cmd_data), .bus_arg0({mount_slot, 2'b0, img_select}),
         .bus_cmd_wr(sd_cmd_wr),
         .bus_status_flags(mbox_bus_status_flags),
         .bus_total_blocks(mbox_bus_total_blocks),
@@ -585,6 +607,12 @@ module flash_hamr_top (
         .mbox_persist_block(mbox_cpu_persist_block),
         .mbox_persist_pending(mbox_cpu_persist_pending),
         .mbox_persist_done(cpu_persist_done),
+        // Per-unit registers (multi-drive)
+        .boot_unit(),  // not used yet — boot_unit is 7MHz-only for now
+        .unit_blkcnt_0(cpu_unit_blkcnt_0), .unit_blkcnt_1(cpu_unit_blkcnt_1),
+        .unit_blkcnt_2(cpu_unit_blkcnt_2), .unit_blkcnt_3(cpu_unit_blkcnt_3),
+        .unit_offset_1(cpu_unit_offset_1), .unit_offset_2(cpu_unit_offset_2),
+        .unit_offset_3(cpu_unit_offset_3),
         // Block buffer + cache control
         .buf_claim(cpu_buf_claim),
         .cache_enabled(cache_enabled_25),

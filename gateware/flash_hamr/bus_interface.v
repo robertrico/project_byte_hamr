@@ -1,30 +1,28 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// bus_interface.v — Apple II bus register interface for block device
+// bus_interface.v — Apple II bus register interface (multi-drive)
 // =============================================================================
-// Simple register file for 6502 block device access.
-// The slot ROM reads/writes these registers directly.
-//
 // Register Map ($C0n0 - $C0nF, via addr[3:0]):
 //   0: STATUS (R) / COMMAND (W)
-//      Read:  {ready, error, 5'b0, boot_done}
-//      Write: $01 = READ_BLOCK, $02 = WRITE_BLOCK
-//   1: DATA_READ (R)
-//      Read with auto-increment. Used by LDA abs,X (4-cycle, 1 pulse).
-//   2: BLOCK_LO (R/W)  — block number low byte
-//   3: BLOCK_HI (R/W)  — block number high byte
-//   4: SOFT RESET (W)  — writing any value resets all state
-//   5: DATA_WRITE (W)
-//      Write with auto-increment. Separate address avoids the 6502
-//      STA abs,X dummy-read bug: STA is 5 cycles and cycle 4 is a
-//      dummy READ at the effective address. If writes used addr 1,
-//      the dummy read would trigger a spurious auto-increment.
-//   6-F: Reserved (reads $00)
+//   1: DATA_READ (R) — auto-increment
+//   2: BLOCK_LO (R/W) — relative block number
+//   3: BLOCK_HI (R/W) — relative block number
+//   4: SOFT RESET (W)
+//   5: DATA_WRITE (W) — auto-increment (separate from DATA_READ)
+//   6: TOTAL_BLOCKS_LO (R) — S4D1 volume size (backward compat)
+//   7: TOTAL_BLOCKS_HI (R)
+//   8: SD_STATUS (R) / SD_CMD (W)
+//   9: IMG_COUNT (R) / IMG_SELECT (W) — {mount_slot[1:0], 2'b0, img_idx[3:0]}
+//   A: CAT_NAME_CHAR (R) / CAT_NAME_IDX (W)
+//   B: UNIT_BLK_LO (R) — block count indexed by active_unit
+//   C: UNIT_BLK_HI (R) — block count indexed by active_unit
+//   D: BOOT_UNIT (R) / ACTIVE_UNIT (W) — ROM writes before I/O
+//   E: — / BOOT_UNIT (W) — menu sets before reboot
+//   F: DEBUG (R)
 //
-// BRAM pipeline: block_buffer has 1-cycle registered reads. A pre-fetch
-// register (prefetch) always holds the byte at buf_addr. When the CPU
-// reads DATA, it gets prefetch, then buf_addr increments and the BRAM
-// delivers the next byte into prefetch on the following clock.
+// Hardware offset addition:
+//   block_num_out = block_num + unit_offset[active_unit]
+//   The arbiter sees absolute SDRAM block addresses.
 // =============================================================================
 
 module bus_interface (
@@ -40,21 +38,21 @@ module bus_interface (
 
     // System
     input  wire        boot_done,
-    input  wire [15:0] total_blocks,       // auto-detected volume size from boot_loader
+    input  wire [15:0] total_blocks,       // S4D1 volume size from boot_loader
 
-    // Block buffer Port B (7 MHz side) — BRAM with 1-cycle read latency
+    // Block buffer Port B (7 MHz side)
     output reg  [8:0]  buf_addr,
-    input  wire [7:0]  buf_rdata,        // Registered read (1-cycle latency)
+    input  wire [7:0]  buf_rdata,
     output reg  [7:0]  buf_wdata,
     output reg         buf_we,
 
-    // SDRAM block request interface (directly to sdram_arbiter)
+    // SDRAM block request interface
     output reg         block_read_req,
     output reg         block_write_req,
-    output reg  [15:0] block_num,
+    output reg  [15:0] block_num,          // relative block (within unit)
     input  wire        block_ready,
 
-    // Block number exposed for write-through controller
+    // Block number with unit offset applied (to arbiter + persist)
     output wire [15:0] block_num_out,
 
     // Debug counters
@@ -62,7 +60,6 @@ module bus_interface (
     output wire [7:0] dbg_rd_count_out,
 
     // ---- SD card management (registers 8-F) ----
-    // Status inputs
     input  wire        sd_ready,
     input  wire        sd_error_in,
     input  wire        s4d2_mounted,
@@ -77,24 +74,23 @@ module bus_interface (
     output reg  [3:0]  img_select,
     output reg  [4:0]  img_name_idx,
     output reg         mount_request,
-    output reg         sd_init_request,   // level: set by POKE, cleared when sd_ready/sd_error
+    output reg         sd_init_request,
 
-    // Mailbox command output (any write to reg 8)
-    output reg  [7:0]  sd_cmd_data,       // command byte written to reg 8
-    output reg         sd_cmd_wr,         // pulse: reg 8 was written
+    // Mailbox command output
+    output reg  [7:0]  sd_cmd_data,
+    output reg         sd_cmd_wr,
 
-    // Mounted image block count
-    input  wire [15:0] s4d2_block_count,
-    input  wire        s4d2_is_2mg,
+    // Mount slot (high bits of arg0 for multi-drive mount)
+    output reg  [1:0]  mount_slot,
 
-    // Debug (from fat32_reader, 25MHz domain)
-    input  wire [7:0]  dbg_dir_byte0,
-    input  wire [7:0]  dbg_dir_byte8,
-    input  wire        dbg_is_fat16,
-    // Debug (from sd_mount, 25MHz domain)
-    input  wire [15:0] mount_dbg_sectors,
-    input  wire [4:0]  mount_dbg_state,
-    input  wire [15:0] mount_dbg_fat_entry
+    // ---- Per-unit data (CDC'd from 25MHz in top-level) ----
+    input  wire [15:0] unit_blkcnt_0,     // S4D1 block count
+    input  wire [15:0] unit_blkcnt_1,     // S4D2 block count
+    input  wire [15:0] unit_blkcnt_2,     // S4D3 block count
+    input  wire [15:0] unit_blkcnt_3,     // S4D4 block count
+    input  wire [15:0] unit_offset_1,     // S4D2 SDRAM block offset
+    input  wire [15:0] unit_offset_2,     // S4D3 SDRAM block offset
+    input  wire [15:0] unit_offset_3      // S4D4 SDRAM block offset
 );
 
     // =========================================================================
@@ -112,10 +108,30 @@ module bus_interface (
     reg [1:0] state;
     reg error;
     reg auto_inc;
-    reg [7:0] dbg_write_count;   // counts CMD_WRITE_BLOCK commands
-    reg [7:0] dbg_read_count;    // counts CMD_READ_BLOCK commands
+    reg [7:0] dbg_write_count;
+    reg [7:0] dbg_read_count;
 
-    assign block_num_out = block_num;
+    // =========================================================================
+    // Multi-drive registers
+    // =========================================================================
+    reg [1:0] active_unit;    // ROM writes before each I/O (0=S4D1, 1=S4D2, ...)
+    reg [1:0] boot_unit_reg;  // Menu program writes before reboot
+
+    // Per-unit offset mux (S4D1 offset is always 0)
+    wire [15:0] active_offset = (active_unit == 2'd0) ? 16'd0 :
+                                (active_unit == 2'd1) ? unit_offset_1 :
+                                (active_unit == 2'd2) ? unit_offset_2 :
+                                                        unit_offset_3;
+
+    // Block number with unit offset applied — sent to arbiter
+    assign block_num_out = block_num + active_offset;
+
+    // Per-unit block count mux
+    wire [15:0] active_blkcnt = (active_unit == 2'd0) ? unit_blkcnt_0 :
+                                (active_unit == 2'd1) ? unit_blkcnt_1 :
+                                (active_unit == 2'd2) ? unit_blkcnt_2 :
+                                                        unit_blkcnt_3;
+
     assign dbg_wr_count_out = dbg_write_count;
     assign dbg_rd_count_out = dbg_read_count;
 
@@ -123,22 +139,12 @@ module bus_interface (
 
     // =========================================================================
     // CDC synchronizers for 25MHz → 7MHz domain crossing
-    // These signals are set once (during boot/mount) and stable for many
-    // cycles, so 2-FF sync on each bit is safe (no gray coding needed).
     // =========================================================================
     reg        sd_ready_s1,     sd_ready_s2;
     reg        sd_error_s1,     sd_error_s2;
     reg        s4d2_mounted_s1, s4d2_mounted_s2;
     reg        s4d2_loading_s1, s4d2_loading_s2;
     reg [3:0]  img_count_s1,    img_count_s2;
-    reg [15:0] s4d2_blkcnt_s1,  s4d2_blkcnt_s2;
-    reg        s4d2_is2mg_s1,   s4d2_is2mg_s2;
-    reg [7:0]  dbg_byte0_s1,   dbg_byte0_s2;
-    reg [7:0]  dbg_byte8_s1,   dbg_byte8_s2;
-    reg        dbg_fat16_s1,   dbg_fat16_s2;
-    reg [15:0] mount_sectors_s1, mount_sectors_s2;
-    reg [4:0]  mount_state_s1,  mount_state_s2;
-    reg [15:0] mount_fat_s1,    mount_fat_s2;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -147,38 +153,18 @@ module bus_interface (
             {s4d2_mounted_s1, s4d2_mounted_s2} <= 2'b0;
             {s4d2_loading_s1, s4d2_loading_s2} <= 2'b0;
             {img_count_s1, img_count_s2}       <= 8'b0;
-            {s4d2_blkcnt_s1, s4d2_blkcnt_s2}   <= 32'b0;
-            {s4d2_is2mg_s1, s4d2_is2mg_s2}     <= 2'b0;
-            {dbg_byte0_s1, dbg_byte0_s2}       <= 16'b0;
-            {dbg_byte8_s1, dbg_byte8_s2}       <= 16'b0;
-            {dbg_fat16_s1, dbg_fat16_s2}       <= 2'b0;
-            {mount_sectors_s1, mount_sectors_s2} <= 32'b0;
-            {mount_state_s1, mount_state_s2}   <= 10'b0;
-            {mount_fat_s1, mount_fat_s2}       <= 32'b0;
         end else begin
             sd_ready_s1     <= sd_ready;        sd_ready_s2     <= sd_ready_s1;
             sd_error_s1     <= sd_error_in;     sd_error_s2     <= sd_error_s1;
             s4d2_mounted_s1 <= s4d2_mounted;    s4d2_mounted_s2 <= s4d2_mounted_s1;
             s4d2_loading_s1 <= s4d2_loading;    s4d2_loading_s2 <= s4d2_loading_s1;
             img_count_s1    <= img_count;       img_count_s2    <= img_count_s1;
-            s4d2_blkcnt_s1  <= s4d2_block_count; s4d2_blkcnt_s2 <= s4d2_blkcnt_s1;
-            s4d2_is2mg_s1   <= s4d2_is_2mg;    s4d2_is2mg_s2   <= s4d2_is2mg_s1;
-            dbg_byte0_s1    <= dbg_dir_byte0;  dbg_byte0_s2    <= dbg_byte0_s1;
-            dbg_byte8_s1    <= dbg_dir_byte8;  dbg_byte8_s2    <= dbg_byte8_s1;
-            dbg_fat16_s1    <= dbg_is_fat16;   dbg_fat16_s2    <= dbg_fat16_s1;
-            mount_sectors_s1 <= mount_dbg_sectors; mount_sectors_s2 <= mount_sectors_s1;
-            mount_state_s1  <= mount_dbg_state;   mount_state_s2  <= mount_state_s1;
-            mount_fat_s1    <= mount_dbg_fat_entry; mount_fat_s2  <= mount_fat_s1;
         end
     end
 
     // =========================================================================
     // Pre-fetch register for BRAM read pipeline
     // =========================================================================
-    // buf_rdata arrives 1 cycle after buf_addr changes. We continuously
-    // capture it into prefetch. When the CPU reads DATA, it gets prefetch
-    // (which reflects the current buf_addr). Then buf_addr increments,
-    // and prefetch updates on the next clock with the new byte.
     reg [7:0] prefetch;
 
     always @(posedge clk or negedge rst_n) begin
@@ -189,7 +175,7 @@ module bus_interface (
     end
 
     // =========================================================================
-    // nDEVICE_SELECT edge detection (synchronized to fclk)
+    // nDEVICE_SELECT edge detection
     // =========================================================================
     reg nds_d1, nds_d2;
 
@@ -207,14 +193,8 @@ module bus_interface (
     wire nds_rise = ~nds_d2 & nds_d1;
 
     // =========================================================================
-    // Bus cycle capture — latch data/addr on actual bus cycle boundary
+    // Bus cycle capture — latch data/addr on posedge nDEVICE_SELECT
     // =========================================================================
-    // The 6502 drives write data valid for only ~200ns at the END of the
-    // bus cycle. A free-running 7MHz clock (140ns period) cannot reliably
-    // sample it. Instead, use posedge nDEVICE_SELECT — the exact bus cycle
-    // end — as the capture clock. The latched values are rock-stable by the
-    // time nds_rise fires 2 clk cycles later in the 7MHz domain.
-    // This matches how real Apple II peripherals work (e.g. AppleIISd).
     reg [7:0] wr_data_latch;
     reg [3:0] wr_addr_latch;
     reg       wr_rw_latch;
@@ -226,7 +206,7 @@ module bus_interface (
     end
 
     // =========================================================================
-    // Block ready synchronizer (block_ready comes from 25 MHz domain)
+    // Block ready synchronizer (25 MHz → 7 MHz)
     // =========================================================================
     reg br_d1, br_d2, br_prev;
 
@@ -245,18 +225,13 @@ module bus_interface (
     wire br_rise = br_d2 & ~br_prev;
 
     // =========================================================================
-    // Catalog BRAM addressing — read name char at (img_select, img_name_idx)
-    // Name is at catalog bytes 0-10 of each 32-byte entry.
-    // Block count at bytes 22-23 (LE). Flags at byte 11.
+    // Catalog BRAM addressing
     // =========================================================================
-    // Catalog BRAM address: entry N starts at byte N*32.
-    // {img_select, 5'd0} = img_select * 32
     wire [8:0] cat_entry_base = {img_select, 5'd0};
-    // For catalog reads (reg A): entry_base + img_name_idx (0-31)
     assign cat_rd_addr = cat_entry_base + {4'd0, img_name_idx};
 
     // =========================================================================
-    // Read mux (combinational — data valid entire nDEVICE_SELECT window)
+    // Read mux (combinational)
     // =========================================================================
     always @(*) begin
         case (addr)
@@ -266,15 +241,16 @@ module bus_interface (
             4'h3: data_out = block_num[15:8];
             4'h6: data_out = total_blocks[7:0];
             4'h7: data_out = total_blocks[15:8];
-            // SD management registers (CDC-synchronized inputs)
+            // SD management
             4'h8: data_out = {sd_ready_s2, sd_error_s2, s4d2_mounted_s2, s4d2_loading_s2, 4'b0};
             4'h9: data_out = {4'b0, img_count_s2};
-            4'hA: data_out = cat_rd_data;  // IMG_NAME_CHAR (catalog BRAM read)
-            4'hB: data_out = s4d2_blkcnt_s2[7:0];
-            4'hC: data_out = s4d2_blkcnt_s2[15:8];
-            4'hD: data_out = dbg_write_count;           // DEBUG: CMD_WRITE count
-            4'hE: data_out = dbg_read_count;            // DEBUG: CMD_READ count
-            4'hF: data_out = {block_ready, block_write_req, block_read_req, state, 3'b0}; // DEBUG: state
+            4'hA: data_out = cat_rd_data;
+            // Multi-drive indexed registers
+            4'hB: data_out = active_blkcnt[7:0];
+            4'hC: data_out = active_blkcnt[15:8];
+            4'hD: data_out = {6'b0, boot_unit_reg};
+            4'hE: data_out = 8'h00;
+            4'hF: data_out = {block_ready, block_write_req, block_read_req, state, 3'b0};
             default: data_out = 8'h00;
         endcase
     end
@@ -299,19 +275,16 @@ module bus_interface (
             sd_init_request <= 1'b0;
             sd_cmd_data     <= 8'd0;
             sd_cmd_wr       <= 1'b0;
+            mount_slot      <= 2'd0;
+            active_unit     <= 2'd0;
+            boot_unit_reg   <= 2'd0;
             dbg_write_count <= 8'd0;
             dbg_read_count  <= 8'd0;
         end else begin
             mount_request   <= 1'b0;
             sd_cmd_wr       <= 1'b0;
-            // sd_init_request: set by POKE $02, stays HIGH until cleared
-            // by POKE $00, or by writing $02 again (re-trigger).
-            // Do NOT auto-clear on sd_ready — that races with the CDC.
-            // Defaults
             buf_we  <= 1'b0;
-            // Auto-increment: READ of addr 1, or WRITE of addr 5.
-            // Separate addresses prevent 6502 STA abs,X dummy-read
-            // (cycle 4) from causing a spurious increment.
+
             auto_inc <= nds_rise && (
                 (wr_addr_latch == 4'h1 &&  wr_rw_latch) ||  // LDA DATA_READ
                 (wr_addr_latch == 4'h5 && ~wr_rw_latch)     // STA DATA_WRITE
@@ -336,10 +309,10 @@ module bus_interface (
                 end
             endcase
 
-            // ---- Write register handling (uses bus-cycle-captured values) ----
+            // ---- Write register handling ----
             if (nds_rise & ~wr_rw_latch) begin
                 case (wr_addr_latch)
-                    4'h0: begin  // COMMAND register
+                    4'h0: begin  // COMMAND
                         if (boot_done && state == S_IDLE) begin
                             error <= 1'b0;
                             buf_addr <= 9'd0;
@@ -358,49 +331,53 @@ module bus_interface (
                         end
                     end
 
-                    4'h5: begin  // DATA_WRITE register
+                    4'h5: begin  // DATA_WRITE
                         buf_wdata <= wr_data_latch;
                         buf_we    <= 1'b1;
                     end
 
-                    4'h2: begin
+                    4'h2: begin  // BLOCK_LO
                         block_num[7:0] <= wr_data_latch;
                         buf_addr       <= 9'd0;
                     end
-                    4'h3: block_num[15:8] <= wr_data_latch;
+                    4'h3: block_num[15:8] <= wr_data_latch;  // BLOCK_HI
 
-                    4'h4: begin  // SOFT RESET register
+                    4'h4: begin  // SOFT RESET
                         state           <= S_IDLE;
                         error           <= 1'b0;
                         buf_addr        <= 9'd0;
                         block_read_req  <= 1'b0;
                         block_write_req <= 1'b0;
                         block_num       <= 16'd0;
+                        active_unit     <= 2'd0;
                     end
 
-                    // SD management registers (write)
-                    4'h8: begin  // SD commands
+                    // SD management registers
+                    4'h8: begin  // SD_CMD
                         if (wr_data_latch == 8'h01)
                             mount_request <= 1'b1;
                         if (wr_data_latch == 8'h02)
                             sd_init_request <= 1'b1;
                         if (wr_data_latch == 8'h00)
-                            sd_init_request <= 1'b0;  // manual clear
-                        // Mailbox: forward any reg 8 write to CPU
+                            sd_init_request <= 1'b0;
                         sd_cmd_data <= wr_data_latch;
                         sd_cmd_wr   <= 1'b1;
                     end
-                    4'h9: begin  // IMG_SELECT
+                    4'h9: begin  // IMG_SELECT + MOUNT_SLOT
                         img_select <= wr_data_latch[3:0];
+                        mount_slot <= wr_data_latch[7:6];
                     end
                     4'hA: begin  // IMG_NAME_IDX
                         img_name_idx <= wr_data_latch[4:0];
                     end
+
+                    // Multi-drive registers
+                    4'hD: active_unit   <= wr_data_latch[1:0];  // ACTIVE_UNIT
+                    4'hE: boot_unit_reg <= wr_data_latch[1:0];  // BOOT_UNIT
                 endcase
             end
 
-            // Auto-increment buf_addr 1 cycle after nds_rise — delayed so
-            // BRAM write (buf_we) completes at the correct address first
+            // Auto-increment
             if (auto_inc) begin
                 buf_addr <= buf_addr + 9'd1;
             end
