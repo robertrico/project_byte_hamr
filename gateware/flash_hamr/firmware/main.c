@@ -24,9 +24,7 @@
 #define MCMD_MOUNT   0x01
 #define MCMD_SD_INIT 0x02
 
-/* SDRAM layout: S4D1 at offset 0, mountable units start at block 1024 */
-#define S4D1_BLOCKS         280
-#define MOUNT_BASE_BLOCK    1024
+/* SDRAM layout: single drive at offset 0 (replaces SPI flash picker on mount) */
 
 /* ================================================================ */
 
@@ -46,7 +44,28 @@ static uint8_t num_images;
 static uint8_t status_flags;
 
 static void delay(volatile uint32_t count) { while (count--) ; }
-static inline int any_drive_open(void);  /* forward decl */
+
+/* ================================================================
+ * Duo Drive state — D1 (boot) + D2 (data)
+ * SDRAM layout: D1 at block 0, D2 at block 32768
+ * ================================================================ */
+#define D2_SDRAM_BASE 32768
+
+static FIL fil_d1, fil_d2;
+static uint8_t  d1_open, d2_open;
+static uint16_t d1_block_count, d2_block_count;
+static uint32_t d1_data_offset, d2_data_offset;
+
+/* Cache bitmap: 1 bit per block. 8KB = 65536 blocks = 32MB max. */
+#define CACHE_BITMAP_SIZE 8192
+static uint8_t cache_bitmap[CACHE_BITMAP_SIZE];
+
+static inline int block_is_cached(uint16_t blk) {
+    return (cache_bitmap[blk >> 3] >> (blk & 7)) & 1;
+}
+static inline void block_set_cached(uint16_t blk) {
+    cache_bitmap[blk >> 3] |= (1 << (blk & 7));
+}
 
 static int has_ext(const char *fname, const char *ext) {
     const char *p = fname;
@@ -71,9 +90,8 @@ static void set_status(uint8_t flags) {
  * Fill catalog block buffer ($FFFF)
  * ================================================================ */
 static void fill_catalog_buffer(void) {
-    /* Always preserve cache_enabled — clearing it after mount
-     * would de-intercept subsequent block reads. */
-    uint32_t ctrl_base = any_drive_open() ? BBUF_CTRL_CACHE_EN : 0;
+    /* Preserve cache_enabled if any drive is mounted */
+    uint32_t ctrl_base = (d1_open || d2_open) ? BBUF_CTRL_CACHE_EN : 0;
     BBUF_CTRL = BBUF_CTRL_CLAIM | ctrl_base;
     BBUF_ADDR = 0;
 
@@ -173,53 +191,6 @@ static int do_sd_init(void) {
  * ================================================================ */
 static uint8_t sector_buf[512];
 
-/* ================================================================
- * Per-drive state (S4D2, S4D3, S4D4 = slots 0, 1, 2)
- * ================================================================ */
-#define NUM_SLOTS 3
-
-typedef struct {
-    FIL      fil;
-    uint8_t  is_open;
-    uint16_t block_count;
-    uint32_t data_offset;    /* 2MG header offset into file */
-    uint16_t sdram_base;     /* absolute SDRAM block offset */
-} drive_t;
-
-static drive_t drives[NUM_SLOTS];
-static uint32_t next_free_block = MOUNT_BASE_BLOCK;
-
-static inline int any_drive_open(void) {
-    for (int d = 0; d < NUM_SLOTS; d++)
-        if (drives[d].is_open) return 1;
-    return 0;
-}
-
-/* Cache bitmap: 1 bit per block. 8KB = 65536 blocks = 32MB max. */
-#define CACHE_BITMAP_SIZE 8192
-static uint8_t cache_bitmap[CACHE_BITMAP_SIZE];
-
-static inline int block_is_cached(uint16_t blk) {
-    return (cache_bitmap[blk >> 3] >> (blk & 7)) & 1;
-}
-static inline void block_set_cached(uint16_t blk) {
-    cache_bitmap[blk >> 3] |= (1 << (blk & 7));
-}
-
-/* Find which drive owns an absolute SDRAM block.
- * Returns drive index (0-2) or -1 if not in any mounted range. */
-static int find_drive(uint16_t abs_blk, uint16_t *local_blk) {
-    for (int d = NUM_SLOTS - 1; d >= 0; d--) {
-        if (!drives[d].is_open) continue;
-        if (abs_blk >= drives[d].sdram_base &&
-            abs_blk < drives[d].sdram_base + drives[d].block_count) {
-            *local_blk = abs_blk - drives[d].sdram_base;
-            return d;
-        }
-    }
-    return -1;
-}
-
 /* Fill block buffer from SDRAM (cache hit). */
 static void serve_from_sdram(uint16_t blk) {
     uint32_t byte_addr = (uint32_t)blk << 9;
@@ -236,14 +207,14 @@ static void serve_from_sdram(uint16_t blk) {
 }
 
 /* Read block from SD, store in SDRAM + block buffer (cache miss).
- * blk = absolute SDRAM block number. d = drive index. local_blk = relative. */
-static int serve_from_sd(uint16_t blk, int d, uint16_t local_blk) {
-    uint32_t file_off = drives[d].data_offset + ((uint32_t)local_blk * 512);
+ * sdram_blk = absolute SDRAM block. f = FIL handle. local_blk = block within file. */
+static int serve_from_sd(uint16_t sdram_blk, FIL *f, uint32_t fdata_off, uint16_t local_blk) {
+    uint32_t file_off = fdata_off + ((uint32_t)local_blk * 512);
     UINT br;
 
-    FRESULT fr = f_lseek(&drives[d].fil, file_off);
+    FRESULT fr = f_lseek(f, file_off);
     if (fr == FR_OK)
-        fr = f_read(&drives[d].fil, sector_buf, 512, &br);
+        fr = f_read(f, sector_buf, 512, &br);
 
     if (fr != FR_OK) {
         BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
@@ -255,7 +226,7 @@ static int serve_from_sd(uint16_t blk, int d, uint16_t local_blk) {
     for (UINT i = br; i < 512; i++) sector_buf[i] = 0;
 
     /* Write to SDRAM cache */
-    uint32_t byte_addr = (uint32_t)blk << 9;
+    uint32_t byte_addr = (uint32_t)sdram_blk << 9;
     sdram_claim();
     for (int w = 0; w < 256; w++) {
         uint16_t word = sector_buf[w * 2] | (sector_buf[w * 2 + 1] << 8);
@@ -269,25 +240,31 @@ static int serve_from_sd(uint16_t blk, int d, uint16_t local_blk) {
     for (int i = 0; i < 512; i++) BBUF_WDATA = sector_buf[i];
     BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 
-    block_set_cached(blk);
+    block_set_cached(sdram_blk);
     return 0;
 }
 
 /* ================================================================
- * Mount image — on-demand (no streaming)
+ * Mount image — Duo Drive, on-demand (no streaming)
+ * ================================================================
+ * drive: 0=D1 (boot, SDRAM base 0), 1=D2 (data, SDRAM base 32768)
+ * Opens the SD file, sets block count, clears cache, enables intercept.
  * ================================================================ */
-static int do_mount(uint8_t idx, uint8_t slot) {
-    if (idx >= num_images || slot >= NUM_SLOTS) {
+static int do_mount(uint8_t idx, uint8_t drive) {
+    if (idx >= num_images) {
         uart_puts("Mount: bad index\r\n");
         return -1;
     }
 
-    drive_t *drv = &drives[slot];
+    FIL *f       = (drive == 0) ? &fil_d1 : &fil_d2;
+    uint8_t *opn = (drive == 0) ? &d1_open : &d2_open;
+    uint16_t *bc = (drive == 0) ? &d1_block_count : &d2_block_count;
+    uint32_t *doff = (drive == 0) ? &d1_data_offset : &d2_data_offset;
 
-    uart_puts("Mounting: ");
+    uart_puts("Mounting D");
+    uart_putc(drive ? '2' : '1');
+    uart_puts(": ");
     uart_puts(catalog[idx].fname);
-    uart_puts(" -> S4D");
-    uart_putc('2' + slot);
     uart_puts("\r\n");
 
     set_status(FL_SD_READY | FL_S4D2_LOADING | FL_CPU_BUSY);
@@ -295,22 +272,10 @@ static int do_mount(uint8_t idx, uint8_t slot) {
     /* Disable cache during mount setup */
     BBUF_CTRL = 0;
 
-    /* Auto-unmount this slot and all higher slots (offsets would shift) */
-    for (int d = NUM_SLOTS - 1; d >= slot; d--) {
-        if (drives[d].is_open) {
-            f_close(&drives[d].fil);
-            drives[d].is_open = 0;
-            /* Clear hardware registers for unmounted slot */
-            MBOX_UNIT_BLKCNT(d + 1) = 0;
-            MBOX_UNIT_OFFSET(d + 1) = 0;
-        }
-    }
-
-    /* Recalculate next_free_block from remaining mounts */
-    next_free_block = MOUNT_BASE_BLOCK;
-    for (int d = 0; d < slot; d++) {
-        if (drives[d].is_open)
-            next_free_block = drives[d].sdram_base + drives[d].block_count;
+    /* Close previous image on this drive if any */
+    if (*opn) {
+        f_close(f);
+        *opn = 0;
     }
 
     /* Build path: "/" + filename */
@@ -320,7 +285,7 @@ static int do_mount(uint8_t idx, uint8_t slot) {
         path[pi++] = catalog[idx].fname[i];
     path[pi] = 0;
 
-    FRESULT fr = f_open(&drv->fil, path, FA_READ | FA_WRITE);
+    FRESULT fr = f_open(f, path, FA_READ | FA_WRITE);
     if (fr != FR_OK) {
         uart_puts("f_open FAIL: ");
         uart_put_hex8(fr);
@@ -329,72 +294,58 @@ static int do_mount(uint8_t idx, uint8_t slot) {
         return -1;
     }
 
-    uint32_t file_size = f_size(&drv->fil);
-    drv->data_offset = 0;
+    uint32_t file_size = f_size(f);
+    *doff = 0;
     uint8_t is_2mg = catalog[idx].flags & 1;
 
     /* .2mg header detection */
     if (is_2mg) {
         UINT br;
-        fr = f_read(&drv->fil, sector_buf, 64, &br);
+        fr = f_read(f, sector_buf, 64, &br);
         if (fr != FR_OK || br < 64) {
             uart_puts("2mg header read fail\r\n");
-            f_close(&drv->fil);
+            f_close(f);
             set_status(FL_SD_READY | FL_SD_ERROR);
             return -1;
         }
 
         if (sector_buf[0] == '2' && sector_buf[1] == 'I' &&
             sector_buf[2] == 'M' && sector_buf[3] == 'G') {
-            drv->data_offset = sector_buf[24] | (sector_buf[25] << 8) |
-                               (sector_buf[26] << 16) | (sector_buf[27] << 24);
+            *doff = sector_buf[24] | (sector_buf[25] << 8) |
+                    (sector_buf[26] << 16) | (sector_buf[27] << 24);
             uint32_t data_len = sector_buf[28] | (sector_buf[29] << 8) |
                                 (sector_buf[30] << 16) | (sector_buf[31] << 24);
-            drv->block_count = (uint16_t)(data_len >> 9);
+            *bc = (uint16_t)(data_len >> 9);
             uart_puts("2MG: offset=");
-            uart_put_hex32(drv->data_offset);
+            uart_put_hex32(*doff);
             uart_puts(" blocks=");
-            uart_put_hex32(drv->block_count);
+            uart_put_hex32(*bc);
             uart_puts("\r\n");
         } else {
-            drv->data_offset = 0;
-            drv->block_count = (uint16_t)(file_size >> 9);
+            *doff = 0;
+            *bc = (uint16_t)(file_size >> 9);
         }
     } else {
-        drv->block_count = (uint16_t)(file_size >> 9);
+        *bc = (uint16_t)(file_size >> 9);
     }
 
-    /* Sequential SDRAM placement */
-    if (next_free_block > 65535) {
-        uart_puts("No SDRAM address space left\r\n");
-        f_close(&drv->fil);
-        set_status(FL_SD_READY | FL_SD_ERROR);
-        return -1;
-    }
-    drv->sdram_base = (uint16_t)next_free_block;
-    uint32_t end_block = next_free_block + drv->block_count;
-    if (end_block > 65536) {
-        uart_puts("WARN: volume extends past 16-bit block space\r\n");
-    }
-    next_free_block = end_block;
-    drv->is_open = 1;
+    *opn = 1;
 
-    /* Rebuild cache bitmap: protect S4D1, preserve other drives' cached blocks */
+    /* Clear entire cache bitmap — stale data for this drive */
     for (int i = 0; i < CACHE_BITMAP_SIZE; i++)
         cache_bitmap[i] = 0;
-    for (uint16_t b = 0; b < S4D1_BLOCKS; b++)
-        block_set_cached(b);
 
-    uart_puts("Mounted: ");
-    uart_put_hex32(drv->block_count);
-    uart_puts(" blocks @ SDRAM ");
-    uart_put_hex32(drv->sdram_base);
-    uart_puts("\r\n");
+    uart_puts("Mounted D");
+    uart_putc(drive ? '2' : '1');
+    uart_puts(": ");
+    uart_put_hex32(*bc);
+    uart_puts(" blocks\r\n");
 
-    /* Write per-unit registers (CDC'd to bus_interface) */
-    uint8_t unit = slot + 1;  /* slot 0 = S4D2 = unit 1 */
-    MBOX_UNIT_BLKCNT(unit) = drv->block_count;
-    MBOX_UNIT_OFFSET(unit) = drv->sdram_base;
+    /* Update block count registers */
+    if (drive == 0)
+        MBOX_REG_TOTAL_BLK = *bc;   /* D1 → regs 6/7 */
+    else
+        MBOX_D2_BLKCNT = *bc;       /* D2 → regs B/C */
 
     /* Enable cache intercept */
     BBUF_CTRL = BBUF_CTRL_CACHE_EN;
@@ -473,22 +424,23 @@ loop:
                 /* Catalog */
                 fill_catalog_buffer();
             } else if (block_is_cached(blk)) {
-                /* Cache hit — serve from SDRAM (covers S4D1 + previously read blocks) */
+                /* Cache hit — serve from SDRAM */
                 serve_from_sdram(blk);
                 was_hit = 1;
+            } else if (blk < D2_SDRAM_BASE && d1_open && blk < d1_block_count) {
+                /* D1 cache miss */
+                serve_from_sd(blk, &fil_d1, d1_data_offset, blk);
+            } else if (blk >= D2_SDRAM_BASE && d2_open &&
+                       (blk - D2_SDRAM_BASE) < d2_block_count) {
+                /* D2 cache miss */
+                uint16_t local = blk - D2_SDRAM_BASE;
+                serve_from_sd(blk, &fil_d2, d2_data_offset, local);
             } else {
-                /* Cache miss — find which drive owns this block */
-                uint16_t local_blk;
-                int d = find_drive(blk, &local_blk);
-                if (d >= 0) {
-                    serve_from_sd(blk, d, local_blk);
-                } else {
-                    /* Out of range — zeros */
-                    BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
-                    BBUF_ADDR = 0;
-                    for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
-                    BBUF_CTRL = BBUF_CTRL_CACHE_EN;
-                }
+                /* Out of range — zeros */
+                BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
+                BBUF_ADDR = 0;
+                for (int i = 0; i < 512; i++) BBUF_WDATA = 0;
+                BBUF_CTRL = BBUF_CTRL_CACHE_EN;
             }
 
             BBUF_MAGIC_DONE = 1;
@@ -509,11 +461,19 @@ loop:
             FRESULT pfr = FR_INT_ERR;
 
             {
-                /* HOT PATH — no UART until after PERSIST_DONE. */
-                uint16_t local_pblk;
-                int pd = find_drive(pblk, &local_pblk);
+                /* HOT PATH — determine which drive, then persist. */
+                FIL *pf = 0;
+                uint16_t local_pblk = pblk;
+                if (pblk < D2_SDRAM_BASE && d1_open && pblk < d1_block_count) {
+                    pf = &fil_d1;
+                    local_pblk = pblk;
+                } else if (pblk >= D2_SDRAM_BASE && d2_open &&
+                           (pblk - D2_SDRAM_BASE) < d2_block_count) {
+                    pf = &fil_d2;
+                    local_pblk = pblk - D2_SDRAM_BASE;
+                }
 
-                if (pd >= 0) {
+                if (pf) {
                     /* Read 512 bytes from block buffer */
                     BBUF_CTRL = BBUF_CTRL_CLAIM | BBUF_CTRL_CACHE_EN;
                     BBUF_ADDR = 0;
@@ -521,15 +481,19 @@ loop:
                         sector_buf[i] = (uint8_t)BBUF_RDATA;
                     BBUF_CTRL = BBUF_CTRL_CACHE_EN;
 
-                    /* Write to SD via FatFS */
-                    uint32_t file_off = drives[pd].data_offset +
-                                        ((uint32_t)local_pblk * 512);
-                    UINT bw;
-                    pfr = f_lseek(&drives[pd].fil, file_off);
-                    if (pfr == FR_OK)
-                        pfr = f_write(&drives[pd].fil, sector_buf, 512, &bw);
-                    if (pfr == FR_OK)
-                        pfr = f_sync(&drives[pd].fil);
+                    /* Write to SD via FatFS — retry up to 3 times */
+                    uint32_t foff = (pf == &fil_d1 ? d1_data_offset : d2_data_offset);
+                    uint32_t file_off = foff + ((uint32_t)local_pblk * 512);
+                    for (int retry = 0; retry < 3; retry++) {
+                        UINT bw;
+                        pfr = f_lseek(pf, file_off);
+                        if (pfr == FR_OK)
+                            pfr = f_write(pf, sector_buf, 512, &bw);
+                        if (pfr == FR_OK)
+                            pfr = f_sync(pf);
+                        if (pfr == FR_OK) break;
+                        uart_puts("!P retry\r\n");
+                    }
                 }
             }
 
@@ -541,24 +505,16 @@ loop:
                 block_set_cached(pblk);
 
             /* Now safe to print — bus is released, ProDOS can continue */
-            {
-                uint16_t dbg_local;
-                int dbg_d = find_drive(pblk, &dbg_local);
-                uart_puts("P#");
-                uart_put_hex8(persist_count & 0xFF);
-                uart_puts(" abs=");
-                uart_put_hex32(pblk);
-                uart_puts(" d=");
-                uart_putc(dbg_d >= 0 ? '0' + dbg_d : '?');
-                uart_puts(" loc=");
-                uart_put_hex32(dbg_local);
-                if (pfr == FR_OK)
-                    uart_puts(" OK\r\n");
-                else {
-                    uart_puts(" E=");
-                    uart_put_hex8(pfr);
-                    uart_puts("\r\n");
-                }
+            uart_puts("P#");
+            uart_put_hex8(persist_count & 0xFF);
+            uart_puts(" blk=");
+            uart_put_hex32(pblk);
+            if (pfr == FR_OK)
+                uart_puts(" OK\r\n");
+            else {
+                uart_puts(" E=");
+                uart_put_hex8(pfr);
+                uart_puts("\r\n");
             }
         }
 
@@ -576,16 +532,10 @@ loop:
             uart_puts("\r\n");
 
             if (cmd == MCMD_SD_INIT) {
-                /* Close all open drives before unmounting FatFS */
-                for (int d = 0; d < NUM_SLOTS; d++) {
-                    if (drives[d].is_open) {
-                        f_close(&drives[d].fil);
-                        drives[d].is_open = 0;
-                        MBOX_UNIT_BLKCNT(d + 1) = 0;
-                        MBOX_UNIT_OFFSET(d + 1) = 0;
-                    }
-                }
-                next_free_block = MOUNT_BASE_BLOCK;
+                /* Close open images before unmounting FatFS */
+                if (d1_open) { f_close(&fil_d1); d1_open = 0; }
+                if (d2_open) { f_close(&fil_d2); d2_open = 0; }
+                MBOX_D2_BLKCNT = 0;
                 BBUF_CTRL = 0;  /* disable cache intercept */
 
                 f_mount(0, "", 0);
@@ -599,13 +549,13 @@ loop:
             } else if (cmd == MCMD_MOUNT) {
                 uint8_t raw = (*(volatile uint32_t *)0x30000004) & 0xFF;
                 uint8_t idx = raw & 0x0F;
-                uint8_t slot = (raw >> 6) & 0x03;
-                uart_puts("Mount idx=");
+                uint8_t drive = (raw >> 6) & 0x03;  /* 0=D1, 1=D2 */
+                uart_puts("Mount D");
+                uart_putc(drive ? '2' : '1');
+                uart_puts(" idx=");
                 uart_put_hex8(idx);
-                uart_puts(" slot=");
-                uart_put_hex8(slot);
                 uart_puts("\r\n");
-                do_mount(idx, slot);
+                do_mount(idx, drive);
             }
         }
 

@@ -321,10 +321,10 @@ int sd_write_sector(uint32_t sector, const uint8_t *buf) {
 
         /* Wait for card not busy before sending command.
          * Previous write may still be programming.
-         * 2M iterations ≈ 2-4 seconds — covers slow SDSC cards
+         * 10M iterations ≈ 12s — covers slow SDSC cards
          * doing internal GC after multi-file seeks. */
         int busy = 1;
-        for (int32_t i = 0; i < 2000000; i++) {
+        for (int32_t i = 0; i < 10000000; i++) {
             if (spi_xfer(0xFF) == 0xFF) { busy = 0; break; }
         }
         if (busy) {
@@ -368,8 +368,9 @@ int sd_write_sector(uint32_t sector, const uint8_t *buf) {
         /* Card accepted the data — now wait for programming to finish.
          * Do NOT retry after this point: the data is committed, we just
          * need to wait for the card's internal write/erase to complete.
-         * 5M iterations ≈ 5-10s — covers worst-case SDSC GC storms. */
-        for (int32_t i = 0; i < 5000000; i++) {
+         * 20M iterations ≈ 24s — covers worst-case SDSC GC storms
+         * (2 files open = seeking triggers flash page GC). */
+        for (int32_t i = 0; i < 20000000; i++) {
             if (spi_xfer(0xFF) != 0x00) {
                 sd_cs_deassert();
                 return 0;

@@ -44,15 +44,8 @@ module cpu_soc (
     input  wire        mbox_persist_pending,
     output reg         mbox_persist_done,
 
-    // Per-unit registers (multi-drive support, CDC'd in top-level)
-    output reg  [1:0]  boot_unit,
-    output reg  [15:0] unit_blkcnt_0,  // S4D1 block count
-    output reg  [15:0] unit_blkcnt_1,  // S4D2 block count
-    output reg  [15:0] unit_blkcnt_2,  // S4D3 block count
-    output reg  [15:0] unit_blkcnt_3,  // S4D4 block count
-    output reg  [15:0] unit_offset_1,  // S4D2 SDRAM block offset
-    output reg  [15:0] unit_offset_2,  // S4D3 SDRAM block offset
-    output reg  [15:0] unit_offset_3,  // S4D4 SDRAM block offset
+    // D2 block count (Duo Drive, CDC'd in top-level)
+    output reg  [15:0] d2_blkcnt,
 
     // Block buffer Port A (directly to top-level mux)
     output reg         buf_claim,
@@ -191,10 +184,6 @@ module cpu_soc (
     // Mailbox peripheral (0x30000000)
     // CPU reads: CMD(+0), ARG0(+4), STATUS(+8), PERSIST_BLK(+10), PERSIST_PEND(+14)
     // CPU writes: STATUS_FLAGS(+8), TOTAL_BLOCKS(+C), CMD_ACK(+18), PERSIST_DONE(+1C)
-    // Extended (multi-drive):
-    //   +0x20: BOOT_UNIT(W)
-    //   +0x24-0x30: UNIT_BLKCNT_0..3(W)
-    //   +0x34-0x3C: UNIT_OFFSET_1..3(W)
     // =========================================================================
     reg [31:0] mbox_rdata;
     reg        mbox_ready;
@@ -219,14 +208,7 @@ module cpu_soc (
             persist_pend_prev    <= 1'b0;
             cmd_pending_latch    <= 1'b0;
             cmd_pend_prev        <= 1'b0;
-            boot_unit            <= 2'd0;
-            unit_blkcnt_0        <= 16'd0;
-            unit_blkcnt_1        <= 16'd0;
-            unit_blkcnt_2        <= 16'd0;
-            unit_blkcnt_3        <= 16'd0;
-            unit_offset_1        <= 16'd0;
-            unit_offset_2        <= 16'd0;
-            unit_offset_3        <= 16'd0;
+            d2_blkcnt            <= 16'd0;
         end else begin
             mbox_ready        <= 1'b0;
             mbox_status_wr    <= 1'b0;
@@ -279,47 +261,12 @@ module cpu_soc (
                             persist_pending_latch <= 1'b0;  // clear latch
                         end
                     end
-                    // ---- Multi-drive registers ----
-                    4'd8: begin                                       // BOOT_UNIT (+0x20)
-                        mbox_rdata <= {30'd0, boot_unit};
+                    4'd8: begin                                       // D2_BLKCNT (+0x20)
+                        mbox_rdata <= {16'd0, d2_blkcnt};
                         if (mem_wstrb != 4'h0)
-                            boot_unit <= mem_wdata[1:0];
+                            d2_blkcnt <= mem_wdata[15:0];
                     end
-                    4'd9: begin                                       // UNIT_BLKCNT_0 (+0x24)
-                        mbox_rdata <= {16'd0, unit_blkcnt_0};
-                        if (mem_wstrb != 4'h0)
-                            unit_blkcnt_0 <= mem_wdata[15:0];
-                    end
-                    4'd10: begin                                      // UNIT_BLKCNT_1 (+0x28)
-                        mbox_rdata <= {16'd0, unit_blkcnt_1};
-                        if (mem_wstrb != 4'h0)
-                            unit_blkcnt_1 <= mem_wdata[15:0];
-                    end
-                    4'd11: begin                                      // UNIT_BLKCNT_2 (+0x2C)
-                        mbox_rdata <= {16'd0, unit_blkcnt_2};
-                        if (mem_wstrb != 4'h0)
-                            unit_blkcnt_2 <= mem_wdata[15:0];
-                    end
-                    4'd12: begin                                      // UNIT_BLKCNT_3 (+0x30)
-                        mbox_rdata <= {16'd0, unit_blkcnt_3};
-                        if (mem_wstrb != 4'h0)
-                            unit_blkcnt_3 <= mem_wdata[15:0];
-                    end
-                    4'd13: begin                                      // UNIT_OFFSET_1 (+0x34)
-                        mbox_rdata <= {16'd0, unit_offset_1};
-                        if (mem_wstrb != 4'h0)
-                            unit_offset_1 <= mem_wdata[15:0];
-                    end
-                    4'd14: begin                                      // UNIT_OFFSET_2 (+0x38)
-                        mbox_rdata <= {16'd0, unit_offset_2};
-                        if (mem_wstrb != 4'h0)
-                            unit_offset_2 <= mem_wdata[15:0];
-                    end
-                    4'd15: begin                                      // UNIT_OFFSET_3 (+0x3C)
-                        mbox_rdata <= {16'd0, unit_offset_3};
-                        if (mem_wstrb != 4'h0)
-                            unit_offset_3 <= mem_wdata[15:0];
-                    end
+                    default: mbox_rdata <= 32'd0;
                 endcase
             end
         end

@@ -1,11 +1,9 @@
 * =============================================================================
-* picker.S — Byte Hamr Drive Manager (65C02, Merlin32)
+* picker.S — Byte Hamr Duo Drive Image Picker (65C02, Merlin32)
 * =============================================================================
-* ProDOS SYS file at $2000.  Multi-slot drive manager:
-*   M) Mount SD image to S4D2/S4D3/S4D4
-*   U) Unmount drive slot
-*   B) Boot from slot 1-4
-*   Q) Quit to ProDOS
+* ProDOS SYS file at $2000.  Duo-drive image selector:
+*   Select SD image for D1 (boot) and D2 (data), then reboot.
+*   Put PICKER.SYS on any mounted disk to re-swap without power cycle.
 * =============================================================================
 
             XC                    ; 65C02 mode
@@ -24,11 +22,7 @@ R_BLKLO     =     IO+2
 R_BLKHI     =     IO+3
 R_SD_STAT   =     IO+8
 R_SD_CMD    =     IO+8
-R_SELECT    =     IO+9           ; W: {slot[7:6], 2'b0, idx[3:0]}
-R_UBLKLO    =     IO+$B
-R_UBLKHI    =     IO+$C
-R_UNIT      =     IO+$D          ; W: active_unit / R: boot_unit
-R_BUNIT     =     IO+$E          ; W: boot_unit
+R_SELECT    =     IO+9           ; W: {mount_slot[7:6], 2'b0, img_idx[3:0]}
 SLOT_ROM    =     $C000+SLOT*$100
 
 * ---- Monitor ROM ----
@@ -49,24 +43,17 @@ ZP_CUR      =     $09
 ZP_SEL      =     $0A
 ZP_TMP      =     $0B
 ZP_NAMLEN   =     $0C
-ZP_SD_DONE  =     $0D            ; nonzero after first SD init
+ZP_D1_IDX   =     $0D            ; 0-based D1 image index
+ZP_D2_IDX   =     $0E            ; 0-based D2 image index, $FF = skip
 ZP_D16_HI   =     $1C
 ZP_D16_LO   =     $1D
 ZP_D16_FL   =     $1E
-ZP_SLOT_SEL =     $1F
 
 CAT_BUF     =     $0800
-SLOT_TABLE  =     $0300
 
 * =============================================================================
 * Entry point
 * =============================================================================
-
-* Initialize slot table to $FF (empty)
-            LDA   #$FF
-            STA   SLOT_TABLE
-            STA   SLOT_TABLE+1
-            STA   SLOT_TABLE+2
 
 * ---- SD init (only if not already ready) ----
             LDA   R_SD_STAT
@@ -110,7 +97,7 @@ sd_ready
 redraw
             JSR   HOME
             JSR   print_string
-            ASC   "BYTE HAMR DRIVE MANAGER"
+            ASC   "BYTE HAMR DUO DRIVE"
             DFB   $00
             JSR   CROUT
             LDX   #23
@@ -122,7 +109,7 @@ redraw
             JSR   CROUT
 
 * ---- Read catalog via magic block $FFFF ----
-sd_ok       LDA   #$FF
+            LDA   #$FF
             STA   R_BLKLO
             STA   R_BLKHI
             LDA   #$01
@@ -249,254 +236,178 @@ ext_done
             JMP   list_loop
 list_done
 
-* ---- Drive slot display ----
-            JSR   CROUT
-            JSR   print_string
-            ASC   "DRIVE SLOTS:"
-            DFB   $00
-            JSR   CROUT
-
-            LDX   #0              ; 0=S4D2, 1=S4D3, 2=S4D4
-slot_disp   PHX
-            LDA   #" "
-            JSR   COUT
-            JSR   print_string
-            ASC   "S4,D"
-            DFB   $00
-            PLA
-            PHA
-            CLC
-            ADC   #$32            ; '2' + slot_index
-            ORA   #$80
-            JSR   COUT
-            LDA   #":"
-            JSR   COUT
-            LDA   #" "
-            JSR   COUT
-
-* Read block count via indexed register
-            PLA
-            PHA
-            INC                   ; active_unit = slot_idx + 1
-            STA   R_UNIT
-            LDA   R_UBLKLO
-            STA   ZP_D16_LO
-            LDA   R_UBLKHI
-            STA   ZP_D16_HI
-            ORA   ZP_D16_LO
-            BNE   slot_mounted
-
-            JSR   print_string
-            ASC   "[EMPTY]"
-            DFB   $00
-            BRA   slot_next
-
-slot_mounted
-            STZ   ZP_D16_FL
-            JSR   print_dec_16
-            JSR   print_string
-            ASC   " BLOCKS"
-            DFB   $00
-
-slot_next   JSR   CROUT
-            PLX
-            INX
-            CPX   #3
-            BCS   slots_done
-            JMP   slot_disp
-slots_done
-
-* ---- Menu ----
-            JSR   CROUT
-            JSR   print_string
-            ASC   "M)OUNT U)NMOUNT B)OOT Q)UIT"
-            DFB   $00
-            JSR   CROUT
-            JSR   print_string
-            ASC   "> "
-            DFB   $00
-
-menu_key    JSR   RDKEY
-            AND   #$DF            ; uppercase
-            CMP   #"M"
-            BEQ   jmp_mount
-            CMP   #"U"
-            BEQ   jmp_unmount
-            CMP   #"B"
-            BEQ   jmp_boot
-            CMP   #"Q"
-            BEQ   jmp_quit
-            BRA   menu_key
-
-jmp_mount   JMP   do_mount
-jmp_unmount JMP   do_unmount
-jmp_boot    JMP   do_boot
-jmp_quit    JMP   do_quit
-
-
 * =============================================================================
-* MOUNT
+* Drive selection
 * =============================================================================
-do_mount    JSR   print_string
-            ASC   "IMAGE #? "
+            JSR   CROUT
+
+* ---- D1 (boot drive) — required ----
+            JSR   print_string
+            ASC   "D1 IMAGE # (Q=QUIT)? "
             DFB   $00
+
             JSR   read_number
             LDA   ZP_SEL
-            BEQ   mount_bail
+            BPL   :d1_nq
+            JMP   do_quit
+:d1_nq      BNE   :d1_ok
+            JMP   redraw
+:d1_ok      SEC
+            SBC   #1              ; 0-based
+            CMP   ZP_COUNT
+            BCS   bad_d1
+            STA   ZP_D1_IDX
+
+* ---- D2 (data drive) — optional ----
+            JSR   print_string
+            ASC   "D2 IMAGE # (ENTER=SKIP)? "
+            DFB   $00
+
+            JSR   read_number
+            LDA   ZP_SEL
+            BPL   :d2_nq
+            JMP   do_quit
+:d2_nq      BEQ   d2_skip         ; empty → no D2
             SEC
             SBC   #1              ; 0-based
             CMP   ZP_COUNT
-            BCS   mount_bail
-            STA   ZP_TMP          ; image index
+            BCS   bad_d2
+            STA   ZP_D2_IDX
+            JMP   do_mounts
+
+d2_skip     LDA   #$FF
+            STA   ZP_D2_IDX
+            JMP   do_mounts
+
+bad_d1
+bad_d2      JSR   print_string
+            ASC   "INVALID"
+            DFB   $00
+            JSR   CROUT
+            JMP   pause_redraw
+
+
+* =============================================================================
+* Mount sequence
+* =============================================================================
+do_mounts
+* ---- Mount D1 ----
+            LDA   ZP_D1_IDX
+            STA   R_SELECT        ; mount_slot=0 (D1), img_idx in bits [3:0]
+
+            LDA   #$01            ; CMD_MOUNT
+            STA   R_SD_CMD
 
             JSR   print_string
-            ASC   "SLOT (2-4)? "
+            ASC   "MOUNTING D1..."
             DFB   $00
-            JSR   RDKEY
-            PHA                   ; save raw key (COUT/CROUT trash A)
-            JSR   COUT
-            JSR   CROUT
-            PLA                   ; restore raw key
-            AND   #$0F
-            CMP   #2
-            BCC   mount_bail
-            CMP   #5
-            BCC   mount_slot_ok
-mount_bail  JMP   mount_cancel
 
-mount_slot_ok
-            SEC
-            SBC   #2              ; slot index 0-2
-            STA   ZP_SLOT_SEL
-* Encode: {slot[7:6], 2'b0, img_idx[3:0]}
-            ASL
-            ASL
-            ASL
-            ASL
-            ASL
-            ASL                   ; << 6
-            ORA   ZP_TMP
+            JSR   wait_mount
+            BCS   mount_fail
+
+            JSR   print_string
+            ASC   "OK"
+            DFB   $00
+            JSR   CROUT
+
+* ---- Mount D2 (if selected) ----
+            LDA   ZP_D2_IDX
+            CMP   #$FF
+            BEQ   mount_boot      ; skip D2
+
+            ORA   #$40            ; mount_slot=1 (D2) — bit 6
             STA   R_SELECT
 
             LDA   #$01            ; CMD_MOUNT
             STA   R_SD_CMD
 
             JSR   print_string
-            ASC   "MOUNTING..."
+            ASC   "MOUNTING D2..."
             DFB   $00
 
-* Poll for mount done (bit 5 of SD_STATUS)
-            LDX   #$00
-            LDY   #$00
-            STZ   ZP_TMP
-mount_poll  LDA   R_SD_STAT
-            AND   #$20
-            BNE   mount_done
-            INY
-            BNE   mount_poll
-            INX
-            BNE   mount_poll
-            INC   ZP_TMP
-            LDA   ZP_TMP
-            CMP   #$3C
-            BCC   mount_poll
+            JSR   wait_mount
+            BCS   mount_fail
 
             JSR   print_string
-            ASC   "TIMEOUT"
-            DFB   $00
-            JSR   CROUT
-            JMP   mount_cancel
-
-mount_done  JSR   print_string
             ASC   "OK"
             DFB   $00
             JSR   CROUT
 
-mount_cancel
-            LDX   #0
-            LDY   #0
-:pause      INY
-            BNE   :pause
-            INX
-            BNE   :pause
-            JMP   redraw
-
-
-* =============================================================================
-* UNMOUNT
-* =============================================================================
-do_unmount  JSR   print_string
-            ASC   "SLOT (2-4)? "
-            DFB   $00
-            JSR   RDKEY
-            PHA                   ; save raw key (COUT/CROUT trash A)
-            JSR   COUT
-            JSR   CROUT
-            PLA                   ; restore raw key
-            AND   #$0F
-            CMP   #2
-            BCC   unmount_cancel
-            CMP   #5
-            BCS   unmount_cancel
-
-            SEC
-            SBC   #2              ; slot index 0-2
-            ASL
-            ASL
-            ASL
-            ASL
-            ASL
-            ASL                   ; << 6
-            STA   R_SELECT
-
-            LDA   #$03            ; CMD_UNMOUNT
-            STA   R_SD_CMD
-
-            JSR   print_string
-            ASC   "UNMOUNTED"
-            DFB   $00
-            JSR   CROUT
-
-unmount_cancel
-            LDX   #0
-            LDY   #0
-:pause      INY
-            BNE   :pause
-            INX
-            BNE   :pause
-            JMP   redraw
-
-
-* =============================================================================
-* BOOT
-* =============================================================================
-do_boot     JSR   print_string
-            ASC   "BOOT SLOT (1-4)? "
-            DFB   $00
-            JSR   RDKEY
-            PHA                   ; save raw key (COUT/CROUT trash A)
-            JSR   COUT
-            JSR   CROUT
-            PLA                   ; restore raw key
-            AND   #$0F
-            CMP   #1
-            BCC   boot_cancel
-            CMP   #5
-            BCS   boot_cancel
-
-            SEC
-            SBC   #1              ; 0-based unit
-            STA   R_BUNIT         ; write BOOT_UNIT register
-
+* ---- Reboot into D1 ----
+mount_boot
             JSR   print_string
             ASC   "BOOTING..."
             DFB   $00
-            JSR   CROUT
+
+* Brief delay for user to see message
+            LDX   #0
+            LDY   #0
+:bpause     INY
+            BNE   :bpause
+            INX
+            BNE   :bpause
 
             SEC                   ; ROM uses BCS for boot detection
             JMP   SLOT_ROM
 
-boot_cancel JMP   redraw
+mount_fail  JSR   print_string
+            ASC   "MOUNT FAILED"
+            DFB   $00
+            JSR   CROUT
+
+pause_redraw
+            LDX   #0
+            LDY   #0
+:pause      INY
+            BNE   :pause
+            INX
+            BNE   :pause
+            JMP   redraw
+
+
+* =============================================================================
+* wait_mount — 2-phase poll: wait for MOUNTED to clear, then set
+* Returns: C=0 success, C=1 timeout
+* =============================================================================
+wait_mount
+* Phase 1: wait for MOUNTED (bit 5 of SD_STATUS) to clear
+            LDX   #$00
+            LDY   #$00
+            STZ   ZP_TMP
+:wstart     LDA   R_SD_STAT
+            AND   #$20
+            BEQ   :phase2
+            INY
+            BNE   :wstart
+            INX
+            BNE   :wstart
+            INC   ZP_TMP
+            LDA   ZP_TMP
+            CMP   #$10            ; ~1s timeout for start
+            BCC   :wstart
+            SEC
+            RTS
+
+* Phase 2: wait for MOUNTED to set
+:phase2     LDX   #$00
+            LDY   #$00
+            STZ   ZP_TMP
+:wdone      LDA   R_SD_STAT
+            AND   #$20
+            BNE   :done
+            INY
+            BNE   :wdone
+            INX
+            BNE   :wdone
+            INC   ZP_TMP
+            LDA   ZP_TMP
+            CMP   #$3C            ; ~6s timeout for mount
+            BCC   :wdone
+            SEC
+            RTS
+
+:done       CLC
+            RTS
 
 
 * =============================================================================
@@ -509,12 +420,16 @@ quit_parms  DFB   $04,$00,$00,$00
 
 
 * =============================================================================
-* read_number — multi-digit decimal input → ZP_SEL
+* read_number — multi-digit decimal input → ZP_SEL (Q sets $FF)
 * =============================================================================
 read_number STZ   ZP_SEL
 :loop       JSR   RDKEY
             CMP   #$8D            ; RETURN
             BEQ   :done
+            CMP   #$D1            ; 'Q' (high-bit ASCII)
+            BEQ   :quit
+            CMP   #$F1            ; 'q' (high-bit ASCII)
+            BEQ   :quit
             CMP   #$B0            ; < '0'
             BCC   :loop
             CMP   #$BA            ; > '9'
@@ -535,6 +450,8 @@ read_number STZ   ZP_SEL
             ADC   ZP_SEL
             STA   ZP_SEL
             BRA   :loop
+:quit       LDA   #$FF
+            STA   ZP_SEL
 :done       JSR   CROUT
             RTS
 

@@ -1,19 +1,16 @@
 * =============================================================================
-* hamr_rom.S — Flash Hamr Multi-Drive ProDOS/SmartPort ROM (Merlin32)
+* hamr_rom.S — Flash Hamr Duo-Drive ProDOS/SmartPort ROM (Merlin32)
 * =============================================================================
-* 4 SmartPort units: S4D1 (menu), S4D2-S4D4 (mountable from SD)
+* 2 SmartPort units (Duo Drive): D1 = boot, D2 = data
 *
 * Register interface ($C0n0 + slot*16):
 *   0: STATUS(R) / COMMAND(W)    5: DATA_WRITE(W)
-*   1: DATA_READ(R)              6: TOTAL_BLOCKS_LO(R)
-*   2: BLOCK_LO(R/W)            7: TOTAL_BLOCKS_HI(R)
-*   3: BLOCK_HI(R/W)            B: UNIT_BLK_LO(R) indexed by active_unit
-*   4: SOFT RESET(W)            C: UNIT_BLK_HI(R) indexed by active_unit
-*   D: BOOT_UNIT(R) / ACTIVE_UNIT(W)
-*   E: BOOT_UNIT(W)
+*   1: DATA_READ(R)              6: TOTAL_BLOCKS_LO(R) — D1
+*   2: BLOCK_LO(R/W)            7: TOTAL_BLOCKS_HI(R) — D1
+*   3: BLOCK_HI(R/W)            B: D2_BLOCKS_LO(R)
+*   D: ACTIVE_UNIT(W)           C: D2_BLOCKS_HI(R)
 *
 * CRITICAL: ZP $42-$47 must NOT be modified — ProDOS reads them back.
-* Unit conversion is done on-the-fly into hardware registers only.
 * =============================================================================
 
             TYP   $06
@@ -21,7 +18,7 @@
 
 SLOT        =     4
 SLOT16      =     SLOT*16
-NUM_UNITS   =     4
+NUM_UNITS   =     2
 
 * ---- Zero page (ProDOS command block — DO NOT MODIFY $42-$47) ----
 ZP_CMD      =     $42
@@ -50,10 +47,9 @@ IO_BLHI     =     $C083
 IO_DATAW    =     $C085
 IO_CNTLO    =     $C086
 IO_CNTHI    =     $C087
-IO_UBLKLO   =     $C08B
-IO_UBLKHI   =     $C08C
+IO_D2BLLO   =     $C08B
+IO_D2BLHI   =     $C08C
 IO_UNIT     =     $C08D
-IO_BUNIT    =     $C08E
 
 * ---- Error codes ----
 ERR_NONE    =     $00
@@ -146,17 +142,25 @@ sp_bad_ctl  LDA   #$21            ; bad status/control code
             SEC
             RTS
 
-* ---- Unit > 0: per-unit STATUS ----
+* ---- Unit > 0: per-unit STATUS (2 units: D1 + D2) ----
 sp_unit_status
-* Set active_unit = unit-1, read block count (DO NOT modify $43!)
-            LDA   ZP_UNIT
-            SEC
-            SBC   #$01
-            STA   IO_UNIT,X      ; write active_unit to hardware
-            LDA   IO_UBLKHI,X
-            PHA                   ; save blk_hi
-            LDA   IO_UBLKLO,X
-            TAX                   ; X = blk_lo
+            CMP   #$03            ; A still has ZP_UNIT from sp_status
+            BCS   sp_nodev        ; unit 3+ → no device
+            CMP   #$02
+            BEQ   sp_d2_blk       ; unit 2 → D2
+
+* Unit 1: D1 block count from regs 6/7
+            LDA   IO_CNTHI,X
+            PHA
+            LDA   IO_CNTLO,X
+            JMP   sp_got_blk
+
+* Unit 2: D2 block count from regs B/C
+sp_d2_blk   LDA   IO_D2BLHI,X
+            PHA
+            LDA   IO_D2BLLO,X
+
+sp_got_blk  TAX                   ; X = blk_lo
             PLA                   ; A = blk_hi
             TAY                   ; Y = blk_hi
 
@@ -165,7 +169,8 @@ sp_unit_status
             STY   ZP_PTR          ; temp save blk_hi (safe ZP)
             ORA   ZP_PTR
             BNE   sp_online
-            LDA   #ERR_NODEV
+
+sp_nodev    LDA   #ERR_NODEV
             SEC
             RTS
 
@@ -361,10 +366,25 @@ cmd_status
             LDA   SH_PRODOS,Y
             BPL   sp_status_jmp   ; MSB=0 → SmartPort
 
-* ---- ProDOS STATUS: total_blocks from regs 6/7 ----
-            LDA   IO_CNTHI,X
+* ---- ProDOS STATUS: check $43 bit7 for D1/D2 ----
+            LDA   ZP_UNIT
+            BMI   :pd_d2
+            LDA   IO_CNTHI,X     ; D1 block count from regs 6/7
             TAY
             LDA   IO_CNTLO,X
+            TAX
+            LDA   #ERR_NONE
+            CLC
+            JMP   cn_rts
+:pd_d2      LDA   IO_D2BLHI,X   ; D2 block count from regs B/C
+            ORA   IO_D2BLLO,X   ; check if both bytes are 0
+            BNE   :pd_d2_ok
+            LDA   #ERR_NODEV    ; D2 not mounted → no device
+            SEC
+            JMP   cn_rts
+:pd_d2_ok   LDA   IO_D2BLHI,X
+            TAY
+            LDA   IO_D2BLLO,X
             TAX
             LDA   #ERR_NONE
             CLC
@@ -452,11 +472,11 @@ cmd_init
 
 
 * =========================================================================
-* set_unit_block — write ACTIVE_UNIT + block to hardware
+* set_unit_block — write active_unit + block to hardware
 * =========================================================================
-* Derives active_unit from ZP_UNIT WITHOUT modifying $43.
+* Duo Drive: derives active_unit from ZP_UNIT WITHOUT modifying $43.
 * ProDOS: $40=D1→unit0, $C0=D2→unit1
-* SmartPort: unit is 1-based in $43 (already correct from param parse)
+* SmartPort: unit 1-based, unit-1 → active_unit (0 or 1)
 
 set_unit_block
             LDY   ZP_SLOT
@@ -469,7 +489,7 @@ set_unit_block
             SBC   #$01
             JMP   :write_unit
 
-* ProDOS path: bit7 of $43 → 0=D1(unit0), 1=D2(unit1)
+* ProDOS path: bit7 of $43 → 0=D1, 1=D2
 :prodos     LDA   ZP_UNIT
             ASL                   ; bit7 → carry
             LDA   #$00
@@ -484,10 +504,15 @@ set_unit_block
 
 
 * =========================================================================
-* wait_ready
+* wait_ready — extended timeout (~30s) for persist-blocked reads
 * =========================================================================
+* Uses stack for the 3rd loop level (NO ZP — $3C is ProDOS territory).
+* 32 * 256 * 256 = 2M iterations ≈ 30 seconds @ 1MHz
+
 wait_ready
-            LDY   #$00
+            LDA   #$20           ; outer-outer: 32 iterations
+            PHA                   ; store on stack (not ZP!)
+:oo_loop    LDY   #$00
 :outer      LDA   #$00
 :inner      PHA
             LDA   IO_CMD,X
@@ -498,17 +523,24 @@ wait_ready
             BNE   :inner
             DEY
             BNE   :outer
-            PLA
-            LDA   #ERR_IO
+            PLA                   ; pop oo counter
+            SEC
+            SBC   #1
+            BEQ   :timeout
+            PHA
+            BNE   :oo_loop       ; always taken (A>0)
+:timeout    LDA   #ERR_IO
             SEC
             RTS
 :ready      AND   #$40
             BNE   :error
-            PLA
+            PLA                   ; pop inner PHA
+            PLA                   ; pop oo counter
             LDA   #ERR_NONE
             CLC
             RTS
-:error      PLA
+:error      PLA                   ; pop inner PHA
+            PLA                   ; pop oo counter
             LDA   #ERR_IO
             SEC
             RTS
@@ -538,14 +570,11 @@ boot
 
             JSR   get_slot_x
 
-* Read BOOT_UNIT, write as ACTIVE_UNIT, set $43 for boot block code
-            LDA   IO_UNIT,X      ; read BOOT_UNIT (0=D1, 1=D2)
-            STA   IO_UNIT,X      ; write ACTIVE_UNIT
-            CMP   #$01
+* Always boot from D1: active_unit = 0, $43 = $40
+            LDA   #$00
+            STA   IO_UNIT,X      ; active_unit = 0 (D1)
             LDA   #SLOT*16       ; $40 = slot 4, D1
-            BCC   :set_unit
-            ORA   #$80            ; $C0 = slot 4, D2
-:set_unit   STA   ZP_UNIT        ; $43 — boot block code reads this
+            STA   ZP_UNIT        ; $43 — boot block code reads this
 
             LDA   #$00
             STA   IO_BLLO,X

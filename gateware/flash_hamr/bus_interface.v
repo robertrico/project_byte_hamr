@@ -1,28 +1,26 @@
 `timescale 1ns / 1ps
 // =============================================================================
-// bus_interface.v — Apple II bus register interface (multi-drive)
+// bus_interface.v — Apple II bus register interface (Duo Drive v8)
 // =============================================================================
 // Register Map ($C0n0 - $C0nF, via addr[3:0]):
 //   0: STATUS (R) / COMMAND (W)
 //   1: DATA_READ (R) — auto-increment
-//   2: BLOCK_LO (R/W) — relative block number
-//   3: BLOCK_HI (R/W) — relative block number
+//   2: BLOCK_LO (R/W) — block number (within unit)
+//   3: BLOCK_HI (R/W) — block number (within unit)
 //   4: SOFT RESET (W)
 //   5: DATA_WRITE (W) — auto-increment (separate from DATA_READ)
-//   6: TOTAL_BLOCKS_LO (R) — S4D1 volume size (backward compat)
-//   7: TOTAL_BLOCKS_HI (R)
+//   6: TOTAL_BLOCKS_LO (R) — D1 volume size
+//   7: TOTAL_BLOCKS_HI (R) — D1 volume size
 //   8: SD_STATUS (R) / SD_CMD (W)
-//   9: IMG_COUNT (R) / IMG_SELECT (W) — {mount_slot[1:0], 2'b0, img_idx[3:0]}
+//   9: IMG_COUNT (R) / IMG_SELECT (W) — {mount_slot[7:6], 2'b0, idx[3:0]}
 //   A: CAT_NAME_CHAR (R) / CAT_NAME_IDX (W)
-//   B: UNIT_BLK_LO (R) — block count indexed by active_unit
-//   C: UNIT_BLK_HI (R) — block count indexed by active_unit
-//   D: BOOT_UNIT (R) / ACTIVE_UNIT (W) — ROM writes before I/O
-//   E: — / BOOT_UNIT (W) — menu sets before reboot
+//   B: D2_BLOCKS_LO (R) — D2 volume size
+//   C: D2_BLOCKS_HI (R) — D2 volume size
+//   D: ACTIVE_UNIT (R/W) — ROM writes 0=D1, 1=D2 before I/O
 //   F: DEBUG (R)
 //
-// Hardware offset addition:
-//   block_num_out = block_num + unit_offset[active_unit]
-//   The arbiter sees absolute SDRAM block addresses.
+// block_num_out = block_num + (active_unit ? D2_OFFSET : 0)
+// D2_OFFSET = 32768 (fixed, splits 32MB SDRAM address space in half)
 // =============================================================================
 
 module bus_interface (
@@ -80,17 +78,11 @@ module bus_interface (
     output reg  [7:0]  sd_cmd_data,
     output reg         sd_cmd_wr,
 
-    // Mount slot (high bits of arg0 for multi-drive mount)
+    // Mount slot (bits [7:6] of IMG_SELECT: 0=D1, 1=D2)
     output reg  [1:0]  mount_slot,
 
-    // ---- Per-unit data (CDC'd from 25MHz in top-level) ----
-    input  wire [15:0] unit_blkcnt_0,     // S4D1 block count
-    input  wire [15:0] unit_blkcnt_1,     // S4D2 block count
-    input  wire [15:0] unit_blkcnt_2,     // S4D3 block count
-    input  wire [15:0] unit_blkcnt_3,     // S4D4 block count
-    input  wire [15:0] unit_offset_1,     // S4D2 SDRAM block offset
-    input  wire [15:0] unit_offset_2,     // S4D3 SDRAM block offset
-    input  wire [15:0] unit_offset_3      // S4D4 SDRAM block offset
+    // D2 block count (CDC'd from 25MHz in top-level)
+    input  wire [15:0] d2_blkcnt
 );
 
     // =========================================================================
@@ -112,25 +104,13 @@ module bus_interface (
     reg [7:0] dbg_read_count;
 
     // =========================================================================
-    // Multi-drive registers
+    // Duo Drive: active_unit selects D1 (offset 0) or D2 (offset 32768)
     // =========================================================================
-    reg [1:0] active_unit;    // ROM writes before each I/O (0=S4D1, 1=S4D2, ...)
-    reg [1:0] boot_unit_reg;  // Menu program writes before reboot
+    localparam D2_OFFSET = 16'd32768;
 
-    // Per-unit offset mux (S4D1 offset is always 0)
-    wire [15:0] active_offset = (active_unit == 2'd0) ? 16'd0 :
-                                (active_unit == 2'd1) ? unit_offset_1 :
-                                (active_unit == 2'd2) ? unit_offset_2 :
-                                                        unit_offset_3;
+    reg active_unit;  // 0=D1, 1=D2 — ROM writes before each I/O
 
-    // Block number with unit offset applied — sent to arbiter
-    assign block_num_out = block_num + active_offset;
-
-    // Per-unit block count mux
-    wire [15:0] active_blkcnt = (active_unit == 2'd0) ? unit_blkcnt_0 :
-                                (active_unit == 2'd1) ? unit_blkcnt_1 :
-                                (active_unit == 2'd2) ? unit_blkcnt_2 :
-                                                        unit_blkcnt_3;
+    assign block_num_out = block_num + (active_unit ? D2_OFFSET : 16'd0);
 
     assign dbg_wr_count_out = dbg_write_count;
     assign dbg_rd_count_out = dbg_read_count;
@@ -245,11 +225,10 @@ module bus_interface (
             4'h8: data_out = {sd_ready_s2, sd_error_s2, s4d2_mounted_s2, s4d2_loading_s2, 4'b0};
             4'h9: data_out = {4'b0, img_count_s2};
             4'hA: data_out = cat_rd_data;
-            // Multi-drive indexed registers
-            4'hB: data_out = active_blkcnt[7:0];
-            4'hC: data_out = active_blkcnt[15:8];
-            4'hD: data_out = {6'b0, boot_unit_reg};
-            4'hE: data_out = 8'h00;
+            // Duo Drive registers
+            4'hB: data_out = d2_blkcnt[7:0];
+            4'hC: data_out = d2_blkcnt[15:8];
+            4'hD: data_out = {7'b0, active_unit};
             4'hF: data_out = {block_ready, block_write_req, block_read_req, state, 3'b0};
             default: data_out = 8'h00;
         endcase
@@ -276,8 +255,7 @@ module bus_interface (
             sd_cmd_data     <= 8'd0;
             sd_cmd_wr       <= 1'b0;
             mount_slot      <= 2'd0;
-            active_unit     <= 2'd0;
-            boot_unit_reg   <= 2'd0;
+            active_unit     <= 1'b0;
             dbg_write_count <= 8'd0;
             dbg_read_count  <= 8'd0;
         end else begin
@@ -349,7 +327,7 @@ module bus_interface (
                         block_read_req  <= 1'b0;
                         block_write_req <= 1'b0;
                         block_num       <= 16'd0;
-                        active_unit     <= 2'd0;
+                        active_unit     <= 1'b0;
                     end
 
                     // SD management registers
@@ -370,10 +348,7 @@ module bus_interface (
                     4'hA: begin  // IMG_NAME_IDX
                         img_name_idx <= wr_data_latch[4:0];
                     end
-
-                    // Multi-drive registers
-                    4'hD: active_unit   <= wr_data_latch[1:0];  // ACTIVE_UNIT
-                    4'hE: boot_unit_reg <= wr_data_latch[1:0];  // BOOT_UNIT
+                    4'hD: active_unit <= wr_data_latch[0];  // ACTIVE_UNIT
                 endcase
             end
 
