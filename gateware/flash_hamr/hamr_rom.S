@@ -538,9 +538,14 @@ boot
 
             JSR   get_slot_x
 
-* Read BOOT_UNIT, write as ACTIVE_UNIT
-            LDA   IO_UNIT,X      ; read BOOT_UNIT
+* Read BOOT_UNIT, write as ACTIVE_UNIT, set $43 for boot block code
+            LDA   IO_UNIT,X      ; read BOOT_UNIT (0=D1, 1=D2)
             STA   IO_UNIT,X      ; write ACTIVE_UNIT
+            CMP   #$01
+            LDA   #SLOT*16       ; $40 = slot 4, D1
+            BCC   :set_unit
+            ORA   #$80            ; $C0 = slot 4, D2
+:set_unit   STA   ZP_UNIT        ; $43 — boot block code reads this
 
             LDA   #$00
             STA   IO_BLLO,X

@@ -67,9 +67,11 @@ SLOT_TABLE  =     $0300
             STA   SLOT_TABLE
             STA   SLOT_TABLE+1
             STA   SLOT_TABLE+2
-            STZ   ZP_SD_DONE
 
-* ---- One-time SD init ----
+* ---- SD init (only if not already ready) ----
+            LDA   R_SD_STAT
+            BMI   sd_ready        ; bit 7 set = already initialized, skip
+
             LDA   #$02
             STA   R_SD_CMD
 
@@ -100,7 +102,7 @@ sd_error    JSR   CROUT
             JSR   CROUT
             JMP   do_quit
 
-sd_ready    INC   ZP_SD_DONE
+sd_ready
 
 * =============================================================================
 * Main screen redraw

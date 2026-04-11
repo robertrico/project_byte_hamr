@@ -135,7 +135,9 @@ module flash_hamr_top (
     // ---- Block read intercept ----
     // Magic blocks ($FFFF/$FFFE): always intercepted for catalog
     // On-demand cache: ALL reads intercepted when cache_enabled (after mount)
-    wire is_magic_block = (dev_block_num_abs[15:1] == 15'h7FFF);
+    // Magic block ($FFFF/$FFFE) must be checked on RAW block_num (before offset)
+    // because $FFFF is a sentinel, not a real SDRAM address.
+    wire is_magic_block = (dev_block_num[15:1] == 15'h7FFF);
 
     // CDC cache_enabled (25MHz) -> 7MHz
     wire cache_enabled_25;  // from cpu_soc
@@ -528,10 +530,12 @@ module flash_hamr_top (
         mrt_s2 <= mrt_s1;
     end
 
-    // CDC dev_block_num (7MHz, stable during request) -> 25MHz
+    // CDC block_num (7MHz, stable during request) -> 25MHz
+    // Use raw block_num for magic blocks ($FFFF sentinel), absolute for normal reads
+    wire [15:0] magic_block_capture = is_magic_block ? dev_block_num : dev_block_num_abs;
     reg [15:0] magic_block_num_s1, magic_block_num_s2;
     always @(posedge CLK_25MHz) begin
-        magic_block_num_s1 <= dev_block_num_abs;
+        magic_block_num_s1 <= magic_block_capture;
         magic_block_num_s2 <= magic_block_num_s1;
     end
 
