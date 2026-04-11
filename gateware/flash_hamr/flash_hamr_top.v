@@ -128,13 +128,14 @@ module flash_hamr_top (
     wire [7:0]  buf_rdata_b, buf_wdata_b;
     wire        buf_we_b;
     wire        dev_block_read_req_raw, dev_block_write_req;
-    wire [15:0] dev_block_num;
+    wire [15:0] dev_block_num;       // raw block from ROM (relative within unit)
+    wire [15:0] dev_block_num_abs;   // with unit offset applied (absolute SDRAM addr)
     wire        dev_block_ready;
 
     // ---- Block read intercept ----
     // Magic blocks ($FFFF/$FFFE): always intercepted for catalog
     // On-demand cache: ALL reads intercepted when cache_enabled (after mount)
-    wire is_magic_block = (dev_block_num[15:1] == 15'h7FFF);
+    wire is_magic_block = (dev_block_num_abs[15:1] == 15'h7FFF);
 
     // CDC cache_enabled (25MHz) -> 7MHz
     wire cache_enabled_25;  // from cpu_soc
@@ -267,7 +268,7 @@ module flash_hamr_top (
         .block_read_req(dev_block_read_req_raw),
         .block_write_req(dev_block_write_req),
         .block_num(dev_block_num), .block_ready(dev_block_ready),
-        .block_num_out(),
+        .block_num_out(dev_block_num_abs),
         .dbg_wr_count_out(bus_dbg_wr_count),
         .dbg_rd_count_out(bus_dbg_rd_count),
         // SD management — status from mailbox
@@ -437,7 +438,7 @@ module flash_hamr_top (
         .boot_ready(boot_sdram_ready),
         .dev_block_read_req(dev_block_read_req),
         .dev_block_write_req(dev_block_write_req),
-        .dev_block_num(dev_block_num), .dev_block_ready(arb_block_ready),
+        .dev_block_num(dev_block_num_abs), .dev_block_ready(arb_block_ready),
         .buf_addr_a(buf_addr_a), .buf_wdata_a(buf_wdata_a),
         .buf_we_a(buf_we_a), .buf_rdata_a(buf_rdata_a),
         .sdram_req(arb_sdram_req), .sdram_write(arb_sdram_write),
@@ -460,7 +461,7 @@ module flash_hamr_top (
         .arb_block_ready(arb_block_ready),
         .gated_block_ready(gated_block_ready),
         .dev_block_write_req(dev_block_write_req),
-        .dev_block_num(dev_block_num),
+        .dev_block_num(dev_block_num_abs),
         .persist_block(persist_block),
         .persist_wr(persist_wr),
         .persist_done(persist_done_toggle),
@@ -530,7 +531,7 @@ module flash_hamr_top (
     // CDC dev_block_num (7MHz, stable during request) -> 25MHz
     reg [15:0] magic_block_num_s1, magic_block_num_s2;
     always @(posedge CLK_25MHz) begin
-        magic_block_num_s1 <= dev_block_num;
+        magic_block_num_s1 <= dev_block_num_abs;
         magic_block_num_s2 <= magic_block_num_s1;
     end
 
