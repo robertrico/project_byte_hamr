@@ -412,15 +412,8 @@ int main(void) {
 #endif
     uart_puts("\r\n=== Flash Hamr - " BUILD_TS " ===\r\n");
 
-    /* Auto-init SD */
-    int rc = sd_init(&card_type);
-    if (rc != SD_OK) {
-        uart_puts("SD init failed\r\n");
-        set_status(FL_SD_ERROR);
-        goto loop;
-    }
-
-    rc = do_sd_init();
+    /* Auto-init SD — f_mount calls disk_initialize → sd_init internally */
+    int rc = do_sd_init();
     if (rc != 0) {
         set_status(FL_SD_ERROR);
         goto loop;
@@ -583,6 +576,18 @@ loop:
             uart_puts("\r\n");
 
             if (cmd == MCMD_SD_INIT) {
+                /* Close all open drives before unmounting FatFS */
+                for (int d = 0; d < NUM_SLOTS; d++) {
+                    if (drives[d].is_open) {
+                        f_close(&drives[d].fil);
+                        drives[d].is_open = 0;
+                        MBOX_UNIT_BLKCNT(d + 1) = 0;
+                        MBOX_UNIT_OFFSET(d + 1) = 0;
+                    }
+                }
+                next_free_block = MOUNT_BASE_BLOCK;
+                BBUF_CTRL = 0;  /* disable cache intercept */
+
                 f_mount(0, "", 0);
                 rc = sd_init(&card_type);
                 if (rc == SD_OK) {

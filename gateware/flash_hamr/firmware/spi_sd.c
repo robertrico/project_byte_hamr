@@ -30,6 +30,15 @@ void sd_cs_deassert(void) {
     spi_xfer(0xFF);          /* extra clocks after CS deassert */
 }
 
+/* Flush SPI bus — reset card state after errors.
+ * CS HIGH + 80 dummy clocks lets card finish any in-progress op
+ * and resync its command parser. */
+static void sd_spi_flush(void) {
+    sd_cs_deassert();
+    for (int i = 0; i < 10; i++)
+        spi_xfer(0xFF);
+}
+
 static void spi_slow(void) {
     SPI_CTRL = SPI_CTRL | 0x04;   /* slow_mode = 1 */
 }
@@ -262,41 +271,42 @@ int sd_init(uint8_t *card_type) {
 int sd_read_sector(uint32_t sector, uint8_t *buf) {
     uint8_t r;
 
-    /* SDSC cards use byte address, SDHC uses sector number directly */
-    /* Caller is responsible for passing the right address format
-     * based on card_type. For FatFS diskio, we handle it there. */
+    for (int attempt = 0; attempt < 3; attempt++) {
+        sd_cs_assert();
+        r = sd_cmd(17, sector);
 
-    sd_cs_assert();
-    r = sd_cmd(17, sector);
+        if (r != 0x00) {
+            uart_puts("\r\n!R17 R1=");
+            uart_put_hex8(r);
+            uart_puts("\r\n");
+            sd_spi_flush();
+            continue;
+        }
 
-    if (r != 0x00) {
-        uart_puts("!R17 R1=");
-        uart_put_hex8(r);
-        uart_putc(' ');
+        /* Wait for data token 0xFE */
+        r = sd_wait_response();
+        if (r != 0xFE) {
+            uart_puts("\r\n!R17 tok=");
+            uart_put_hex8(r);
+            uart_puts("\r\n");
+            sd_spi_flush();
+            continue;
+        }
+
+        /* Read 512 bytes */
+        for (int i = 0; i < 512; i++)
+            buf[i] = spi_xfer(0xFF);
+
+        /* Discard 2-byte CRC */
+        spi_xfer(0xFF);
+        spi_xfer(0xFF);
+
         sd_cs_deassert();
-        return -1;
+        return 0;
     }
 
-    /* Wait for data token 0xFE */
-    r = sd_wait_response();
-    if (r != 0xFE) {
-        uart_puts("!R17 tok=");
-        uart_put_hex8(r);
-        uart_putc(' ');
-        sd_cs_deassert();
-        return -2;
-    }
-
-    /* Read 512 bytes */
-    for (int i = 0; i < 512; i++)
-        buf[i] = spi_xfer(0xFF);
-
-    /* Discard 2-byte CRC */
-    spi_xfer(0xFF);
-    spi_xfer(0xFF);
-
-    sd_cs_deassert();
-    return 0;
+    uart_puts("!R17 GIVEUP\r\n");
+    return -1;
 }
 
 /* ================================================================
@@ -306,46 +316,72 @@ int sd_read_sector(uint32_t sector, uint8_t *buf) {
 int sd_write_sector(uint32_t sector, const uint8_t *buf) {
     uint8_t r;
 
-    sd_cs_assert();
-    r = sd_cmd(24, sector);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        sd_cs_assert();
 
-    if (r != 0x00) {
-        uart_puts("!W24 R1=");
-        uart_put_hex8(r);
-        uart_putc(' ');
+        /* Wait for card not busy before sending command.
+         * Previous write may still be programming.
+         * 2M iterations ≈ 2-4 seconds — covers slow SDSC cards
+         * doing internal GC after multi-file seeks. */
+        int busy = 1;
+        for (int32_t i = 0; i < 2000000; i++) {
+            if (spi_xfer(0xFF) == 0xFF) { busy = 0; break; }
+        }
+        if (busy) {
+            uart_puts("\r\n!W24 pre-busy\r\n");
+            sd_spi_flush();
+            continue;
+        }
+
+        r = sd_cmd(24, sector);
+
+        if (r != 0x00) {
+            uart_puts("\r\n!W24 R1=");
+            uart_put_hex8(r);
+            uart_puts("\r\n");
+            sd_spi_flush();
+            continue;
+        }
+
+        /* Send data token */
+        spi_xfer(0xFE);
+
+        /* Send 512 bytes */
+        for (int i = 0; i < 512; i++)
+            spi_xfer(buf[i]);
+
+        /* Send dummy CRC */
+        spi_xfer(0xFF);
+        spi_xfer(0xFF);
+
+        /* Read data response token: xxx0_sss1
+         * sss = 010 → accepted, 101 → CRC error, 110 → write error */
+        r = sd_wait_response();
+        if ((r & 0x1F) != 0x05) {
+            uart_puts("\r\n!W24 resp=");
+            uart_put_hex8(r);
+            uart_puts("\r\n");
+            sd_spi_flush();
+            continue;
+        }
+
+        /* Card accepted the data — now wait for programming to finish.
+         * Do NOT retry after this point: the data is committed, we just
+         * need to wait for the card's internal write/erase to complete.
+         * 5M iterations ≈ 5-10s — covers worst-case SDSC GC storms. */
+        for (int32_t i = 0; i < 5000000; i++) {
+            if (spi_xfer(0xFF) != 0x00) {
+                sd_cs_deassert();
+                return 0;
+            }
+        }
+
+        /* Programming truly stuck — this is a hardware failure, not retry-able */
+        uart_puts("\r\n!W24 prog-timeout\r\n");
         sd_cs_deassert();
-        return -1;
+        return -2;
     }
 
-    /* Send data token */
-    spi_xfer(0xFE);
-
-    /* Send 512 bytes */
-    for (int i = 0; i < 512; i++)
-        spi_xfer(buf[i]);
-
-    /* Send dummy CRC */
-    spi_xfer(0xFF);
-    spi_xfer(0xFF);
-
-    /* Read data response token: xxx0_sss1
-     * sss = 010 → accepted, 101 → CRC error, 110 → write error
-     * Some cards need a few clocks before the response appears. */
-    r = sd_wait_response();
-    if ((r & 0x1F) != 0x05) {
-        uart_puts("!W24 resp=");
-        uart_put_hex8(r);
-        uart_putc(' ');
-        sd_cs_deassert();
-        return -3;
-    }
-
-    /* Wait for card to finish programming (busy = MISO low) */
-    for (int i = 0; i < 100000; i++) {
-        if (spi_xfer(0xFF) != 0x00)
-            break;
-    }
-
-    sd_cs_deassert();
-    return 0;
+    uart_puts("!W24 GIVEUP\r\n");
+    return -1;
 }
