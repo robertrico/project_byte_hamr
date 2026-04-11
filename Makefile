@@ -557,9 +557,7 @@ RISCV_LDFLAGS := -T $(FW_DIR)/linker.ld -nostdlib -Wl,--gc-sections -Wl,-Map,$(F
 
 firmware: $(FW_MEM)
 
-# Always rebuild firmware.elf to pick up fresh timestamp
-.PHONY: force_fw
-$(FW_ELF): $(FW_SRCS_C) $(FW_SRCS_S) $(FW_DIR)/linker.ld force_fw | $(BUILD_DIR)
+$(FW_ELF): $(FW_SRCS_C) $(FW_SRCS_S) $(FW_DIR)/linker.ld $(FW_DIR)/hal.h | $(BUILD_DIR)
 	@echo "=== Compiling PicoRV32 firmware ==="
 	$(RISCV_CC) $(RISCV_CFLAGS) -DBUILD_TS='"$(shell date +%Y-%m-%dT%H:%M:%S)"' $(RISCV_LDFLAGS) -o $@ $(FW_SRCS_S) $(FW_SRCS_C) $(RISCV_LIBGCC)
 	@$(RISCV_SIZE) $@

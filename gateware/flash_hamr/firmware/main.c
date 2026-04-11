@@ -548,16 +548,24 @@ loop:
                 block_set_cached(pblk);
 
             /* Now safe to print — bus is released, ProDOS can continue */
-            uart_puts("P#");
-            uart_put_hex8(persist_count & 0xFF);
-            uart_puts(" b=");
-            uart_put_hex32(pblk);
-            if (pfr == FR_OK)
-                uart_puts(" OK\r\n");
-            else {
-                uart_puts(" E=");
-                uart_put_hex8(pfr);
-                uart_puts("\r\n");
+            {
+                uint16_t dbg_local;
+                int dbg_d = find_drive(pblk, &dbg_local);
+                uart_puts("P#");
+                uart_put_hex8(persist_count & 0xFF);
+                uart_puts(" abs=");
+                uart_put_hex32(pblk);
+                uart_puts(" d=");
+                uart_putc(dbg_d >= 0 ? '0' + dbg_d : '?');
+                uart_puts(" loc=");
+                uart_put_hex32(dbg_local);
+                if (pfr == FR_OK)
+                    uart_puts(" OK\r\n");
+                else {
+                    uart_puts(" E=");
+                    uart_put_hex8(pfr);
+                    uart_puts("\r\n");
+                }
             }
         }
 
