@@ -11,11 +11,11 @@
 @
 @ Access: disk_image + (block_num * 512)
 @
-@ Override at build time:  cmake -DDISK_IMAGE=Merlin.po ..
-@ Default: ProDOS_2_4_1.po
+@ Override at build time:  cmake -DDISK_IMAGE=images/Merlin.po ..
+@ Default: images/ProDOS_2_4_1.po
 
 #ifndef DISK_IMAGE
-#define DISK_IMAGE ProDOS_2_4_1.po
+#define DISK_IMAGE images/ProDOS_2_4_1.po
 #endif
 
 #define _STR(x) #x

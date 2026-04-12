@@ -206,7 +206,7 @@ def make_volume(output_path, vol_name, total_blocks, boot_blocks_path,
 if __name__ == '__main__':
     total_blocks = 16384  # 8MB
     vol_name = "HAMR"
-    output = "ProDOS_8MB.po"
+    output = "images/ProDOS_8MB.po"
 
     if len(sys.argv) > 1:
         total_blocks = int(sys.argv[1])

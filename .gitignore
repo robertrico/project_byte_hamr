@@ -71,15 +71,19 @@ __pycache__/
 /reporting/*.txt
 /reporting/*.json
 /reporting/*.log
-# User disk images (pulled from flash, swappable)
-/gateware/block_hamr/volumes/*.po
+# Disk images (.po, .dsk) — per-project images/ directories
+software/SMARTPORT/images/
+gateware/flash_hamr/images/
+gateware/block_hamr/images/
+gateware/smart_hamr/images/
+
+# FujiNet config (contains WiFi credentials)
+gateware/smart_hamr/fuji/fnconfig.ini
 
 # Logic Analyzer Captures
 *.dsl
 .claude/worktrees/
 
 gateware/smart_hamr/fuji/
-
-gateware/smart_hamr/MERLIN-8_PRODOS.dsk
 
 gateware/flash_hamr/_FileInformation.txt

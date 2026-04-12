@@ -54,8 +54,8 @@ SmartPort disk emulator running on a Raspberry Pi Pico W. Receives SmartPort com
 Requires Raspberry Pi Pico SDK, ARM GCC cross-compiler, and CMake 3.13+.
 
 ```bash
-make                        # Build with default ProDOS_2_4_1.po
-make DISK=Merlin.po         # Build with different disk image
+make                        # Build with default images/ProDOS_2_4_1.po
+make DISK=images/Merlin.po  # Build with different disk image
 make flash                  # Flash via OpenOCD/SWD
 make monitor                # Serial output at 115200 baud
 make test                   # Build test firmware

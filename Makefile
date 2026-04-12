@@ -161,8 +161,8 @@ FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
 PICKER_SRC     := $(FLASH_HAMR_DIR)/picker.S
 PICKER_BIN     := $(FLASH_HAMR_DIR)/picker.bin
 PICKER_SYS     := $(FLASH_HAMR_DIR)/picker.sys
-MENU_PO        := $(FLASH_HAMR_DIR)/menu.po
-PRODOS_SRC     := software/SMARTPORT/ProDOS_2_4_1.po
+MENU_PO        := $(FLASH_HAMR_DIR)/images/menu.po
+PRODOS_SRC     := software/SMARTPORT/images/ProDOS_2_4_1.po
 AC_JAR         := /Users/hambook/Development/AppleCommander-ac-13.0.jar
 AC             := java -jar $(AC_JAR)
 
@@ -365,7 +365,7 @@ prog-flash: $(BIT)
 	$(LOADER) --cable $(CABLE) --ftdi-serial $(SERIAL) --pins $(JTAG_PINS) -f $(BIT)
 	@/Users/hambook/Development/bell/bell
 
-DISK_IMAGE ?= software/SMARTPORT/ProDOS_2_4_1.po
+DISK_IMAGE ?= software/SMARTPORT/images/ProDOS_2_4_1.po
 FLASH_IMG_OFFSET ?= 0x400000
 
 prog-flash-with-image: $(BIT)

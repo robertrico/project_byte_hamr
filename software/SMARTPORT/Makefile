@@ -6,8 +6,8 @@ TEST_ELF    := $(BUILD)/$(TEST_TARGET).elf
 OPENOCD     := openocd
 OCD_CFG     := -f interface/cmsis-dap.cfg -f target/rp2040.cfg
 
-# Disk image — override with: make DISK=Merlin.po flash
-DISK        ?= ProDOS_2_4_1.po
+# Disk image — override with: make DISK=images/Merlin.po flash
+DISK        ?= images/ProDOS_2_4_1.po
 
 # Serial port — override with: make monitor PORT=/dev/cu.usbmodemXXXX
 PORT     ?= $(shell ls /dev/tty.usbmodem* 2>/dev/null | head -1)

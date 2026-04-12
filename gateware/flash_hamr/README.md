@@ -81,7 +81,7 @@ Mailbox (toggle-CDC): 7 MHz <-> 25 MHz
 |------|---------|
 | `hamr_rom.S` | ProDOS block driver (Merlin32) |
 | `picker.S` | Menu picker (selects disk image) |
-| `menu.po` | ProDOS disk image with picker + ProDOS |
+| `images/menu.po` | ProDOS disk image with picker + ProDOS |
 
 ## Build
 
