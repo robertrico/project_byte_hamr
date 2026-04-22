@@ -17,10 +17,14 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 - 128Mb SPI Flash for bitstream storage
 - USB programming via FTDI FT231XQ
 - JTAG header for development/debugging
-- 13-pin GPIO header for FPGA and peripheral expansion
+- 20-pin GPIO header with heavy ground interleaving (Rev 2)
+- 2×3 power breakout: +3V3, +5V, −5V, +12V, −12V (Rev 2)
 - Full Apple II bus interface with bidirectional level shifting
+- Dedicated FPGA-controlled data-bus transceiver OE (Rev 2)
+- Hardware R/W inverter for correct transceiver direction (Rev 2)
+- Bidirectional nRES — drive *and* monitor Apple II reset (Rev 2)
 - Dual power input (USB or Apple II bus) with automatic switching
-- On-board 25MHz oscillator
+- On-board 100 MHz oscillator (Rev 2; 25 MHz on Rev 1)
 - Open-source hardware and gateware
 
 ## Specifications
@@ -33,7 +37,8 @@ The card sits between the simplicity of the A2FPGA (which targets HDMI output) a
 | SDRAM | 64MB, 16-bit bus |
 | Flash | 128Mb SPI |
 | USB | Full-speed via FT231XQ |
-| GPIO | 13 pins, 3.3V |
+| GPIO | 20 pins, 3.3V LVCMOS33 |
+| Oscillator | 100 MHz (Rev 2) |
 | Power | +5V from USB or Apple II slot |
 | Dimensions | Standard Apple II card form factor |
 
@@ -65,7 +70,7 @@ Three on-board switching regulators generate the required voltages:
 - +2.5V for FPGA auxiliary power
 - +1.1V for FPGA core
 
-Power can be sourced from USB (+5V) or the Apple II slot, with Schottky diode OR-ing for automatic switching.
+Power can be sourced from USB (+5V) or the Apple II slot, with Schottky diode OR-ing for automatic switching. Rev 2 moves the 5V input diode ahead of the level-shifter rail so USB alone can power the bus logic.
 
 ## Bus Interface
 
@@ -75,33 +80,46 @@ Six 74LVC8T245 bidirectional level shifters translate between the Apple II's 5V 
 - 8-bit data bus (bidirectional)
 - Control signals (R/W, PHI0, device select, etc.)
 
+Rev 2 adds a dedicated 74AHC1G04 inverter (`U7`) that generates the correct-polarity DIR control for the data-bus transceiver, and exposes the transceiver's OE on an FPGA pin so gateware can cleanly gate drive.
+
 ## GPIO Header
 
-13-pin header for FPGA expansion and peripheral connection:
+20-pin header with ground interleaving (pin `1` marked at the top, `20` at the bottom). All pins are 3.3V LVCMOS33.
 
-| Pin | Signal | FPGA Site | Description |
-|-----|--------|-----------|-------------|
-| 1 | GPIO1 | L1 | General purpose I/O |
-| 2 | GPIO2 | K1 | General purpose I/O |
-| 3 | GPIO3 | J1 | General purpose I/O |
-| 4 | GPIO4 | H1 | General purpose I/O |
-| 5 | GPIO5 | F2 | General purpose I/O |
-| 6 | GPIO6 | E2 | General purpose I/O |
-| 7 | GPIO7 | E1 | General purpose I/O |
-| 8 | GPIO8 | D1 | General purpose I/O |
-| 9 | GPIO9 | C1 | General purpose I/O |
-| 10 | GPIO10 | A4 | General purpose I/O |
-| 11 | GPIO11 | B5 | General purpose I/O |
-| 12 | GPIO12 | A5 | General purpose I/O |
-| 13 | GND | - | Ground |
+| GPIO | FPGA Site |   | GPIO | FPGA Site |
+|------|-----------|---|------|-----------|
+| GPIO_1  | P3 |   | GPIO_11 | J1 |
+| GPIO_2  | P1 |   | GPIO_12 | H2 |
+| GPIO_3  | P2 |   | GPIO_13 | H1 |
+| GPIO_4  | N1 |   | GPIO_14 | G2 |
+| GPIO_5  | M1 |   | GPIO_15 | G1 |
+| GPIO_6  | L2 |   | GPIO_16 | F2 |
+| GPIO_7  | L1 |   | GPIO_17 | F1 |
+| GPIO_8  | K3 |   | GPIO_18 | E2 |
+| GPIO_9  | K1 |   | GPIO_19 | E1 |
+| GPIO_10 | K2 |   | GPIO_20 | D2 |
 
-All GPIO pins are 3.3V LVCMOS. See [byte_hamr.lpf](gateware/constraints/byte_hamr.lpf) for full pin constraints.
+See [byte_hamr.lpf](gateware/rev2/constraints/byte_hamr.lpf) for full pin constraints.
 
 ## Project Status
 
-**Rev 1** - Sent to fabrication (December 2025)
+**Rev 2** — fabricated and bring-up in progress (April 2026). Both boards enumerate over USB and pass initial SDRAM + GPIO tests.
+
+**Rev 1** — sent to fabrication (December 2025). Tagged `rev1` in git; all Rev 1 gateware preserved under `gateware/rev1/`.
 
 See [VERSION.md](VERSION.md) for full version history.
+
+### Rev 2 changes
+
+- Board footprint shrunk
+- GPIO expanded from 12 → 20 pins with dense ground interleaving
+- Power breakout block exposing ±5V / ±12V / 3V3
+- On-board R/W inverter (replaces Rev 1 bodge wire)
+- 5V diode moved ahead of level shifters so USB can power the bus side
+- Shortened SDRAM routes to the ECP5
+- Data-bus transceiver OE promoted from GPIO bodge to dedicated FPGA pin (`DATA_OE`, B20)
+- Bidirectional nRES: separate `nRES_READ` input (A5) so gateware can monitor Apple II reset
+- Oscillator upgraded 25 MHz → 100 MHz for better CDC oversampling and PLL headroom
 
 ## Repository Structure
 
@@ -113,15 +131,19 @@ project_byte_hamr/
 │       ├── bom/            # Bill of materials
 │       └── gerbers/        # Manufacturing files
 ├── gateware/
-│   ├── constraints/        # FPGA pin constraints (LPF)
-│   ├── signal_check/       # Board bring-up test
-│   ├── sdram_test/         # Register-driven SDRAM access
-│   ├── sdram_bank/         # SDRAM bank-switching controller
-│   ├── pattern_rom/        # SDRAM-backed pattern ROM
-│   ├── logic_hamr/         # 8-channel logic analyzer
-│   ├── smart_hamr/         # SmartPort/IWM disk controller (ESP32 companion)
-│   ├── block_hamr/         # ProDOS block device (SDRAM + SPI flash persist)
-│   └── flash_hamr/         # SD card block device (PicoRV32 + FatFS)
+│   ├── rev1/               # Rev 1 designs (frozen, matches rev1 git tag)
+│   │   ├── constraints/
+│   │   ├── signal_check/
+│   │   ├── sdram_test/
+│   │   ├── sdram_bank/
+│   │   ├── pattern_rom/
+│   │   ├── logic_hamr/
+│   │   ├── smart_hamr/
+│   │   ├── block_hamr/
+│   │   └── flash_hamr/
+│   └── rev2/               # Rev 2 designs (porting in progress)
+│       ├── constraints/
+│       └── signal_check/
 ├── software/
 │   ├── ASM/                # 6502 assembly source (Merlin32)
 │   ├── LOGICHAMR/          # Logic analyzer disk contents
@@ -149,19 +171,23 @@ project_byte_hamr/
 
 ### Building Gateware
 
+Builds are selected by `DESIGN` and `REV`. `REV` defaults to `rev1`; set `REV=rev2` when targeting the current hardware.
+
 ```bash
-make                    # Build default design (signal_check)
-make DESIGN=xxx         # Build specific design
-make sim                # Run simulation
-make wave               # Run simulation and open GTKWave
-make help               # Show all available targets
+make                                # Build default (REV=rev1, DESIGN=signal_check)
+make DESIGN=xxx                     # Build specific design (rev1)
+make DESIGN=xxx REV=rev2            # Build against Rev 2 pinout
+make sim DESIGN=xxx REV=rev2        # Run simulation
+make wave                           # Run simulation and open GTKWave
+make help                           # Show all available targets
 ```
 
 ### Programming
 
 ```bash
-make prog               # Program via JTAG (volatile, for testing)
-make prog-flash         # Program SPI flash (persistent)
+make DESIGN=xxx REV=rev2 prog                         # Program via JTAG (volatile)
+make DESIGN=xxx REV=rev2 prog-flash                   # Program SPI flash (persistent)
+make DESIGN=xxx REV=rev2 prog-flash SERIAL=<FTDI_SN>  # Target a specific board
 ```
 
 ### Software Development Workflow
@@ -203,16 +229,20 @@ make clean              # Remove build files
 
 ## Gateware Designs
 
+Rev 1 versions (proven on Rev 1 hardware):
+
 | Design | Description |
 |--------|-------------|
-| [signal_check](gateware/signal_check/SIGNAL_CHECK.md) | Board bring-up test (SDRAM, GPIO, bus monitor) |
+| [signal_check](gateware/rev1/signal_check/SIGNAL_CHECK.md) | Board bring-up test (SDRAM, GPIO, bus monitor) |
 | sdram_test | Register-driven SDRAM access from Apple II |
-| [sdram_bank](gateware/sdram_bank/README.md) | SDRAM bank-switching controller |
-| [pattern_rom](gateware/pattern_rom/README.md) | SDRAM-backed pattern ROM for display testing |
-| [logic_hamr](gateware/logic_hamr/README.md) | 8-channel logic analyzer with HIRES display |
-| [smart_hamr](gateware/smart_hamr/README.md) | SmartPort/IWM disk controller with ESP32 companion |
-| [block_hamr](gateware/block_hamr/README.md) | ProDOS block device with SDRAM and SPI flash persistence |
-| [flash_hamr](gateware/flash_hamr/) | SD card ProDOS block device (PicoRV32 + FatFS) |
+| [sdram_bank](gateware/rev1/sdram_bank/README.md) | SDRAM bank-switching controller |
+| [pattern_rom](gateware/rev1/pattern_rom/README.md) | SDRAM-backed pattern ROM for display testing |
+| [logic_hamr](gateware/rev1/logic_hamr/README.md) | 8-channel logic analyzer with HIRES display |
+| [smart_hamr](gateware/rev1/smart_hamr/README.md) | SmartPort/IWM disk controller with ESP32 companion |
+| [block_hamr](gateware/rev1/block_hamr/README.md) | ProDOS block device with SDRAM and SPI flash persistence |
+| [flash_hamr](gateware/rev1/flash_hamr/) | SD card ProDOS block device (PicoRV32 + FatFS) |
+
+Rev 2 port: `signal_check` ported and validated; other designs pending.
 
 ## Testing
 
@@ -221,10 +251,12 @@ Bringup sequence for new boards:
 1. Visual inspection
 2. Power rail verification (+5V, +3.3V, +2.5V, +1.1V)
 3. USB enumeration (FTDI detection)
-4. FPGA configuration with [signal_check](gateware/signal_check/SIGNAL_CHECK.md)
-5. Oscillator verification (25MHz on scope)
-6. Apple II bus communication (PEEK/POKE test)
-7. Full system integration
+4. FPGA configuration with [signal_check](gateware/rev2/signal_check/)
+5. Oscillator verification (100 MHz on scope; derived 25 MHz appears on SDRAM_CLK)
+6. GPIO walk — watch walking 1s across `GPIO_9`..`GPIO_20`
+7. Apple II bus communication (register loopback at $C0C0)
+8. Data-bus transceiver + R/W inverter walk: `C0C0:01 → C0C0`, then `02`, `04`, … `80`
+9. Full system integration
 
 ## Design References
 
@@ -248,4 +280,4 @@ Robert Rico
 
 ## Contributing
 
-This is an early-stage project. Issues, suggestions, and pull requests welcome once Rev 1 hardware is validated.
+This is an early-stage project. Issues, suggestions, and pull requests welcome.

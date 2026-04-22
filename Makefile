@@ -26,8 +26,9 @@ PNR_SEED ?= 1
 
 # Directories
 BUILD_DIR     := build
-GATEWARE_DIR  := gateware
-CONSTRAINT_DIR := gateware/constraints
+REV           ?= rev1
+GATEWARE_DIR  := gateware/$(REV)
+CONSTRAINT_DIR := $(GATEWARE_DIR)/constraints
 REPORT_DIR    := reporting
 
 # Constraints: use design-specific LPF if it exists, otherwise use base
@@ -458,7 +459,7 @@ list-dsk:
 # Requires: source ~/esp/esp-idf/export.sh (once per terminal session)
 # =============================================================================
 
-ESP_FW_DIR   := gateware/smart_hamr/firmware
+ESP_FW_DIR   := $(GATEWARE_DIR)/smart_hamr/firmware
 ESP_PROJECT  ?= phase1_signal_monitor
 ESP_PORT     ?= $(shell ls /dev/cu.usbserial-* 2>/dev/null | head -1)
 IDF_PATH     ?= $(HOME)/esp/esp-idf
