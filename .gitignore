@@ -71,11 +71,12 @@ __pycache__/
 /reporting/*.txt
 /reporting/*.json
 /reporting/*.log
-# Disk images (.po, .dsk) — per-project images/ directories
-software/SMARTPORT/images/
-gateware/**/flash_hamr/images/
-gateware/**/block_hamr/images/
-gateware/**/smart_hamr/images/
+# Disk images — any images/ directory anywhere, plus any .po/.dsk/.hdv/.2mg file
+**/images/
+*.po
+*.dsk
+*.hdv
+*.2mg
 
 # FujiNet config (contains WiFi credentials)
 gateware/**/smart_hamr/fuji/fnconfig.ini
