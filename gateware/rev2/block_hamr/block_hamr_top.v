@@ -171,11 +171,8 @@ module block_hamr_top (
     wire [15:0] total_blocks;
 
     // =========================================================================
-    // Power-On Reset (7 MHz domain) — DIAGNOSTIC: counter-only (like Rev 1)
+    // Power-On Reset (7 MHz domain)
     // =========================================================================
-    // Temporarily ignoring nRES_READ to check whether this pin is the cause of
-    // the PR#4 freeze. If PR#4 boots with this build, nRES_READ is stuck low
-    // in hardware and we need to fix the board / pin wiring.
     assign nRES = 1'b1;  // open-drain, always released
 
     reg [3:0] por_counter = 4'd0;
@@ -198,6 +195,31 @@ module block_hamr_top (
         else if (!por_25_n)
             por_25_counter <= por_25_counter + 8'd1;
     end
+
+    // =========================================================================
+    // Apple II Reset (nRES_READ) — 2-FF synchronizers per clock domain
+    // =========================================================================
+    // nRES_READ is the Apple II reset line monitored at pad A5. It comes from
+    // an asynchronous source so we synchronize it separately into each clock
+    // domain. Reset to 0 so a bouncing/floating line looks like reset-asserted
+    // until the synchronizer fills with clean ones.
+    reg [1:0] nres_sync_7m  = 2'b00;
+    reg [1:0] nres_sync_25m = 2'b00;
+
+    always @(posedge sig_7M) begin
+        nres_sync_7m <= {nres_sync_7m[0], nRES_READ};
+    end
+
+    always @(posedge CLK_25MHz) begin
+        nres_sync_25m <= {nres_sync_25m[0], nRES_READ};
+    end
+
+    wire nRES_READ_sync7  = nres_sync_7m[1];
+    wire nRES_READ_sync25 = nres_sync_25m[1];
+
+    // Combined reset (active low): POR AND Apple II reset, per domain.
+    wire rst_7m_n  = por_n    & nRES_READ_sync7;
+    wire rst_25m_n = por_25_n & nRES_READ_sync25;
 
     // =========================================================================
     // Unused control signals
@@ -270,7 +292,7 @@ module block_hamr_top (
         .clk                 (sig_7M),
         .nI_O_STROBE         (nI_O_STROBE),
         .nI_O_SELECT         (nI_O_SELECT),
-        .nRES                (por_n),
+        .nRES                (rst_7m_n),
         .rom_oe              (rom_oe_raw),  // unused — we override with ~nI_O_SELECT
         .rom_expansion_active(rom_expansion_active_unused)
     );
@@ -302,7 +324,7 @@ module block_hamr_top (
 
     bus_interface u_bus_interface (
         .clk              (sig_7M),
-        .rst_n            (por_n),
+        .rst_n            (rst_7m_n),
         .addr             (addr[3:0]),
         .data_in          ({D7, D6, D5, D4, D3, D2, D1, D0}),
         .data_out         (bus_data_out),
@@ -389,7 +411,7 @@ module block_hamr_top (
 
     sdram_controller u_sdram_controller (
         .clk            (CLK_25MHz),
-        .rst_n          (por_25_n),
+        .rst_n          (rst_25m_n),
         .init_done      (sdram_init_done),
         .pause_refresh  (1'b0),
         .req            (mux_sdram_req),
@@ -460,7 +482,7 @@ module block_hamr_top (
     // ---- Flash reader (active during boot) ----
     flash_reader u_flash_reader (
         .clk            (CLK_25MHz),
-        .rst_n          (por_25_n),
+        .rst_n          (rst_25m_n),
         .start          (flash_start),
         .start_addr     (flash_start_addr),
         .byte_count     (flash_byte_count),
@@ -489,7 +511,7 @@ module block_hamr_top (
 
     flash_writer u_flash_writer (
         .clk            (CLK_25MHz),
-        .rst_n          (por_25_n),
+        .rst_n          (rst_25m_n),
         .start_erase    (fw_start_erase),
         .start_program  (fw_start_program),
         .flash_addr     (fw_flash_addr),
@@ -515,7 +537,7 @@ module block_hamr_top (
 
     boot_loader u_boot_loader (
         .clk             (CLK_25MHz),
-        .rst_n           (por_25_n),
+        .rst_n           (rst_25m_n),
         .sdram_init_done (sdram_init_done),
         .boot_done       (boot_done),
         .total_blocks    (total_blocks),
@@ -539,7 +561,7 @@ module block_hamr_top (
     // =========================================================================
     sdram_arbiter u_sdram_arbiter (
         .clk                (CLK_25MHz),
-        .rst_n              (por_25_n),
+        .rst_n              (rst_25m_n),
         .boot_done          (boot_done),
         .boot_req           (boot_sdram_req),
         .boot_write         (boot_sdram_write),
@@ -572,7 +594,7 @@ module block_hamr_top (
 
     write_through u_write_through (
         .clk              (CLK_25MHz),
-        .rst_n            (por_25_n),
+        .rst_n            (rst_25m_n),
         .boot_done        (boot_done),
         .arb_block_ready  (arb_block_ready),
         .gated_block_ready(dev_block_ready),
@@ -588,7 +610,7 @@ module block_hamr_top (
     // =========================================================================
     flash_persist u_flash_persist (
         .clk              (CLK_25MHz),
-        .rst_n            (por_25_n),
+        .rst_n            (rst_25m_n),
         .start            (fp_start),
         .sector_num       (fp_sector),
         .busy             (fp_busy),
