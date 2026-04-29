@@ -5,6 +5,7 @@ module iwm (
 	input wire        nDEVICE_SELECT, // Device enable (active low)
 	input wire        fclk,           // 7 or 8 MHz clock for serial I/O
 	input wire        Q3,             // 2 MHz timing signal
+	input wire        R_nW,           // 6502 read(1)/write(0) — gates buffer/mode writes
 	input wire        nRES,           // System reset (active low)
 	input wire [7:0]  data_in,        // Data from Apple II
 	output reg [7:0]  data_out,       // Data to Apple II
@@ -37,18 +38,26 @@ module iwm (
 	reg       q6, q7;
 	reg       _underrun;
 	reg       writeBufferEmpty;
-	// Write-register one-shot: the real IWM latches data once per bus
-	// access on the rising edge of (Q3 OR /DEV). Our level-detect fires
-	// every fclk while nDEVICE_SELECT is LOW (~7 cycles), which causes
-	// the serializer to replay bytes when it consumes the buffer mid-access.
-	// This edge-detect on the combined write condition fires exactly once
-	// per bus access, matching real IWM behavior.
+	// /DEV-rising-edge sampler for register writes (spec: latch on rising
+	// edge of (Q3 OR /DEV)).
 	//
-	// Two-stage pipeline: writeCondPrev1 delays one fclk so data_in
-	// has settled before the latch fires. writeCondPrev2 blocks all
-	// subsequent fclk cycles in the same bus access.
-	reg       writeCondPrev1;
-	reg       writeCondPrev2;
+	// /DEV synced into fclk domain (2-FF) → rising-edge detect on dev_sync
+	// triggers the buffer/mode load. R_nW + addr[0] are latched at the
+	// /DEV-FALLING edge alongside q7/q6 (see negedge block below) — they
+	// must NOT be captured in fclk domain because R_nW transitions at the
+	// same PHI0 edge that drives /DEV rising, so an fclk capture late in
+	// the cycle could race and pick up the next cycle's polarity. data_in
+	// IS captured in fclk domain because the 6502 only puts data on the
+	// bus late in PHI0 high; we sample continuously while dev_meta is low
+	// (1-FF, 1 fclk shorter than dev_sync) to cap the window before the
+	// next cycle starts driving.
+	reg       dev_meta,   dev_sync,   dev_sync_prev;
+	reg [7:0] data_held;
+	// /DEV-domain latches for R_nW and addr[0]; fclk-synced versions below.
+	reg       rnw_dev,    a0_dev;
+	reg       rnw_meta,   rnw_sync;
+	reg       a0_meta,    a0_sync;
+
 	// Forward declarations for the /DEV-clocked sync registers (defined
 	// further down). iverilog requires declaration before use; Yosys is
 	// permissive. Keeping the actual flip-flop logic in its original
@@ -58,15 +67,6 @@ module iwm (
 	reg       driveSel_meta,driveSel_sync;
 	reg       q6_meta,      q6_sync;
 	reg       q7_meta,      q7_sync;
-
-	// writeCondNow uses _meta (1-FF) instead of _sync (2-FF) for q6/q7.
-	// The 2-FF sync adds 2 fclk delay, but nDEVICE_SELECT is only low
-	// for ~3.4 fclk (490ns at 7MHz). With 2-FF sync, the writeCondNow
-	// window is only 1.4 fclk — too narrow for reliable one-shot capture.
-	// Using _meta gives a 2.4 fclk window. Metastability is safe because
-	// writeCondPrev1 adds another fclk of pipeline, giving 3 total FFs
-	// of synchronization before the actual buffer load fires.
-	wire      writeCondNow = ~nDEVICE_SELECT & q7_meta & q6_meta & addr[0];
 
 	// q7_stable is now just q7_sync — the /DEV-clocked state latch
 	// eliminates glitches at the source, so no hysteresis filter needed.
@@ -114,8 +114,12 @@ module iwm (
 
 	always @(*) begin
 		case ({modeFast, mode8MHz})
-			// writeBitCell is period-1 because the timer counts 0..N inclusive
-			// (N+1 fclk cycles). IWM spec: 28 FCLK for slow/7M = 3.91µs bit cell.
+			// Slow/7M: writeBitCell = 27 → 28 fclk = 3.91µs (matches real
+			// Apple II IWM hardware spec). Liron firmware timing loops are
+			// tuned for this. We bumped to 28 (4.05µs) for FujiNet RX and
+			// it broke Liron's "drop Q7 after N µs" timing → truncated
+			// last byte. Reverted to 27 + drain mode in serializer to
+			// hide any remaining FujiNet-side timing edge cases.
 			2'b00: begin oneThreshold = 14; zeroThreshold = 42; writeBitCell = 27; end
 			2'b01: begin oneThreshold = 16; zeroThreshold = 48; writeBitCell = 31; end
 			2'b10: begin oneThreshold =  7; zeroThreshold = 21; writeBitCell = 13; end
@@ -142,6 +146,8 @@ module iwm (
 			driveSelect <= 1'b0;
 			q6          <= 1'b0;
 			q7          <= 1'b0;
+			rnw_dev     <= 1'b1;
+			a0_dev      <= 1'b0;
 		end
 		else begin
 			case (addr[3:1])
@@ -154,6 +160,11 @@ module iwm (
 				3'h6: q6          <= addr[0];
 				3'h7: q7          <= addr[0];
 			endcase
+			// Capture R_nW and addr[0] of THIS bus cycle. /DEV-falling
+			// edge guarantees both are stable (6502 setup time, addr is
+			// what triggered the slot decode). Synced to fclk below.
+			rnw_dev <= R_nW;
+			a0_dev  <= addr[0];
 		end
 	end
 
@@ -172,6 +183,11 @@ module iwm (
 			driveSel_meta <= 1'b0;    driveSel_sync <= 1'b0;
 			q6_meta       <= 1'b0;    q6_sync       <= 1'b0;
 			q7_meta       <= 1'b0;    q7_sync       <= 1'b0;
+			dev_meta      <= 1'b1;    dev_sync      <= 1'b1;
+			dev_sync_prev <= 1'b1;
+			data_held     <= 8'd0;
+			rnw_meta      <= 1'b1;    rnw_sync      <= 1'b1;
+			a0_meta       <= 1'b0;    a0_sync       <= 1'b0;
 		end
 		else begin
 			phase_meta    <= phase;       phase_sync    <= phase_meta;
@@ -179,6 +195,20 @@ module iwm (
 			driveSel_meta <= driveSelect; driveSel_sync <= driveSel_meta;
 			q6_meta       <= q6;          q6_sync       <= q6_meta;
 			q7_meta       <= q7;          q7_sync       <= q7_meta;
+			rnw_meta      <= rnw_dev;     rnw_sync      <= rnw_meta;
+			a0_meta       <= a0_dev;      a0_sync       <= a0_meta;
+
+			// /DEV synchronizer + rising-edge tracking.
+			dev_meta      <= nDEVICE_SELECT;
+			dev_sync      <= dev_meta;
+			dev_sync_prev <= dev_sync;
+
+			// data_in needs LATE capture (6502 drives data only late in
+			// PHI0 high). Sample continuously while dev_meta is low; the
+			// last value before dev_meta sees high is what fire uses.
+			if (~dev_meta) begin
+				data_held <= data_in;
+			end
 		end
 	end
 
@@ -318,6 +348,14 @@ module iwm (
 	reg       latchSynced;       // 1 = synced, latch every 8 bits
 	reg       q7_prev;           // For detecting Q7 0→1 transition
 	reg       q6_prev;           // For detecting Q6 transitions
+	// Drain mode: keeps wrdata serializer running after Q7 falls so the
+	// last byte (or part of it) currently in shifter/buffer finishes
+	// transmitting on the wire. Liron drops Q7 on a fixed timing schedule
+	// tuned for real Apple II IWM 3.91 µs cells; with our 4.05 µs cells
+	// the schedule expires before the last byte clears, so without drain
+	// the FujiNet sees a truncated packet. Set on Q7 falling, cleared on
+	// natural _underrun (shifter empty + buffer empty at byte boundary).
+	reg       in_drain;
 
 	always @(posedge fclk or negedge nRES) begin
 		if (~nRES) begin
@@ -339,8 +377,7 @@ module iwm (
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
 			q6_prev          <= 1'b0;
-			writeCondPrev1   <= 1'b0;
-			writeCondPrev2   <= 1'b0;
+			in_drain         <= 1'b0;
 		end
 		else begin
 
@@ -479,28 +516,35 @@ module iwm (
 			// =============================================================
 			q7_prev <= q7_stable;
 
-			if (q7_stable) begin
-				if (~q7_prev) begin
-					// q7_stable just went high — initialize write state.
-					// Load writeShifter with $FF (all-ones) so wrdata
-					// starts toggling immediately as sync preamble.
-					// Counter=7 so the first byte-boundary loads from
-					// buffer on the next writeBitCell rollover.
-					//
-					// IWM spec: "the write shift register is loaded
-					// every 8 bit cell times starting seven CLK periods
-					// after the write state begins." In slow mode,
-					// CLK = fclk/2, so 7 CLK = 14 fclk. Timer starts
-					// at 14 so it rolls over after 14 cycles (27-14+1),
-					// triggering the first byte load at the spec-correct
-					// time. No wrdata toggle in this initial partial cell
-					// (toggle is at timer==1, already passed).
-					writeBitTimer   <= 6'd14;
-					writeBitCounter <= 3'd7;
-					writeShifter    <= 8'hFF;
+			if (q7_stable && ~q7_prev) begin
+				// Q7 RISING — start new write session, init state.
+				// Pre-seed buffer with $FF so the first byte boundary
+				// loads a sync byte instead of underrunning (Liron's
+				// LDA→STA setup takes longer than 14-fclk first-byte
+				// deadline). FujiNet treats it as extra sync FF.
+				writeBitTimer    <= 6'd14;
+				writeBitCounter  <= 3'd7;
+				writeShifter     <= 8'hFF;
+				buffer           <= 8'hFF;
+				writeBufferEmpty <= 1'b0;
+				_underrun        <= 1'b1;
+				in_drain         <= 1'b0;
+			end
+			else begin
+				// Q7 FALLING (q7_prev=1, q7_stable=0) → enter drain.
+				// Serializer keeps running until _underrun fires
+				// (shifter + buffer both empty at byte boundary).
+				if (q7_prev && ~q7_stable) begin
+					in_drain <= 1'b1;
 				end
-				else begin
-					// Normal write serializer operation
+
+				// Gate uses q7_prev so the Q7-fall fclk itself runs the
+				// serializer (in_drain commits non-blocking, won't be 1
+				// until next fclk; q7_prev is still 1 in this fclk).
+				// Without this, wrdata idles HIGH for 1 fclk = 140ns
+				// glitch on the wire = FujiNet sees false edge.
+				if (q7_stable || q7_prev || in_drain) begin
+					// SERIALIZER (active during write OR drain)
 					if (writeBitTimer == writeBitCell) begin
 						writeBitTimer <= 0;
 						if (writeBitCounter == 7) begin
@@ -509,8 +553,10 @@ module iwm (
 								writeShifter <= buffer;
 								writeBufferEmpty <= 1'b1;
 							end
-							else
+							else begin
 								_underrun <= 0;
+								in_drain  <= 1'b0; // drain done
+							end
 						end
 						else begin
 							writeBitCounter <= writeBitCounter + 1'b1;
@@ -521,18 +567,15 @@ module iwm (
 						writeBitTimer <= writeBitTimer + 1'b1;
 
 					// Toggle wrdata at bit-cell midpoint when MSB=1.
-					// Gate on _underrun: once underrun fires, wrdata
-					// must stop immediately to avoid trailing transitions
-					// that corrupt FujiNet's FM decoder byte alignment.
 					if (~_underrun)
-						wrdata <= 1'b1; // Idle HIGH immediately on underrun
+						wrdata <= 1'b1; // Idle HIGH on underrun
 					else if (writeBitTimer == 1 && writeShifter[7] == 1)
 						wrdata <= ~wrdata;
 				end
-			end
-			else begin
-				_underrun <= 1;
-				wrdata    <= 1'b1; // Idle HIGH matches FujiNet's prev_level=true
+				else begin
+					// q7_stable=0 AND not draining → idle.
+					wrdata <= 1'b1;
+				end
 			end
 
 			// =============================================================
@@ -557,28 +600,24 @@ module iwm (
 			// WRITE REGISTERS (spec p4/p7)
 			// Q7=1, Q6=1, A0=1: Motor-On=1 writes data, Motor-On=0 writes mode
 			//
-			// One-shot write pulse with 1-fclk settle delay:
-			// - fclk N:   writeCondNow goes TRUE (q6 just updated)
-			// - fclk N+1: writeCondPrev1=1, writeCondPrev2=0 → FIRE
-			// - fclk N+2: writeCondPrev2=1 → blocked for rest of access
-			//
-			// The 1-fclk delay ensures data_in has settled after the
-			// address decode propagates through the FPGA fabric.
-			// writeCondPrev2 prevents re-fire for the remaining ~5 fclk
-			// of the bus access, eliminating the double-load race.
+			// Fire on the synced rising edge of /DEV — i.e. the END of the
+			// bus cycle, after the 6502 has held data_in valid through PHI0.
+			// All gating signals (R_nW, addr[0], q7, q6) come from holding
+			// registers captured WHILE /DEV was low, so they reflect the
+			// just-completed bus cycle, not whatever is on the wire now.
 			// =============================================================
-			writeCondPrev1 <= writeCondNow;
-			writeCondPrev2 <= writeCondPrev1;
-			if (writeCondPrev1 & ~writeCondPrev2) begin
-				if (motorOn_sync) begin
-					// Guard: reject buffer writes after underrun.
-					if (_underrun) begin
-						buffer <= data_in;
-						writeBufferEmpty <= 0;
+			if (dev_sync & ~dev_sync_prev) begin
+				if (~rnw_sync & q7_sync & q6_sync & a0_sync) begin
+					if (motorOn_sync) begin
+						// Guard: reject buffer writes after underrun.
+						if (_underrun) begin
+							buffer <= data_held;
+							writeBufferEmpty <= 0;
+						end
 					end
-				end
-				else begin
-					modeReg <= data_in;
+					else begin
+						modeReg <= data_held;
+					end
 				end
 			end
 		end

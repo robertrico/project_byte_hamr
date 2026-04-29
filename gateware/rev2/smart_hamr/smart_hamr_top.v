@@ -202,8 +202,8 @@ module smart_hamr_top (
     assign GPIO_20 = _enbl1;
 
     // Unused outputs — drive 0 so floating pads don't leak through inputs.
-    assign GPIO_2  = 1'b0;
-    assign GPIO_3  = 1'b0;
+    assign GPIO_2  = iwm_q7_stable;       // DEBUG: Q7 visibility for LA
+    assign GPIO_3  = nRES_READ;           // DEBUG: Apple II reset line for LA
     assign GPIO_4  = 1'b0;
     assign GPIO_5  = 1'b0;
     assign GPIO_6  = 1'b0;
@@ -269,6 +269,7 @@ module smart_hamr_top (
         .nDEVICE_SELECT (nDEVICE_SELECT),
         .fclk           (sig_7M),
         .Q3             (Q3),
+        .R_nW           (R_nW),
         .nRES           (rst_7m_n),
         .data_in        ({D7, D6, D5, D4, D3, D2, D1, D0}),
         .data_out       (iwm_data_out),
