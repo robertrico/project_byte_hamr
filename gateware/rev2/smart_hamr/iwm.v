@@ -80,9 +80,10 @@ module iwm (
 	// ACK poll window starts immediately after the last byte serializes
 	// out (~840µs), but FujiNet's SPI capture alone takes ~928µs.
 	//
-	// 1430 cycles @ 7.16MHz ≈ 200µs extra drain time.
-	localparam DRAIN_DELAY = 11'd1430;
-	reg [10:0] drain_delay_ctr;
+	// 5012 fclk @ 7.16MHz ≈ 700µs. Counter widened to 13 bits (was 11)
+	// to prevent silent truncation of values >2047.
+	localparam DRAIN_DELAY = 13'd5012;
+	reg [12:0] drain_delay_ctr;
 	reg        _underrun_prev;
 	wire       _underrun_delayed = (drain_delay_ctr != 0) ? 1'b1 : _underrun;
 
@@ -373,7 +374,7 @@ module iwm (
 			clrX7Timer       <= 4'd0;
 			wrdata           <= 1'b1; // Idle HIGH matches FujiNet's static prev_level=true
 			latchSynced      <= 1'b0;
-			drain_delay_ctr  <= 11'd0;
+			drain_delay_ctr  <= 13'd0;
 			_underrun_prev   <= 1'b1;
 			q7_prev          <= 1'b0;
 			q6_prev          <= 1'b0;
@@ -586,13 +587,13 @@ module iwm (
 			// =============================================================
 			_underrun_prev <= _underrun;
 			if (q7_stable == 1'b0) begin
-				drain_delay_ctr <= 11'd0;  // Q7 off → reset
+				drain_delay_ctr <= 13'd0;  // Q7 off → reset
 			end
 			else if (_underrun_prev == 1'b1 && _underrun == 1'b0) begin
 				// Falling edge of _underrun — start delay
 				drain_delay_ctr <= DRAIN_DELAY;
 			end
-			else if (drain_delay_ctr != 11'd0) begin
+			else if (drain_delay_ctr != 13'd0) begin
 				drain_delay_ctr <= drain_delay_ctr - 1'b1;
 			end
 
