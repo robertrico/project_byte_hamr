@@ -12,9 +12,12 @@
 //   - GPIO header: GPIO1..GPIO12  ->  GPIO_1..GPIO_20 (positional numbering,
 //                  *not* the same pad assignments as Rev 1)
 //   - DATA_OE: dedicated level-shifter OE pin at B20 (was on GPIO12 in Rev 1)
-//   - nRES_READ: new input at A5 (Apple II reset monitor; write side on A8)
-//                Now wired into the reset network through a 2-FF synchronizer
-//                so Ctrl-Reset propagates into the IWM and addr_decoder
+//   - nRES_READ: input at A5 (Apple II reset monitor — read path)
+//                Wired into the reset network through a 2-FF synchronizer so
+//                Ctrl-Reset propagates into the IWM and addr_decoder.
+//                A5 (read) and A8 (write/release) connect to the SAME bus
+//                /RST trace on the PCB — see nRES section in body for why
+//                we keep both pads configured.
 //   - CLK_100MHz: declared so the base LPF's F3 constraint matches; unused by
 //                 the design (single-clock 7 MHz, no SDRAM/flash, no PLL)
 //
@@ -137,11 +140,30 @@ module smart_hamr_top (
     wire       iwm_q7_stable;
 
     // =========================================================================
+    // Apple II Reset Output (nRES, pad A8) — KEEP, do not remove
+    // =========================================================================
+    // nRES (A8) and nRES_READ (A5) connect to the SAME Apple II bus /RST line
+    // on the PCB. We never assert /RST from the FPGA — but we keep the A8 pad
+    // configured as OPENDRAIN=ON, PULLMODE=UP, driven 1'b1 (= Hi-Z released)
+    // because:
+    //   1. The PULLMODE=UP on A8 gives a second weak pull-up on the /RST trace
+    //      in parallel with nRES_READ's pull-up. Defined idle HIGH state when
+    //      no card is asserting reset. Removing this pad would halve the
+    //      pull-up strength on the shared trace.
+    //   2. Open-drain HIGH = Hi-Z, so we never fight Apple's ROM or another
+    //      slot card pulling /RST low. Bus-safe.
+    //   3. Architectural hook: future use cases (ESP32-requested reset,
+    //      watchdog, SP RESET handler) can assign nRES to an active-low signal
+    //      without LPF/port changes. Cheap to leave; expensive to re-add.
+    // Read-side: see nRES_READ synchronizer below — that's the actual reset
+    // distribution path.
+    assign nRES = 1'b1;  // open-drain release (Hi-Z); pull-up holds line HIGH
+
+    // =========================================================================
     // Power-On Reset (7 MHz domain)
     // =========================================================================
     // Holds reset low for 15 fclk cycles (~2 µs) after FPGA configuration.
     // ECP5 initializes registers to their declared values on configuration.
-    assign nRES = 1'b1;  // open-drain, always released
 
     reg [3:0] por_counter = 4'd0;
     wire      por_n = &por_counter;

@@ -58,11 +58,6 @@ LOCATE COMP "INT_IN" SITE "A6";
 IOBUF PORT "INT_IN" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=UP;
 LOCATE COMP "nNMI" SITE "A7";
 IOBUF PORT "nNMI" IO_TYPE=LVCMOS33 DRIVE=8 SLEWRATE=SLOW PULLMODE=UP;
-// nRES (A8): KEEP — open-drain output tied to same Apple bus /RST trace as
-// nRES_READ (A5). Held released (Hi-Z) by Verilog (assign nRES = 1'b1).
-// PULLMODE=UP adds a second weak pull-up on the shared /RST line in parallel
-// with the nRES_READ pad pull-up. Removing this pad halves pull-up strength
-// on the bus reset trace. See smart_hamr_top.v nRES section for full rationale.
 LOCATE COMP "nRES" SITE "A8";
 IOBUF PORT "nRES" IO_TYPE=LVCMOS33 OPENDRAIN=ON SLEWRATE=SLOW PULLMODE=UP;
 LOCATE COMP "sig_7M" SITE "A9";
