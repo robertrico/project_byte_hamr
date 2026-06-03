@@ -414,11 +414,11 @@ Insert right after the `sdmtest:` rule:
 SDM_PO   := $(SDM_DIR)/SDMTEST.po
 sdmdisk: sdmtest
 	cp $(PRODOS_SRC) $(SDM_PO)
-	-$(AC) rm -d $(SDM_PO) COPYIIPLUS.7.2
-	-$(AC) rm -d $(SDM_PO) ADTPRO
-	-$(AC) rm -d $(SDM_PO) ADTPRO.BIN
-	-$(AC) rm -d $(SDM_PO) BITSY.BOOT
-	-$(AC) rm -d $(SDM_PO) QUIT.SYSTEM
+	-$(AC) rm -f -d $(SDM_PO) COPYIIPLUS.7.2
+	-$(AC) rm -f -d $(SDM_PO) ADTPRO
+	-$(AC) rm -f -d $(SDM_PO) ADTPRO.BIN
+	-$(AC) rm -f -d $(SDM_PO) BITSY.BOOT
+	-$(AC) rm -f -d $(SDM_PO) QUIT.SYSTEM
 	$(AC) import -d $(SDM_PO) -f --raw -t BIN -a 0x2000 -n SDMTEST $(SDM_DIR)/SDMTEST
 	$(AC) import -d $(SDM_PO) -f --text -t TXT -n SDRAMLIB $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
