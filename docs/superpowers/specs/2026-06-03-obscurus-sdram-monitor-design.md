@@ -35,18 +35,31 @@ complete, captured `captures/project_obscurus_20260602_214253.png`).
 | `$C0C2`  | W   | BANK_LO | bank[7:0] |
 | `$C0C3`  | W   | BANK_HI | bank[9:8] |
 | `$C0C4`  | W   | TRIG_RD | strobe: start SDRAM read → RD_HOLD, then addr++ |
-| `$C0C5`  | R   | STATUS  | bit0 = busy, bit7 = ready (SDRAM init done) |
+| `$C0C5`  | R   | STATUS  | **bit7 = busy**, **bit6 = ready** (SDRAM init done); other bits 0 |
 | `$C0C6`  | R   | DATA    | returns RD_HOLD (last byte read) |
 | `$C0C6`  | W   | DATA    | latch byte + start SDRAM write, then addr++ |
+
+**STATUS flag layout (deliberate).** `BIT $C0C5` lands bit7→N, bit6→V, so the
+6502 tests both without `LSR`/`AND`:
+- busy poll (hot path, every byte): `BIT $C0C5 : BMI *-3` (loop while N=busy).
+- ready gate (once, before first op): `BIT $C0C5 : BVC *-3` (wait for V=ready).
 
 **Handshake.** SDRAM access latency is many 25 MHz cycles — far longer than one
 ~1 µs 6502 bus cycle — so there is no in-cycle round-trip. The 6502 always:
 set ADDR/BANK → strobe (TRIG_RD or DATA write) → **poll STATUS.busy until 0** →
 read DATA / done.
 
-**Auto-increment.** After a completed read or write, the internal 16-bit `addr`
-increments (wraps within the 64 KB bank). Makes the `D` dump loop tight: set
-start addr once, then `{strobe; poll; read}` ×N.
+**busy assert timing (required).** `busy` is set in `monitor_regs` on the
+strobe's `nds_rise` commit — NOT gated on `sdram_ctrl` accepting the request.
+This guarantees the very next 6502 poll sees `busy=1` even though the controller
+accepts in ~ns; the 6502 cannot observe a stale `busy=0` and read a stale DATA.
+`busy` clears when `sdram_ctrl` signals the op complete.
+
+**Auto-increment (required semantics).** The internal 16-bit `addr` increments on
+**operation completion (busy falling edge)**, NOT on the `$C0C6` DATA register
+read. This prevents the `D` loop's `LDA $C0C6` from double-stepping the address.
+Increment wraps within the 64 KB bank. The `D` dump loop is then: set start addr
+once, then `{strobe TRIG_RD; poll busy; LDA DATA; print}` ×N.
 
 **6502 bus safety.** `STA $C0Cx` / `LDA $C0Cx` absolute = 4 cycles, single
 `nDEVICE_SELECT` pulse — no indexed-addressing dummy-read, so no double-step of
@@ -58,8 +71,13 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
 - **`sdram_ctrl.v`** — extract the SDRAM controller into its own module with a
   clean request interface: `req`, `we`, `phys_addr[25:0]`, `wdata[7:0]`,
   `rdata[7:0]`, `busy`, `ready`, plus internal init + periodic refresh. Replaces
-  the inlined boot-string FSM in the top module. Byte-packed: drives DQM from
-  `phys_addr[0]`, selects `rdata` byte lane from `phys_addr[0]`.
+  the inlined boot-string FSM in the top module.
+  Byte-packed addressing keyed on `phys_addr[0]`:
+  - **Write**: `DQM = {phys_addr[0], ~phys_addr[0]}` (mask the lane not being
+    written), `wdata` duplicated onto both byte lanes.
+  - **Read**: `DQM = 2'b00` (read both lanes — do NOT mask), then select the
+    returned byte lane in logic via `phys_addr[0]`. Masking on read would
+    suppress data; only writes mask.
   *(CLAUDE memory: SDRAM FSM edits have corrupted synth before. Mitigation: this
   is a fresh, isolated module, not an edit to flash_hamr's arbiter, and it is
   sim-verified before any build.)*
@@ -73,11 +91,19 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
   dropped). Standard expansion-ROM enable FF: set on `$Cn00` access
   (`nI_O_SELECT`), clear on `$CFFF` access. Single-card bring-up assumption
   noted; the FF keeps it correct if another card is present.
+- **`$CFFF` is reserved — leave it unused.** The enable FF clears on ANY `$CFFF`
+  access, including an instruction fetch. The monitor MUST NOT execute, read, or
+  place any code/data at `$CFFF`, or it disables its own ROM mid-run. Constraint:
+  monitor occupies `$C800–$CFFE` only (max 2046 bytes); `$CFFF` stays `$00`. The
+  build/sim asserts the byte at offset `$7FF` of `monitor.mem` is unused.
 
 ## 6502 monitor (`monitor.S`, Merlin32, ORG $C800)
 
 **Launch.** `PR#4` → `$C400` stub. Stub restores CSWL/CSWH = `$FDF0` (COUT1) so
 output reaches the screen (not recursing through `$C400`), then `JMP $C800`.
+
+**Ready gate.** Before the first SDRAM op (cheap insurance; init is ~200 µs and
+banner+GETLN already covers it): `BIT $C0C5 : BVC *-3` — wait for V=ready.
 
 **Main loop.**
 1. Print banner + current `BANK xxx`.
@@ -96,9 +122,32 @@ output reaches the screen (not recursing through `$C400`), then `JMP $C800`.
 **ROM routines used:** `GETLN $FD6A`, `COUT $FDED`, `CROUT $FD8E`,
 `PRBYTE $FDDA`, `RDKEY $FD0C`. Hex parse + formatting hand-written.
 
-**ProDOS ZP caution.** Monitor runs in BASIC context, not as a ProDOS driver,
-so the `$36/$37` CSW restore is the intended behavior (same as the existing
-slot_rom). Avoid clobbering `$42–$47` and `$36–$3F` beyond the required CSW set.
+**Zero-page scratch (pinned — do NOT leave to implementation).** The monitor
+uses exactly these ZP bytes, all free under Applesoft and outside every
+forbidden range:
+
+| ZP | Use |
+|----|-----|
+| `$06` / `$07` | operand pointer / hex-parse accumulator (16-bit addr) |
+| `$08` | parsed data byte (W) |
+| `$09` | scratch / current bank shadow |
+
+Everything else lives in `A`/`X`/`Y` and the hardware stack. Loop counters use
+`X`/`Y`; nested values are pushed.
+
+Rationale and forbidden ranges:
+- The traditional Apple monitor scratch `$3C–$3F` (A1/A2) is **forbidden** here
+  (ProDOS/`wait_ready` territory — caused Relo/Conf errors before). Do not use it
+  even though it is the textbook choice.
+- Also avoid `$42–$47` (ProDOS) and the rest of `$36–$3F`. The only `$36/$37`
+  touch is the required CSW restore in the `$C400` stub.
+- `$06–$09` are confirmed unused by the ROM routines we call (`COUT`/`CROUT` use
+  `$24/$25/$28/$29`; `GETLN` uses the `$0200` buffer + `$32/$33`; `PRBYTE` uses
+  `A`). Do not touch BASIC's program/variable pointers (`$67`+).
+
+**Context.** Monitor runs in BASIC (Applesoft) context, not as a ProDOS driver,
+so the `$36/$37` CSW restore is intended behavior (same as the existing
+slot_rom).
 
 ## Testing
 
@@ -106,8 +155,14 @@ slot_rom). Avoid clobbering `$42–$47` and `$36–$3F` beyond the required CSW 
 - Extend the behavioral SDRAM model to a full addressable array (byte-packed).
 - W-then-R round-trip at several addresses.
 - Bank isolation: same `addr`, different `bank` → independent bytes.
-- Auto-increment: consecutive reads/writes step `addr`.
+- Auto-increment fires on op completion (busy falling edge): a DATA read with NO
+  preceding strobe must NOT advance `addr` (guards against `D`-loop double-step).
+- `busy` asserts on the strobe's `nds_rise` (same cycle), before any poll could
+  observe it.
+- Byte-packed: writing addr `2k` and `2k+1` (same `phys_word`) stores two
+  independent bytes (DQM lane select works).
 - `D` dump: 16 sequential reads return the written sequence.
+- `monitor.mem[$7FF]` ($CFFF) is unused/`$00`.
 
 **Hardware (Merlin32 + `make DESIGN=project_obscurus REV=rev2`; user flashes):**
 - `W 0000 AA` then `R 0000` → `AA`.
