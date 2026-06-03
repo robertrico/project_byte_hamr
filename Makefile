@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -460,6 +460,11 @@ ifndef ASM_SRC
 	@exit 1
 endif
 	$(MERLIN32) $(MERLIN_LIB) $(ASM_SRC)
+
+# project_obscurus SDRAM driver test (BRUN BIN at $2000)
+SDM_DIR  := software/SDM
+sdmtest:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) SDMTEST.S
 
 # =============================================================================
 # Apple II Disk Utilities
