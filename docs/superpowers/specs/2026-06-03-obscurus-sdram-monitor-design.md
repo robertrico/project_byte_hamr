@@ -229,10 +229,15 @@ write ignoring DQM) is wrong for random access and would **pass falsely**. The
 new model is the safety net per CLAUDE's "sim before build" rule, so it must be
 faithful on these four points or sim lies while hardware fails:
 
-1. **Sparse, not dense.** A dense `reg[15:0] mem[0:33554431]` is ~512 MB of sim
-   RAM. Use a SystemVerilog associative array: `reg [15:0] mem [int];` (iverilog
-   `-g2012`). Default-read unwritten words as a known sentinel (e.g. `'x` or
-   `16'h0000`) so "read before write" is visible.
+1. **Bounded dense, not full dense, not associative.** A dense
+   `reg[15:0] mem[0:33554431]` is ~512 MB of sim RAM — too big. A SystemVerilog
+   associative array would fix that, BUT this machine's iverilog (Icarus 13.0
+   devel) **hangs on `-g2009`/`-g2012`** (only default `-g2005` works), so
+   associative arrays are unavailable. Use a **bounded dense array** sized to the
+   tests: `localparam WORDS=65536; reg [15:0] mem [0:WORDS-1];` (128 KB) covers
+   banks 0–1, which is all the scenarios touch. Initialize to `16'h0000` so
+   read-before-write returns 0; `$display` an error if an access exceeds `WORDS`
+   so a stray high address is caught rather than silently aliased.
 2. **Capture row @ACTIVE, col @READ/WRITE — opposite of today.** New `sdram_ctrl`
    puts `{BA,ROW}=A[12:0]` on `ACTIVE` and `COL=A[9:0]` on `READ`/`WRITE`. Model
    must latch `{BA,ROW}` on cmd `0011` and form the word index from the latched

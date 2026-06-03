@@ -41,33 +41,28 @@
 **Files:**
 - Modify: `Makefile:316-318` (sim compile recipe), `Makefile:355` (unit compile recipe), `Makefile:160-173` (obscurus ROM recipes)
 
-- [ ] **Step 1: Add `-g2012` and `$(SIM_MODELS)` to the sim + unit recipes**
+> **ENVIRONMENT NOTE (discovered at execution):** This machine's iverilog
+> (Icarus 13.0 devel) **hangs on `-g2009` and `-g2012`** — only the default
+> `-g2005` works. So do **NOT** add any `-gXXXX` flag. The SDRAM sim model
+> (Task 2) therefore uses a **bounded dense array**, not a SystemVerilog
+> associative array.
 
-In `Makefile`, the sim compile recipe currently reads (around line 316-318):
+- [ ] **Step 1: Add `$(SIM_MODELS)` to the sim + unit recipes (no `-gXXXX` flag)**
+
+In `Makefile`, the sim compile recipe (around line 327-331) already includes
+`$(SIM_MODELS)` on the compile line — leave that line as-is (no flag):
 
 ```make
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB) | $(BUILD_DIR)
-	@# Copy any .mem files to build directory for simulation
-	cp -f $(DESIGN_DIR)/*.mem $(BUILD_DIR)/ 2>/dev/null || true
 	$(IVERILOG) -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB)
 ```
 
-Change the final `$(IVERILOG)` line to add `-g2012`:
+The unit recipe (around line 366-368) must gain `$(SIM_MODELS)` in BOTH the
+prerequisites and the compile command so unit TBs can use `sim/*.v` models:
 
 ```make
-	$(IVERILOG) -g2012 -o $@ -s $(DESIGN)_tb $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB)
-```
-
-The unit recipe (line 355) currently reads:
-
-```make
-	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(UNIT_TB)
-```
-
-Change it to add `-g2012` and `$(SIM_MODELS)` (so unit TBs can use `sim/*.v` models):
-
-```make
-	$(IVERILOG) -g2012 -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB)
+$(UNIT_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB) | $(BUILD_DIR)
+	@echo "=== Compiling Unit Testbench: $(MODULE) ==="
+	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB)
 ```
 
 - [ ] **Step 2: Add the `monitor.mem` recipe and gate it into the build**
@@ -126,7 +121,10 @@ This model is the safety net. It must honor the four traps from the spec or sim 
 // sdram_model.v — faithful behavioral model for project_obscurus sim
 // =============================================================================
 // Honors:
-//   1. Sparse associative array (no 512MB dense alloc) — needs -g2012.
+//   1. BOUNDED dense array (Verilog-2005, NO -g2012 — this iverilog hangs on
+//      SystemVerilog). 64K words (128KB) covers banks 0-1 = all tests touch.
+//      Accesses beyond WORDS print an error so a stray high address is caught,
+//      not silently aliased.
 //   2. Row+bank captured on ACTIVE; column captured on READ/WRITE (NOT ACTIVE).
 //   3. Column = A[9:0] only — A10 (auto-precharge) is masked out.
 //   4. DQM byte lanes honored on write (only the unmasked lane updates).
@@ -145,7 +143,10 @@ module sdram_model (
     localparam CMD_READ   = 4'b0101;
     localparam CMD_WRITE  = 4'b0100;
 
-    reg [15:0] mem [int];          // sparse, -g2012 associative array
+    localparam WORDS = 65536;      // banks 0-1 (word 0..65535)
+    reg [15:0] mem [0:WORDS-1];
+    integer ii;
+    initial for (ii = 0; ii < WORDS; ii = ii + 1) mem[ii] = 16'h0000;
 
     reg [1:0]  cur_ba  = 2'd0;
     reg [12:0] cur_row = 13'd0;
@@ -163,6 +164,8 @@ module sdram_model (
         widx = {b, r, c};
     endfunction
 
+    reg [24:0] w;
+
     always @(posedge clk) begin
         // ---- ACTIVE: latch bank + row ----
         if (cmd == CMD_ACTIVE) begin
@@ -171,9 +174,12 @@ module sdram_model (
         end
         // ---- WRITE: column = a[9:0] (A10 masked), DQM lane select ----
         if (cmd == CMD_WRITE) begin
-            // same-cycle masked write
-            if (!dqm0) mem[widx(cur_ba, cur_row, a[9:0])][7:0]  = dq[7:0];
-            if (!dqm1) mem[widx(cur_ba, cur_row, a[9:0])][15:8] = dq[15:8];
+            w = widx(cur_ba, cur_row, a[9:0]);
+            if (w >= WORDS) $display("MODEL ERR: write widx %0d out of range", w);
+            else begin
+                if (!dqm0) mem[w][7:0]  = dq[7:0];   // same-cycle masked write
+                if (!dqm1) mem[w][15:8] = dq[15:8];
+            end
         end
         // ---- READ: column = a[9:0], schedule CL=2 drive ----
         if (cmd == CMD_READ) begin
@@ -182,7 +188,7 @@ module sdram_model (
             rd_widx    <= widx(cur_ba, cur_row, a[9:0]);
         end else if (rd_pending) begin
             if (rd_latency == 0) begin
-                dq_drive   <= mem.exists(rd_widx) ? mem[rd_widx] : 16'h0000;
+                dq_drive   <= (rd_widx < WORDS) ? mem[rd_widx[15:0]] : 16'h0000;
                 dq_oe      <= 1'b1;
                 rd_pending <= 1'b0;
             end else begin
