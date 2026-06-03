@@ -176,10 +176,16 @@ $(OBSCURUS_ROM_MEM): $(OBSCURUS_ROM_SRC)
 OBSCURUS_MON_MEM := $(GATEWARE_DIR)/project_obscurus/monitor.mem
 OBSCURUS_MON_SRC := $(GATEWARE_DIR)/project_obscurus/monitor.S
 
+# Only auto-assemble the monitor ROM when its Merlin32 source actually exists.
+# Until the real monitor.S lands, a zero-filled monitor.mem stub is committed so
+# $readmemh works; without this guard make would try (and fail) to derive the
+# stub .mem from a non-existent .S.
+ifneq ($(wildcard $(OBSCURUS_MON_SRC)),)
 $(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
 	@echo "=== Assembling project_obscurus monitor ROM (Merlin32) ==="
 	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) monitor.S
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048
+endif
 
 # Force project_obscurus to depend on its slot ROM and monitor ROM
 ifeq ($(DESIGN),project_obscurus)
