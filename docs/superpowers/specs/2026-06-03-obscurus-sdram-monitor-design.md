@@ -101,6 +101,14 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
   *(CLAUDE memory: SDRAM FSM edits have corrupted synth before. Mitigation: this
   is a fresh, isolated module, not an edit to flash_hamr's arbiter, and it is
   sim-verified before any build.)*
+
+  **Scaffolding to DELETE (strip the hello-world demo, do not bolt onto it).**
+  `sdram_ctrl.v` replaces the inline FSM, so these get removed entirely:
+  `str_src[]`, `mirror[]`, `str_idx` + seek/auto-advance, `STR_LEN`, the
+  boot-time WRITE_STR/READ_STR states, and the string read-mux (`mirror_byte`).
+  **Keep** the reusable bus glue: 2-FF sync + `nds_rise` commit, the
+  `wr_data_latch`/`wr_addr_latch` path, POR/`rst_n`, heartbeat, and the
+  scratch-loopback registers.
 - **`monitor_regs`** (in top module) — bus-side glue: latch ADDR/BANK/DATA on
   `nds_rise`, raise `req`/`we` to `sdram_ctrl`, hold `RD_HOLD`, expose STATUS,
   drive auto-increment.
@@ -129,8 +137,22 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
 
 ## 6502 monitor (`monitor.S`, Merlin32, ORG $C800)
 
-**Launch.** `PR#4` → `$C400` stub. Stub restores CSWL/CSWH = `$FDF0` (COUT1) so
-output reaches the screen (not recursing through `$C400`), then `JMP $C800`.
+**Launch + exit contract (pin it — "return to BASIC" is otherwise undefined).**
+- BASIC `PR#4` does `JSR $C400`, leaving its return address on the stack. The
+  `$C400` stub: restore CSWL/CSWH = `$FDF0` (COUT1) so output reaches the screen
+  — the current `slot_rom.S` writes the text page direct *specifically to avoid
+  CSW recursion* (`$FDED` would recurse through `(CSW)=$C400` → stack overflow);
+  the monitor can use `COUT` **only because CSW is restored first**. Then
+  `JMP $C800` (a jump, not a call — the monitor seizes the machine).
+- Because the stub `JMP`s (no push), the SP at `$C800` entry still holds BASIC's
+  `JSR $C400` return address. **`Q` exits via `RTS`**, popping that address back
+  into BASIC's PR# handler, which finishes and drops to the immediate-mode
+  prompt — the clean exit. **Requirement: the monitor keeps the stack balanced
+  across the whole session** (`GETLN`/`COUT` self-balance; do not leak pushes),
+  or the `RTS` returns to garbage.
+- **Dead until RTL lands:** reaching `$C800` at all requires the expansion-ROM
+  enable FF + `nI_O_STROBE`/`d_oe` drive (RTL structure section). `JMP $C800` is
+  a no-op brick until that exists — implement the RTL before testing the stub.
 
 **Ready gate.** Before the first SDRAM op (cheap insurance; init is ~200 µs and
 banner+GETLN already covers it): `BIT $C0C5 : BVC *-3` — wait for V=ready.
@@ -181,18 +203,46 @@ slot_rom).
 
 ## Testing
 
-**Simulation (`project_obscurus_tb.v`, must pass before any build):**
-- Extend the behavioral SDRAM model to a full addressable array (byte-packed).
-- W-then-R round-trip at several addresses.
+**Simulation (`project_obscurus_tb.v`, must pass before any build).** This is a
+**rewrite of the TB SDRAM model, not an extension** — the current model
+(`reg [15:0] sdram_model[0:255]`, col captured @ACTIVE from `A[7:0]`, full-16-bit
+write ignoring DQM) is wrong for random access and would **pass falsely**. The
+new model is the safety net per CLAUDE's "sim before build" rule, so it must be
+faithful on these four points or sim lies while hardware fails:
+
+1. **Sparse, not dense.** A dense `reg[15:0] mem[0:33554431]` is ~512 MB of sim
+   RAM. Use a SystemVerilog associative array: `reg [15:0] mem [int];` (iverilog
+   `-g2012`). Default-read unwritten words as a known sentinel (e.g. `'x` or
+   `16'h0000`) so "read before write" is visible.
+2. **Capture row @ACTIVE, col @READ/WRITE — opposite of today.** New `sdram_ctrl`
+   puts `{BA,ROW}=A[12:0]` on `ACTIVE` and `COL=A[9:0]` on `READ`/`WRITE`. Model
+   must latch `{BA,ROW}` on cmd `0011` and form the word index from the latched
+   row + the col sampled on `0101`/`0100`. (Today's model captures col@ACTIVE —
+   inverting it would round-trip by accident and hide bugs.)
+3. **Mask A10 out of the column.** `READ`/`WRITE` carry `A10=1` (auto-precharge);
+   the column is `A[9:0]` only. If the model includes A10 the index is corrupted
+   by `+1024`. (Today's `A[7:0]` model never hit this; the full-width one will.)
+4. **Honor DQM lanes.** On `WRITE`, update only the unmasked byte lane:
+   `if (!DQM0) mem[idx][7:0] <= dq[7:0]; if (!DQM1) mem[idx][15:8] <= dq[15:8];`
+   A model that writes all 16 bits passes the byte-isolation test even when DQM
+   is broken — i.e. it can't verify the one thing byte-packing adds.
+
+Also add a **`poll_busy` task** (read `$C0C5`, loop until bit7=0) used before
+every DATA sample — the current `read_reg`/`write_reg` fixed `#200`/`#400` waits
+do not model the busy handshake and would sample DATA mid-latency.
+
+Scenarios (each via set-addr/bank → strobe → `poll_busy` → sample):
+- W-then-R round-trip at several `{bank,addr}`.
 - Bank isolation: same `addr`, different `bank` → independent bytes.
-- Auto-increment fires on op completion (busy falling edge): a DATA read with NO
-  preceding strobe must NOT advance `addr` (guards against `D`-loop double-step).
-- `busy` asserts on the strobe's `nds_rise` (same cycle), before any poll could
-  observe it.
-- Byte-packed: writing addr `2k` and `2k+1` (same `phys_word`) stores two
-  independent bytes (DQM lane select works).
+- Byte-packed lane isolation: write `addr 2k` and `2k+1` (same `phys_word`) →
+  two independent bytes (proves DQM select).
+- Auto-increment on op completion: after a strobe+poll, `addr` advanced by 1;
+  and a DATA **read with no preceding strobe must NOT advance `addr`** (guards
+  the `D`-loop double-step).
+- `busy` asserts on the strobe's `nds_rise` (same cycle) — sample STATUS.bit7
+  immediately after the strobe write, before any settle.
 - `D` dump: 16 sequential reads return the written sequence.
-- `monitor.mem[$7FF]` ($CFFF) is unused/`$00`.
+- Build check (script/assert, not RTL): `monitor.mem[$7FF]` (`$CFFF`) is `$00`.
 
 **Hardware (Merlin32 + `make DESIGN=project_obscurus REV=rev2`; user flashes):**
 - `W 0000 AA` then `R 0000` → `AA`.
