@@ -157,6 +157,35 @@ $(HAMR_ROM_MEM): $(HAMR_ROM_SRC)
 	cd $(GATEWARE_DIR)/flash_hamr && $(MERLIN32) $(MERLIN_LIB) hamr_rom.S
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/flash_hamr/hamr_rom.bin $@
 
+# project_obscurus slot ROM (256 bytes at $C400). Merlin32 source -> .bin ->
+# .mem. rom2mem.py "base" arg controls placement inside the .mem file: passing
+# $C000 with size 256 puts bin at .mem[0], matching Verilog's index by A[7:0].
+OBSCURUS_ROM_MEM := $(GATEWARE_DIR)/project_obscurus/slot_rom.mem
+OBSCURUS_ROM_SRC := $(GATEWARE_DIR)/project_obscurus/slot_rom.S
+
+$(OBSCURUS_ROM_MEM): $(OBSCURUS_ROM_SRC)
+	@echo "=== Assembling project_obscurus slot ROM (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) slot_rom.S
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/slot_rom.bin $@ 0xC000 256
+
+# project_obscurus monitor ROM (2KB at $C800). Merlin32 source -> .bin -> .mem.
+# NOTE: rom2mem base MUST be 0xC000 (not 0xC800): rom2mem computes
+# offset = base - 0xC000 and writes bin at rom[offset]; base=0xC800 gives
+# offset==size -> the guard rejects every byte -> all-$FF brick. base=0xC000
+# -> offset 0 -> bin lands at mem[0], indexed by monitor_mem[apple_addr[10:0]].
+OBSCURUS_MON_MEM := $(GATEWARE_DIR)/project_obscurus/monitor.mem
+OBSCURUS_MON_SRC := $(GATEWARE_DIR)/project_obscurus/monitor.S
+
+$(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
+	@echo "=== Assembling project_obscurus monitor ROM (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) monitor.S
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048
+
+# Force project_obscurus to depend on its slot ROM and monitor ROM
+ifeq ($(DESIGN),project_obscurus)
+$(JSON): $(OBSCURUS_ROM_MEM) $(OBSCURUS_MON_MEM)
+endif
+
 # Flash Hamr menu volume (picker + ProDOS)
 FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
 PICKER_SRC     := $(FLASH_HAMR_DIR)/picker.S
@@ -334,9 +363,9 @@ unit: $(UNIT_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(MODULE)_tb.vvp
 	@if [ -f $(UNIT_VCD) ]; then echo "VCD written to $(UNIT_VCD)"; fi
 
-$(UNIT_OUT): $(VERILOG_SRC) $(UNIT_TB) | $(BUILD_DIR)
+$(UNIT_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB) | $(BUILD_DIR)
 	@echo "=== Compiling Unit Testbench: $(MODULE) ==="
-	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(UNIT_TB)
+	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB)
 
 unit-wave: unit
 	@echo "=== Opening Unit Test Waveform ==="
@@ -355,7 +384,7 @@ unit-wave: unit
 # Format: --pins TDI:TDO:TCK:TMS
 CABLE    := ft231X
 JTAG_PINS := RI:CTS:DSR:DCD
-SERIAL   ?= DT03D4KG
+SERIAL   ?= DP0517RX
 
 prog: $(BIT)
 	@echo "=== Programming via JTAG (SRAM) ==="
