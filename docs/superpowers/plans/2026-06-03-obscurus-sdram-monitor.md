@@ -945,6 +945,23 @@ git add gateware/rev2/project_obscurus/project_obscurus_tb.v gateware/rev2/proje
 git commit -m "test: integration TB for register-port protocol (poll_busy, auto-inc, banks)"
 ```
 
+> **AS-BUILT (Tasks 5+6 combined, commit `4c2bc7c`):** Three deviations, all
+> verified by the green integration sim (7/7 scenarios):
+> 1. **Sticky `m_busy`** — set at strobe, cleared by the FIRST STATUS read after
+>    completion (`op_complete` latches on `op_done`; `status_rd & (op_complete |
+>    op_done)` clears `m_busy`). The plan's edge-only clear could be raced past
+>    when the SDRAM op finishes faster than the 6502 issues its next poll; sticky
+>    busy guarantees the first poll always sees busy=1 (the spec's requirement).
+>    Auto-increment still fires only on `op_done`, so scenario 6 holds.
+> 2. **TB fill loop uses a local `integer j`** (not the global `tmp`) — the
+>    plan's loop reused `tmp`, which `poll_busy` (inside `sdram_write`) overwrites
+>    with the STATUS byte, so the loop never reached 16. Bug in the plan's TB;
+>    fix preserves the scenario (write 16 / read 16 back via auto-inc).
+> 3. **Makefile guard** `ifneq ($(wildcard $(OBSCURUS_MON_SRC)),)` around the
+>    `monitor.mem: monitor.S` rule, so the committed zero-stub `monitor.mem` isn't
+>    derived from a not-yet-existing `monitor.S`. Self-disables once Task 8 lands.
+> Scenario-7 `$CFFF` check accepts `$00` (stub) or `$FF` (rom2mem fill).
+
 ---
 
 ## Task 7: `$C400` stub (`slot_rom.S`)
