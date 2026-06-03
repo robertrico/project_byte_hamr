@@ -324,6 +324,9 @@ module project_obscurus_top (
     reg [7:0] monitor_mem [0:2047];
     initial $readmemh("monitor.mem", monitor_mem);
 
+    // nI_O_SELECT/STROBE sampled unsynced here: this is a slow ROM-enable latch,
+    // so any metastable glitch is benign and self-corrects on the next access;
+    // the ROM data path itself (exp_rom_data/exp_read below) is combinational.
     reg rom_en = 1'b0;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) rom_en <= 1'b0;

@@ -330,7 +330,7 @@ sim: $(SIM_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
+$(SIM_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
 	@echo "=== Compiling Testbench ==="
 	@# Copy any .mem files to build directory for simulation
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
