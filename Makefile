@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -465,6 +465,22 @@ endif
 SDM_DIR  := software/SDM
 sdmtest:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) SDMTEST.S
+
+# Build a bootable ProDOS floppy with SDMTEST (BIN) + SDRAMLIB (TXT source).
+# Starts from the bootable 2.4.1 base (has PRODOS + BASIC.SYSTEM), frees space
+# by deleting unused bulk files, then imports our two files.
+SDM_PO   := $(SDM_DIR)/SDMTEST.po
+sdmdisk: sdmtest
+	cp $(PRODOS_SRC) $(SDM_PO)
+	-$(AC) rm -f -d $(SDM_PO) COPYIIPLUS.7.2
+	-$(AC) rm -f -d $(SDM_PO) ADTPRO
+	-$(AC) rm -f -d $(SDM_PO) ADTPRO.BIN
+	-$(AC) rm -f -d $(SDM_PO) BITSY.BOOT
+	-$(AC) rm -f -d $(SDM_PO) QUIT.SYSTEM
+	$(AC) import -d $(SDM_PO) -f --raw -t BIN -a 0x2000 -n SDMTEST $(SDM_DIR)/SDMTEST
+	$(AC) import -d $(SDM_PO) -f --text -t TXT -n SDRAMLIB $(SDM_DIR)/SDRAMLIB.S
+	$(AC) list -d $(SDM_PO)
+	@echo "Disk ready: $(SDM_PO) — copy to ADTPro disks and send to floppy."
 
 # =============================================================================
 # Apple II Disk Utilities
