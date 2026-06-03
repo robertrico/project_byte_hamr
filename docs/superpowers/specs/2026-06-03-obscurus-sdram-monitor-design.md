@@ -86,6 +86,19 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
   (current LOAD_MODE value). The current inline FSM only ever drives row 0 /
   col=`str_idx` / bank 0; this generalizes it to arbitrary `phys_word`.
 
+  **Refresh must survive request servicing (data-loss class — pin it).** The demo
+  refreshes only inside `ST_READY` (every 195 cyc = 7.8 µs). The req-serving FSM
+  leaves READY to handle each 6502 op, so refresh must NOT be a child of an idle
+  that requests preempt — a tight stream (`D` = 16 back-to-back accesses) could
+  otherwise defer refresh past the 64 ms DRAM retention → silent bit-rot far from
+  where the bug looks. Requirements:
+  - `refresh_cnt` **free-runs** across req servicing — not reset on each req.
+  - When the counter expires, **refresh takes priority**: insert an AUTO-REFRESH
+    even if a req is pending (serve the req after). A pending req waits a few
+    cycles; refresh never starves. In practice the 6502 burns tens of µs in its
+    poll loop between ops so the SDRAM is idle anyway — but the FSM must not
+    *rely* on that.
+
   **Byte-packed DQM (currently hardwired `SDRAM_DQM0/1 = 1'b0` — must become
   FSM-driven regs).** Lane keyed on `phys_byte[0]` (even = low byte D[7:0]):
   - **Write** cycle: `wdata` duplicated on both lanes (`dq_out = {wdata,wdata}`);
@@ -129,6 +142,12 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
        → `d_out = monitor_mem[apple_addr[10:0]]`).
   Two assigns change, not one. Single-card bring-up assumption noted; the FF
   keeps it correct if another card is present.
+  - **Do NOT make `DATA_OE` read-only.** `DATA_OE = ~slot_active` asserting on
+    both reads and writes is **correct** — it is the U12 '245 buffer enable, and
+    the buffer must be live in both directions (direction follows `R_nW` on DIR).
+    Only `d_oe` (FPGA→D drive) is `R_nW`-gated. The sole change is adding the
+    `rom_en & ~nI_O_STROBE` term; leave the read/write symmetry of `DATA_OE`
+    intact, or writes break.
 - **`$CFFF` is reserved — leave it unused.** The enable FF clears on ANY `$CFFF`
   access, including an instruction fetch. The monitor MUST NOT execute, read, or
   place any code/data at `$CFFF`, or it disables its own ROM mid-run. Constraint:
@@ -160,8 +179,12 @@ banner+GETLN already covers it): `BIT $C0C5 : BVC *-3` — wait for V=ready.
 **Main loop.**
 1. Print banner + current `BANK xxx`.
 2. Print prompt `*`.
-3. `GETLN` (`$FD6A`) — line input into `$0200`, chars high-bit set, `$8D` term.
-4. Parse: first non-space char = command. Own small hex parser for operands.
+3. `GETLN` (`$FD6A`) — line input into `$0200`, **chars high-bit set** (`$8D`
+   terminator, `'R'`=`$D2` not `$52`).
+4. Parse. **`AND #$7F` every char before dispatch and hex-nibble conversion** —
+   GETLN's high bit makes `'R'`=`$D2`; an unmasked compare against `$52`/`$30`
+   mis-parses every command → always `?`. First non-space char = command; own
+   small hex parser for operands.
 5. Dispatch; on bad input print `?` and reprompt.
 
 **Commands.**
@@ -174,32 +197,28 @@ banner+GETLN already covers it): `BIT $C0C5 : BVC *-3` — wait for V=ready.
 **ROM routines used:** `GETLN $FD6A`, `COUT $FDED`, `CROUT $FD8E`,
 `PRBYTE $FDDA`, `RDKEY $FD0C`. Hex parse + formatting hand-written.
 
-**Zero-page scratch (pinned — do NOT leave to implementation).** The monitor
-uses exactly these ZP bytes, all free under Applesoft and outside every
-forbidden range:
+**Scratch in the `$0300` page, NOT zero page (pinned).** Safe ZP is nearly gone
+once you exclude both the ProDOS ranges AND the screen/input ROM routines we
+call — `COUT1`/`GETLN` own `$20–$33` (CH/CV `$24/$25`, BASL/BASH `$28/$29`,
+INVFLG `$32`, PROMPT `$33`); ProDOS owns `$36–$3F`, `$42–$47`; Applesoft owns
+program/var pointers `$67`+. Rather than hunt 3 free ZP bytes, **park all
+monitor operands/state in the classic free `$0300` page** (`$0300–$03CF`, 192 B):
 
-| ZP | Use |
-|----|-----|
-| `$06` / `$07` | operand pointer / hex-parse accumulator (16-bit addr) |
-| `$08` | parsed data byte (W) |
-| `$09` | scratch / current bank shadow |
+| Addr | Use |
+|------|-----|
+| `$0300`/`$0301` | operand / hex-parse accumulator (16-bit addr) |
+| `$0302` | parsed data byte (W) |
+| `$0303`/`$0304` | current bank shadow (10-bit) |
+| `$0305`+ | dump/loop temporaries as needed |
 
-Everything else lives in `A`/`X`/`Y` and the hardware stack. Loop counters use
-`X`/`Y`; nested values are pushed.
-
-Rationale and forbidden ranges:
-- The traditional Apple monitor scratch `$3C–$3F` (A1/A2) is **forbidden** here
-  (ProDOS/`wait_ready` territory — caused Relo/Conf errors before). Do not use it
-  even though it is the textbook choice.
-- Also avoid `$42–$47` (ProDOS) and the rest of `$36–$3F`. The only `$36/$37`
-  touch is the required CSW restore in the `$C400` stub.
-- `$06–$09` are confirmed unused by the ROM routines we call (`COUT`/`CROUT` use
-  `$24/$25/$28/$29`; `GETLN` uses the `$0200` buffer + `$32/$33`; `PRBYTE` uses
-  `A`). Do not touch BASIC's program/variable pointers (`$67`+).
+Use **zero page only where a ROM call forces it** (none of `COUT`/`GETLN`/
+`PRBYTE` require caller ZP beyond their own). Loop counters in `X`/`Y`; nesting
+on the stack. The only deliberate `$36/$37` touch is the required CSW restore in
+the `$C400` stub — do not otherwise write `$36–$3F` or `$42–$47`.
 
 **Context.** Monitor runs in BASIC (Applesoft) context, not as a ProDOS driver,
 so the `$36/$37` CSW restore is intended behavior (same as the existing
-slot_rom).
+slot_rom). `$0300` survives across the session and Ctrl-Reset.
 
 ## Testing
 
