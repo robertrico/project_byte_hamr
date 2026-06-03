@@ -533,6 +533,20 @@ git add gateware/rev2/project_obscurus/sdram_ctrl.v
 git commit -m "feat: sdram_ctrl byte-addressed controller (req iface, DQM, priority refresh)"
 ```
 
+> **AS-BUILT (commit `615c94b`, TB reorder `d440237`):** Two deviations from the
+> reference above, both verified against the model and unit test:
+> 1. **Read wait `dly` 2→3** in the ST_RW read branch — CL=2 is counted from when
+>    the model *sees* the registered READ command (one cycle after `cmd=CMD_READ`
+>    is set), so the reference sampled one cycle early and latched `z`.
+> 2. **`busy` is request-scoped, accept gate is `req && !pend && ready`** (the
+>    `!busy` term was removed and refresh no longer drives `busy`). The reference
+>    raised `busy` for standalone refreshes and gated accept on `!busy`, which
+>    silently dropped any request arriving during a refresh. **This also benefits
+>    Task 5:** `op_done` (busy falling edge) now pulses exactly once per real
+>    access and never on a refresh, so auto-increment can't spuriously step.
+> The unit-TB `wire cmd` continuous assignment was moved below its net
+> declarations (Icarus 13.0 rejects use-before-declaration) — no test logic changed.
+
 ---
 
 ## Task 5: Integrate into `project_obscurus_top.v` (strip demo, add monitor_regs + exp-ROM)
