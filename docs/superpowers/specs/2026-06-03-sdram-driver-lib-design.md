@@ -75,7 +75,7 @@ Internal register equates derive from `SDM_BASE` (`+0..+6`).
 **Public entry points** (caller sets vars, then `JSR`):
 | Routine | Contract |
 |---------|----------|
-| `SDM_READY`  | Block until card ready (`BIT STATUS` / `BVC`). Call once at start. |
+| `SDM_READY`  | **Bounded** wait for ready (bit6). Polls up to a fixed retry budget (16-bit/24-bit loop). Returns **carry clear = ready**, **carry set = timeout** (card absent/wrong slot → `$C0C5` floats, bit6 never sets). Caller MUST branch on carry — do not assume. Call once at start. |
 | `SDM_SETBANK`| Copy `SDM_BANK` → BANK_LO/HI registers. |
 | `SDM_SETADDR`| Copy `SDM_ADDR` → ADDR_LO/HI registers. |
 | `SDM_WRITE`  | `SETBANK`+`SETADDR`, write `SDM_VAL` (strobe DATA), poll busy. |
@@ -112,20 +112,31 @@ every bank `0..1023`:
   both `lo EOR hi = 1`) are ≥2 bits apart and therefore unreachable by a
   single-bit fault — multi-bit aliasing is not distinguished. (Offsets don't add
   bank discrimination: `off` cancels in `expected(X)-expected(Y)`.)
+- **Start:** `JSR SDM_READY`; if carry set → print `NO CARD` and quit (no hang).
 - **Phase 1 — write all:** for each bank, `SETBANK` + `SETADDR $0000`, then 10×
   (`SDM_VAL = expected; SDM_WRNEXT`). Auto-increment walks the 10 offsets.
 - **Phase 2 — read all:** for each bank, `SETBANK` + `SETADDR $0000`, then 10×
-  (`SDM_RDNEXT`; compare `A` to recomputed `expected`). On mismatch, print
-  `bbb/o exp ee got gg` and bump a 16-bit failure counter.
+  (`SDM_RDNEXT`; compare `A` to recomputed `expected`). On mismatch, bump a
+  16-bit failure counter and print `bbb/o exp ee got gg` — **but cap printed
+  lines at the first 16**, then suppress further lines (keep counting) so a
+  glitch/wrong-slot run that mismatches all 10,240 reads doesn't scroll the count
+  off-screen.
+
+Auto-increment does **not** cross bank boundaries: `m_addr` is a 16-bit `+1`
+with no carry into the bank, so a sequential `WRNEXT`/`RDNEXT` run stays in the
+current bank (fine here — offsets 0–9). A walk past `$FFFF` needs an explicit
+`SETBANK`+`SETADDR`.
 
 Two-phase (write *everything* before reading *anything*) is what catches bank
 aliasing — immediate read-after-write would mask it. ~20,480 ops ≈ sub-second.
 
 **Output (quiet + failures):**
 - Banner line at start (`SDM BANK TEST`).
+- `NO CARD` + quit if `SDM_READY` times out (carry set).
 - A `.` every 64 banks during each phase as a progress pulse.
-- Each mismatch on its own line: bank (hex), offset, expected, got.
-- Final line: `PASS` or `nnnn FAILURES` (decimal or hex count).
+- Each mismatch on its own line: bank (hex), offset, expected, got — **first 16
+  only**, then suppressed (counter keeps running).
+- Final line: `PASS` or `nnnn FAILURES` (hex — the 16-bit counter is two `PRBYTE`).
 - All via `COUT $FDED` / `PRBYTE $FDDA` / `CROUT $FD8E`. A normal program (not
   launched via `PR#`), so `COUT` goes straight to the screen — no CSW games.
 
@@ -178,9 +189,14 @@ stock 6502 — the example caller can use whatever its CPU supports.)
   grep the assembled listing / source.
 - **On-Apple `PUT` loads:** confirm `PUT SDRAM.LIB` actually assembles in Merlin
   on the machine (high-bit caveat above) — not merely that the file copied.
-- **On hardware (user runs):** `BRUN SDMTEST` → `SDM BANK TEST` … `PASS`. A
-  deliberately mis-typed value scheme (or pulling the card) should produce
-  `FAILURES`, confirming the test actually checks. Capture via `obs-screenshot`.
+- **On hardware (user runs):** `BRUN SDMTEST` → `SDM BANK TEST` … `PASS`.
+- **Negative test (that the test actually checks):** the canonical, deterministic
+  way is a deliberately wrong value scheme (write with one constant, verify
+  against another) → `FAILURES`. Note the card-pull cases precisely:
+  - Card **absent at start** → `SDM_READY` times out → `NO CARD` (NOT a fail
+    count — it never reaches the sweep).
+  - Card pulled **mid-run** (after READY passed) → garbage reads → `FAILURES`.
+  Capture via `obs-screenshot`.
 - **Refresh is not the failure source (confirmed, but watch):** this 20,480-op
   back-to-back sweep is the most sustained access the card will see. `sdram_ctrl`
   has a free-running refresh counter with refresh-priority over pending requests
