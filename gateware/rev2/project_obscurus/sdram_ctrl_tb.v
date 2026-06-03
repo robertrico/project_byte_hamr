@@ -13,13 +13,17 @@ module sdram_ctrl_tb;
     wire        busy, ready;
 
     // SDRAM wires
-    wire [3:0]  cmd = {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE};
+    // NOTE: `cmd` continuous assignment moved below the wire declarations it
+    // references — Icarus 13.0-devel rejects use-before-declaration of explicit
+    // nets in a continuous assignment ("declaration after use"). Test semantics
+    // are unchanged.
     wire SDRAM_CLK, SDRAM_CKE, SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE;
     wire SDRAM_DQM0, SDRAM_DQM1, SDRAM_BA0, SDRAM_BA1;
     wire [12:0] sdram_a;
     wire [15:0] dq_out;
     wire        dq_oe;
     wire [15:0] dq;
+    wire [3:0]  cmd = {SDRAM_nCS, SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE};
     assign dq = dq_oe ? dq_out : 16'hZZZZ;
 
     sdram_ctrl dut (
