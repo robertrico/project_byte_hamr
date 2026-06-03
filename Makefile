@@ -478,7 +478,7 @@ sdmdisk: sdmtest
 	-$(AC) rm -f -d $(SDM_PO) BITSY.BOOT
 	-$(AC) rm -f -d $(SDM_PO) QUIT.SYSTEM
 	$(AC) import -d $(SDM_PO) -f --raw -t BIN -a 0x2000 -n SDMTEST $(SDM_DIR)/SDMTEST
-	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB $(SDM_DIR)/SDRAMLIB.S
+	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready: $(SDM_PO) — copy to ADTPro disks and send to floppy."
 

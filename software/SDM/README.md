@@ -69,8 +69,14 @@ dummy-read double-count. Preserve this in any addition.
         ...
         PUT SDRAMLIB        ; include the library (first is cleanest)
 ```
-On the Apple, `PUT SDRAMLIB` loads the `SDRAMLIB` TXT file from the disk (imported
-high-bit so Merlin reads it).
+On disk the file is named **`SDRAMLIB.S`** (TXT, sequential, high-bit). Merlin-Pro
+auto-appends `.S` to Load/Save/`PUT`/`USE`, so `L SDRAMLIB` and `PUT SDRAMLIB`
+both resolve `SDRAMLIB.S`. (If a file ever lands without the `.S` suffix, Merlin
+reports `46 FILE NOT FOUND` — rename it via the Disk command: `RENAME
+SDRAMLIB,SDRAMLIB.S`.) Note: AppleCommander stamps TXT files with record length
+$2000 by default — the build forces `--aux 0` (sequential), because a
+random-access (`L=8192`) text file makes ProDOS copy utilities read past EOF and
+crash.
 
 ## The bank test (`SDMTEST.S`)
 
