@@ -72,12 +72,32 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
   clean request interface: `req`, `we`, `phys_addr[25:0]`, `wdata[7:0]`,
   `rdata[7:0]`, `busy`, `ready`, plus internal init + periodic refresh. Replaces
   the inlined boot-string FSM in the top module.
-  Byte-packed addressing keyed on `phys_addr[0]`:
-  - **Write**: `DQM = {phys_addr[0], ~phys_addr[0]}` (mask the lane not being
-    written), `wdata` duplicated onto both byte lanes.
-  - **Read**: `DQM = 2'b00` (read both lanes — do NOT mask), then select the
-    returned byte lane in logic via `phys_addr[0]`. Masking on read would
+  **AS4C32M16 geometry decomposition (the meat — pin it explicitly).** The
+  chip is 32M×16 = `{BA[1:0], ROW[12:0], COL[9:0]}` = 2+13+10 = 25 word-address
+  bits. `phys_word = phys_byte[25:1]` (25 bits). Split:
+  - `COL = phys_word[9:0]`
+  - `ROW = phys_word[22:10]` (13 bits)
+  - `BA  = phys_word[24:23]` (2 bits)
+
+  Per access: `ACTIVE` (BA, ROW) → wait tRCD → `READ`/`WRITE` with **A10=1
+  (auto-precharge)** and `A[9:0]=COL` → wait. Keep the existing per-access
+  auto-precharge pattern (current FSM sets `A10=1` on READ/WRITE) — simplest
+  close, do not lose it in the rewrite. Keep the **CL=2, burst=1** mode word
+  (current LOAD_MODE value). The current inline FSM only ever drives row 0 /
+  col=`str_idx` / bank 0; this generalizes it to arbitrary `phys_word`.
+
+  **Byte-packed DQM (currently hardwired `SDRAM_DQM0/1 = 1'b0` — must become
+  FSM-driven regs).** Lane keyed on `phys_byte[0]` (even = low byte D[7:0]):
+  - **Write** cycle: `wdata` duplicated on both lanes (`dq_out = {wdata,wdata}`);
+    drive masks so only the target lane writes —
+    `SDRAM_DQM0 = phys_byte[0]` (low lane enabled when even),
+    `SDRAM_DQM1 = ~phys_byte[0]` (high lane enabled when odd).
+    (`DQM` high = lane masked.)
+  - **Read** cycle: `SDRAM_DQM0 = SDRAM_DQM1 = 1'b0` (read both lanes — do NOT
+    mask), then select returned byte in logic:
+    `rdata = phys_byte[0] ? dq_in[15:8] : dq_in[7:0]`. Masking on read would
     suppress data; only writes mask.
+  - Idle/init: `DQM = 0` (don't-care for non-access).
   *(CLAUDE memory: SDRAM FSM edits have corrupted synth before. Mitigation: this
   is a fresh, isolated module, not an edit to flash_hamr's arbiter, and it is
   sim-verified before any build.)*
@@ -87,10 +107,20 @@ auto-increment. (CLAUDE.md 6502 bus gotcha.) Commit register writes on
 - **ROMs in bitstream:**
   - `slot_rom.mem` — 256 B at `$C400`. Stub: restore CSW, `JMP $C800`.
   - `monitor.mem` — 2 KB at `$C800–$CFFF`. The monitor program.
-- **Expansion ROM enable.** Re-enable `nI_O_STROBE` data drive (currently
-  dropped). Standard expansion-ROM enable FF: set on `$Cn00` access
-  (`nI_O_SELECT`), clear on `$CFFF` access. Single-card bring-up assumption
-  noted; the FF keeps it correct if another card is present.
+- **Expansion ROM enable (delta from current — today it is deliberately OFF).**
+  The current top module **never** drives `$C800–$CFFF`: `slot_active` and
+  `d_oe`/`d_out` assert only on `nDEVICE_SELECT`/`nI_O_SELECT` (the `nI_O_STROBE`
+  drive was intentionally dropped to avoid bus-fighting another card's expansion
+  ROM). Re-enabling it is undoing that guard, so do it properly:
+  1. Add an **expansion-ROM enable FF**: set on `$Cn00` access (`nI_O_SELECT`),
+     clear on `$CFFF` access. (`$CFFF` is the shared disable convention — see the
+     `$CFFF` reserve note below.)
+  2. `rom_en` gates `~nI_O_STROBE` into **both**:
+     - `slot_active` (→ `DATA_OE`, the U12 level-shifter OE), and
+     - the `d_oe` / `d_out` mux (add `exp_read = rom_en & ~nI_O_STROBE & R_nW`
+       → `d_out = monitor_mem[apple_addr[10:0]]`).
+  Two assigns change, not one. Single-card bring-up assumption noted; the FF
+  keeps it correct if another card is present.
 - **`$CFFF` is reserved — leave it unused.** The enable FF clears on ANY `$CFFF`
   access, including an instruction fetch. The monitor MUST NOT execute, read, or
   place any code/data at `$CFFF`, or it disables its own ROM mid-run. Constraint:
@@ -190,5 +220,17 @@ All deferred items are additive and (except write-protect) require no change to
   (`$C400`) and `monitor.S` (`$C800`).
 - Makefile: extend the existing `OBSCURUS_ROM_MEM` recipe to also build
   `monitor.mem`; both gate `$(JSON)` for `DESIGN=project_obscurus`.
-- `monitor.mem`: `rom2mem.py monitor.bin monitor.mem 0xC800 2048`.
+- **`monitor.mem`: `rom2mem.py monitor.bin monitor.mem 0xC000 2048`** — base
+  `0xC000`, **NOT** `0xC800`.
+  - `rom2mem.py` computes `offset = base - 0xC000` and writes bin bytes starting
+    at `rom[offset]`. It ignores the `.S` ORG entirely — `base` only sets where
+    `mem[0]` lands. With `base=0xC800`, `offset = 2048 = size`, so the guard
+    `offset+i < size` is false for every byte → **`monitor.mem` is all-`$FF`,
+    monitor never runs** (silent brick). `base=0xC000` → `offset=0` → bin lands
+    at `mem[0]`, matching the existing `slot_rom` recipe (`0xC000 256`, even
+    though `slot_rom.S` ORGs `$C400`).
+  - Verilog indexes `monitor_mem[apple_addr[10:0]]`: `$C800–$CFFF` = 2 KB = 11
+    bits; `$C800` low-11 = `0`, `$CFFF` low-11 = `$7FF`. So `mem[0]` = first
+    monitor byte at `$C800`. Page alignment makes the ORG-vs-offset mismatch
+    harmless (same trick as `slot_rom_mem[apple_addr[7:0]]`).
 - Never flash without explicit user request.
