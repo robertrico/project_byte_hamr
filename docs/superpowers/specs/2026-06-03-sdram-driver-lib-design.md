@@ -36,7 +36,19 @@ the OBS capture tool / `obs-screenshot`).
 | `$C0C6` | R/W | DATA (write → SDRAM write; read → last result) |
 
 Handshake: set ADDR/BANK → strobe (TRIG_RD or DATA write) → poll STATUS until
-bit7 clears → read DATA. `addr` auto-increments on each completed access.
+bit7 clears → read DATA.
+
+**Auto-increment rule (confirmed in RTL — the hinge for RDNEXT):** `addr`
+advances by one **only on a completed SDRAM access**, which is exactly a
+**TRIG_RD strobe** (`$C0C4` W) or a **DATA write** (`$C0C6` W). A **DATA read**
+(`$C0C6` R) is a pure latch read of the last result — it does **NOT** advance
+`addr`. So `SDM_RDNEXT` (strobe TRIG_RD → poll → `LDA DATA`) advances exactly
+once per call; the `LDA DATA` is inert. (Verified: `monitor_regs` increments on
+`op_done` = `sdram_busy` falling, and only TRIG_RD/DATA-write raise `sdram_busy`.)
+
+**Strobe→poll is race-free (sticky busy):** `m_busy` is set on the strobe cycle
+and cleared only by the first STATUS read after the access completes, so the
+first poll always reads busy=1; data is never sampled before the access finishes.
 
 ## A. The library — `software/SDM/sdram_lib.S`
 
@@ -79,14 +91,27 @@ completed access. `SETBANK` does not need re-issuing between same-bank accesses.
 **No `RTS`-time register state:** every entry point leaves the card idle
 (not busy). Caller may freely interleave other code between calls.
 
+**Design invariant — no indexed access to the register port:** the library
+touches `$C0Cx` only with plain absolute `STA`/`LDA` (never `STA $C0Cx,X` etc.).
+Absolute access is a single `nDEVICE_SELECT` pulse, so it dodges the `STA abs,X`
+dummy-read that would double-count a strobe (CLAUDE.md 6502 bus gotcha). Any
+future addition to the library must preserve this.
+
 ## B. The bank test — `software/SDM/sdram_libtest.S`
 
 `PUT sdram_lib.S`, then run a **two-phase** sweep over offsets `$0000–$0009` of
 every bank `0..1023`:
 
 - **Value scheme:** `expected(bank, off) = lo(bank) EOR hi(bank) EOR off EOR $5A`.
-  Folding both bank bytes means two banks that differ only in the high byte (e.g.
-  0 vs 256) still get different values, so a dropped bank-address bit shows up.
+- **Detection guarantee (and its limit):** an 8-bit value cannot uniquely tag
+  1024 banks, so this targets the realistic failure — a **single-bit bank-address
+  decode fault** (a stuck/swapped/dropped bank line). Any two banks that differ by
+  exactly one bit produce different `lo EOR hi` (the differing bit lands in `lo`
+  for bits 0–7, or in `hi` for bits 8–9), so a single-bit alias always mismatches
+  in phase 2. **Limit:** banks that fold to the same value (e.g. bank 1 vs 256,
+  both `lo EOR hi = 1`) are ≥2 bits apart and therefore unreachable by a
+  single-bit fault — multi-bit aliasing is not distinguished. (Offsets don't add
+  bank discrimination: `off` cancels in `expected(X)-expected(Y)`.)
 - **Phase 1 — write all:** for each bank, `SETBANK` + `SETADDR $0000`, then 10×
   (`SDM_VAL = expected; SDM_WRNEXT`). Auto-increment walks the 10 offsets.
 - **Phase 2 — read all:** for each bank, `SETBANK` + `SETADDR $0000`, then 10×
@@ -113,6 +138,13 @@ aliasing — immediate read-after-write would mask it. ~20,480 ops ≈ sub-secon
   - `SDMTEST` — BIN, load/aux `$2000`, run via `BRUN SDMTEST` from the `]` prompt.
   - `SDRAM.LIB` — the `sdram_lib.S` text, imported as a ProDOS **TXT** file so it
     can be `PUT` from Merlin *on the Apple II* (same source we build with here).
+    **High-bit caveat (verify, don't assume):** Merlin-on-Apple expects source as
+    high-ASCII text; AppleCommander's text import may store low-ASCII and break
+    `PUT`. This bit the project before (the `acx import --raw` note). The build
+    must import the lib so an on-Apple `PUT SDRAM.LIB` actually loads cleanly —
+    verify by loading/PUTing it in Merlin on the machine, not just that the file
+    lands on the disk. (Pick the AppleCommander text-type/`--raw` mode that
+    produces Merlin-loadable source; nail the exact invocation in the plan.)
 - Built with AppleCommander (`AC_JAR`), following the existing `create-dsk`
   pattern. Delivered to a real floppy via ADTPro (existing flow).
 
@@ -128,8 +160,13 @@ In the user's own Merlin source on the Apple II:
         STZ SDM_BANK : STZ SDM_BANK+1                          ; bank 0
         JSR SDM_WRITE
         ...
-        PUT SDRAM.LIB          ; the library, last
+        PUT SDRAM.LIB          ; the library
 ```
+**`PUT` placement:** Merlin resolves forward references and sizes unknown-forward
+operands as 16-bit (correct here, since `SDM_*` vars are absolute `DS`), so `PUT`
+at the end works. **Recommended: `PUT` the library FIRST**, so all `SDM_*` labels
+are defined before use — avoids any forward-ref surprise and reads cleaner. The
+test program (§B) `PUT`s it first.
 (`STZ` is 65C02; the library itself avoids 65C02-only opcodes so it runs on a
 stock 6502 — the example caller can use whatever its CPU supports.)
 
@@ -139,9 +176,17 @@ stock 6502 — the example caller can use whatever its CPU supports.)
   files; `SDMTEST` first byte is the expected entry opcode.
 - **Library has zero ZP writes and zero `$C800`/`$C400`/`PR#` references** —
   grep the assembled listing / source.
+- **On-Apple `PUT` loads:** confirm `PUT SDRAM.LIB` actually assembles in Merlin
+  on the machine (high-bit caveat above) — not merely that the file copied.
 - **On hardware (user runs):** `BRUN SDMTEST` → `SDM BANK TEST` … `PASS`. A
   deliberately mis-typed value scheme (or pulling the card) should produce
   `FAILURES`, confirming the test actually checks. Capture via `obs-screenshot`.
+- **Refresh is not the failure source (confirmed, but watch):** this 20,480-op
+  back-to-back sweep is the most sustained access the card will see. `sdram_ctrl`
+  has a free-running refresh counter with refresh-priority over pending requests
+  (verified in RTL), so a `FAIL` should mean a real decode/data fault, not
+  refresh-induced bit-rot. If a FAIL ever correlates with sweep length/timing,
+  re-examine refresh before blaming decode.
 - No FPGA rebuild or flashing involved — this is host-side software only.
 
 ## Deferred (YAGNI)
