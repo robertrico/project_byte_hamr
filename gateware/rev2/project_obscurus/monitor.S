@@ -10,7 +10,9 @@
 *
 * Scratch lives in the $0300 page; ZP $06/$07 used only as the PRINTSTR
 * indirect pointer (indirect addressing forces ZP). GETLN returns chars with
-* the high bit set, so every input char is AND #$7F before use.
+* the high bit set; Merlin32 "X" char literals are ALSO high-bit-set, so input
+* is compared directly (NO masking) — they match in high-bit space. (Only the
+* dump's ASCII column masks, because that operates on raw SDRAM data bytes.)
 * =============================================================================
             TYP   $06
             DSK   monitor.bin
@@ -60,7 +62,6 @@ PROMPT      LDA   #"*"
             JSR   SKIPSP
             LDA   INBUF,Y
             INY
-            AND   #$7F
             CMP   #"R"
             BNE   :nR
             JMP   DOREAD
@@ -211,7 +212,6 @@ PRERR       LDA   #"?"
 
 * ---- input helpers ----
 SKIPSP      LDA   INBUF,Y
-            AND   #$7F
             CMP   #" "
             BNE   :done
             INY
@@ -223,7 +223,6 @@ PH16        LDA   #0
             STA   ADDR
             STA   ADDR+1
 :l          LDA   INBUF,Y
-            AND   #$7F
             JSR   HEXNIB
             BCC   :done
             PHA
@@ -246,7 +245,6 @@ PH16        LDA   #0
 PH8         LDA   #0
             STA   DATB
 :l          LDA   INBUF,Y
-            AND   #$7F
             JSR   HEXNIB
             BCC   :done
             ASL   DATB
