@@ -26,12 +26,16 @@ RBANKHI =   $C0C3
 RTRIG   =   $C0C4
 RSTATUS =   $C0C5
 RDATA   =   $C0C6
+DISARM  =   $C420                  ; slot ROM disarm routine (always-live)
 
 * ---- $0300 scratch ----
 ADDR    =   $0300        ; 2 bytes
 DATB    =   $0302
 BANK    =   $0303        ; 2 bytes
 DBUF    =   $0305        ; 16-byte dump buffer ($0305-$0314)
+TBANK   =   $0315                  ; 2 bytes: sweep bank counter
+TFAIL   =   $0317                  ; 2 bytes: failure counter
+TGOT    =   $0319                  ; 1 byte: last byte read
 STRPTR  =   $06          ; ZP indirect ptr (PRINTSTR only)
 
 * ---- monitor ROM entries ----
@@ -74,9 +78,12 @@ PROMPT      LDA   #"*"
 :nB         CMP   #"D"
             BNE   :nD
             JMP   DODUMP
-:nD         CMP   #"Q"
+:nD         CMP   #"T"
+            BNE   :nT
+            JMP   DOTEST
+:nT         CMP   #"Q"
             BNE   :nErr
-            RTS                    ; back to BASIC
+            JMP   DISARM           ; $C420: disarm $C800 + RTS to BASIC
 :nErr       JSR   PRERR
             JMP   PROMPT
 
@@ -147,6 +154,94 @@ DODUMP      JSR   SKIPSP
             INX
             CPX   #16
             BNE   :asc
+            JSR   CROUT
+            JMP   PROMPT
+
+* ---- T: 1024-bank two-phase sweep ----
+DOTEST      LDA   #0
+            STA   TFAIL
+            STA   TFAIL+1
+            LDA   #0
+            STA   TBANK
+            STA   TBANK+1
+:p1         LDA   TBANK
+            STA   BANK
+            LDA   TBANK+1
+            STA   BANK+1
+            LDA   #0
+            STA   ADDR
+            STA   ADDR+1
+            JSR   SETADDR
+            LDX   #0
+:w1         TXA
+            EOR   TBANK
+            EOR   TBANK+1
+            EOR   #$5A
+            STA   RDATA            ; A=expected -> DATA write strobe (auto-inc)
+            JSR   POLLB
+            INX
+            CPX   #10
+            BNE   :w1
+            INC   TBANK
+            BNE   :n1
+            INC   TBANK+1
+:n1         LDA   TBANK+1
+            CMP   #$04             ; 1024 = $0400
+            BCC   :p1
+            LDA   #0
+            STA   TBANK
+            STA   TBANK+1
+:p2         LDA   TBANK
+            STA   BANK
+            LDA   TBANK+1
+            STA   BANK+1
+            LDA   #0
+            STA   ADDR
+            STA   ADDR+1
+            JSR   SETADDR
+            LDX   #0
+:r1         STA   RTRIG            ; trigger read (A don't-care, auto-inc)
+            JSR   POLLB
+            LDA   RDATA
+            STA   TGOT
+            TXA
+            EOR   TBANK
+            EOR   TBANK+1
+            EOR   #$5A
+            CMP   TGOT
+            BEQ   :rok
+            INC   TFAIL
+            BNE   :rok
+            INC   TFAIL+1
+:rok        INX
+            CPX   #10
+            BNE   :r1
+            INC   TBANK
+            BNE   :n2
+            INC   TBANK+1
+:n2         LDA   TBANK+1
+            CMP   #$04
+            BCC   :p2
+            JSR   CROUT
+            LDA   TFAIL
+            ORA   TFAIL+1
+            BNE   :tfail
+            LDA   #<MTPASS
+            STA   STRPTR
+            LDA   #>MTPASS
+            STA   STRPTR+1
+            JSR   PRINTSTR
+            JSR   CROUT
+            JMP   PROMPT
+:tfail      LDA   TFAIL+1
+            JSR   PRBYTE
+            LDA   TFAIL
+            JSR   PRBYTE
+            LDA   #<MTFAIL
+            STA   STRPTR
+            LDA   #>MTFAIL
+            STA   STRPTR+1
+            JSR   PRINTSTR
             JSR   CROUT
             JMP   PROMPT
 
@@ -280,4 +375,8 @@ HEXNIB      CMP   #"0"
             RTS
 
 BANNER      ASC   "OBSCURUS SDRAM MONITOR"
+            DFB   $00
+MTPASS      ASC   "TEST PASS"
+            DFB   $00
+MTFAIL      ASC   " TEST FAIL"
             DFB   $00

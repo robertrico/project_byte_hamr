@@ -1,10 +1,11 @@
 * =============================================================================
-* slot_rom.S — project_obscurus $C400 stub (Merlin32)
+* slot_rom.S — project_obscurus $C400 slot ROM (Merlin32)
 * =============================================================================
-* PR#4 does JSR $C400. Restore the BASIC output vector to COUT1 (so the
-* monitor's COUT reaches the screen instead of recursing through $C400), then
-* JMP into the monitor at $C800. The JSR return address stays on the stack;
-* the monitor's Q command RTSes back to BASIC.
+* PR#4 -> JSR $C400 -> ENTRY: ARM $C800 ($C0C7<-$AA), restore CSW=COUT1, JMP $C800.
+* DISARM (fixed $C420) lives in the ALWAYS-LIVE slot ROM (gated only by
+* nI_O_SELECT, never rom_armed) so it keeps executing after it disarms $C800.
+* The monitor's Q JMPs here: disarm ($C0C8<-$AA), then RTS to BASIC over PR#'s
+* JSR return address.
 * =============================================================================
             TYP   $06
             DSK   slot_rom.bin
@@ -14,9 +15,19 @@ CSWL   =    $36
 CSWH   =    $37
 COUT1  =    $FDF0
 MONITOR =   $C800
+ROMARM  =    $C0C7
+ROMDIS  =    $C0C8
+MAGIC  =    $AA
 
-ENTRY       LDA   #<COUT1
+ENTRY       LDA   #MAGIC
+            STA   ROMARM          ; arm $C800
+            LDA   #<COUT1
             STA   CSWL
             LDA   #>COUT1
             STA   CSWH
             JMP   MONITOR
+
+            DS    $C420-*         ; pad so DISARM lands at fixed $C420
+DISARM      LDA   #MAGIC
+            STA   ROMDIS          ; disarm $C800 (runs from always-live slot ROM)
+            RTS                   ; back to BASIC
