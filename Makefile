@@ -184,7 +184,7 @@ ifneq ($(wildcard $(OBSCURUS_MON_SRC)),)
 $(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
 	@echo "=== Assembling project_obscurus monitor ROM (Merlin32) ==="
 	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) monitor.S
-	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048 0x60
 endif
 
 # Force project_obscurus to depend on its slot ROM and monitor ROM
