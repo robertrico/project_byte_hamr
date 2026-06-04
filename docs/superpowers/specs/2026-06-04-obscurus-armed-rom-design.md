@@ -104,6 +104,37 @@ The card is thus usable two independent ways: **unarmed** (BRUN `SDMTEST`, or an
 user program via `SDRAMLIB` — SDRAM only, never touches the shared bus), and
 **armed** (`PR#4` monitor — `$C800` live only for that session).
 
+## 3b. Software contract & timing
+
+**Arming is ONLY for running `$C800` ROM code. Moving data never arms.**
+
+- **SDRAM data access** (`SDM_READ`/`SDM_WRITE`/bank switch, and any user code via
+  the register port) uses `$C0C0–$C0C6` exclusively. It does **not** arm, must
+  **not** arm, and is always safe — arming it would needlessly drive the shared
+  `$C800` bus during the access. The data path is unchanged from the bench-proven
+  register-port design.
+- **`$C800` ROM use** (today: the `PR#4` monitor; future: any ROM-resident
+  routine) follows: **arm → run the ROM code → disarm**. Keep the armed window as
+  small as the ROM call.
+
+**Timing (no settling delay needed):**
+- `rom_armed` commits ~2×25 MHz clk (~80 ns) after the write bus cycle — far
+  shorter than the ~1 µs to the 6502's next instruction. So `STA $C0C7` (arm)
+  immediately followed by `JMP $C800`/`$C800` read is safe; no `NOP`/dummy access.
+- Arm and disarm are each one `STA` (~4 cycles ≈ 4 µs); a one-time flip, not
+  per-byte. Once armed, `$C800` reads run at full bus speed.
+
+**Rules for an armed window:**
+1. Don't do disk I/O, `CATALOG`, or call other cards'/the //e's `$C800` firmware
+   while armed — that's the collision we're preventing.
+2. Interrupts: if an IRQ could touch `$C800` (mouse/clock/80-col firmware), wrap
+   the armed section in `SEI`/`CLI`, or keep it tiny. (Moot for the `PR#4`
+   monitor, which owns the machine.)
+3. `rom_en` (the Apple protocol latch) must also be set to actually drive `$C800`
+   — it sets on a `$C4xx`/`$Cn00` access and clears on `$CFFF`. `PR#4` sets it by
+   `JSR $C400`. Ad-hoc `$C800` use from user code must touch `$C400` first. (SDRAM
+   data access is unaffected — it never needs `rom_en`.)
+
 ## 4. Safety / recovery semantics
 
 - Power-on: `rom_armed = 0` → silent.
