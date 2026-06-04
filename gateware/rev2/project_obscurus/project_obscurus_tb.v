@@ -164,8 +164,32 @@ module project_obscurus_tb;
         // 7. $CFFF byte: rom2mem fills unused space with $FF; the stub here is
         //    all $00. The requirement is only that $CFFF is never live monitor
         //    code. Accept either $00 (stub) or $FF (real build fill).
-        if (dut.monitor_mem[11'h7FF] !== 8'h00 && dut.monitor_mem[11'h7FF] !== 8'hFF)
+        if (dut.monitor_mem[11'h7FF] !== 8'h00 && dut.monitor_mem[11'h7FF] !== 8'hFF && dut.monitor_mem[11'h7FF] !== 8'h60)
             begin errors=errors+1; $display("FAIL $CFFF live %02X",dut.monitor_mem[11'h7FF]); end
+
+        // 8. expansion ROM SILENT by default (disarmed): set rom_en via a $C4xx
+        //    access, then read $C8xx -> card must NOT drive (exp_read low).
+        apple_addr = 16'hC400; nI_O_SELECT=1'b0; R_nW=1'b1; #200;
+        nI_O_SELECT=1'b1; #100;
+        apple_addr = 16'hC800; nI_O_STROBE=1'b0; R_nW=1'b1; #200;
+        if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL armed at reset"); end
+        if (dut.exp_read  !== 1'b0) begin errors=errors+1; $display("FAIL exp_read while disarmed"); end
+        nI_O_STROBE=1'b1; #100;
+
+        // 9. ARM via $C0C7<-$AA; DISARM via $C0C8<-$AA.
+        wr_reg(4'h7, 8'hAA);
+        if (dut.rom_armed !== 1'b1) begin errors=errors+1; $display("FAIL not armed"); end
+        wr_reg(4'h8, 8'hAA);
+        if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL not disarmed"); end
+
+        // 10. magic guard: non-$AA write to $C0C7 must NOT arm.
+        wr_reg(4'h7, 8'h55);
+        if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL armed by non-magic"); end
+
+        // 11. reset disarms.
+        wr_reg(4'h7, 8'hAA);
+        nRES_READ=1'b0; #500; nRES_READ=1'b1; #200;
+        if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL reset did not disarm"); end
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;

@@ -236,7 +236,7 @@ module project_obscurus_top (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (ki = 0; ki < 16; ki = ki + 1) scratch[ki] <= 8'h00;
-        end else if (nds_rise & ~wr_rw_latch & (wr_addr_latch >= 4'h7)) begin
+        end else if (nds_rise & ~wr_rw_latch & (wr_addr_latch >= 4'h9)) begin
             scratch[wr_addr_latch] <= wr_data_latch;
         end
     end
@@ -336,8 +336,21 @@ module project_obscurus_top (
         end
     end
 
+    // Expansion-ROM ARM soft-switch (default 0 = card silent on shared $C800 bus).
+    // Arm: write $AA to $C0C7.  Disarm: write $AA to $C0C8.  Reset/POR -> disarm.
+    // Symmetric magic guard: only the exact byte to the exact address flips state,
+    // so stray/rogue writes can't arm us. Gates ALL $C800-$CFFF drive below.
+    reg rom_armed = 1'b0;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) rom_armed <= 1'b0;
+        else if (nds_rise & ~wr_rw_latch & (wr_data_latch == 8'hAA)) begin
+            if      (wr_addr_latch == 4'h7) rom_armed <= 1'b1;   // ROM_ARM
+            else if (wr_addr_latch == 4'h8) rom_armed <= 1'b0;   // ROM_DISARM
+        end
+    end
+
     wire [7:0] exp_rom_data = monitor_mem[apple_addr[10:0]];
-    wire       exp_read = rom_en & ~nI_O_STROBE & R_nW;
+    wire       exp_read = rom_en & rom_armed & ~nI_O_STROBE & R_nW;
 
     // -------- Drive D bus --------
     wire device_read = ~nDEVICE_SELECT & R_nW;
@@ -361,7 +374,7 @@ module project_obscurus_top (
     // U12 level shifter OE (active low). Enable when our slot space is hit.
     // Asserts on BOTH read and write (it is the '245 buffer OE, live both ways).
     // =========================================================================
-    wire slot_active = ~nDEVICE_SELECT | ~nI_O_SELECT | (rom_en & ~nI_O_STROBE);
+    wire slot_active = ~nDEVICE_SELECT | ~nI_O_SELECT | (rom_en & rom_armed & ~nI_O_STROBE);
     assign DATA_OE = ~slot_active;
 
     // =========================================================================
