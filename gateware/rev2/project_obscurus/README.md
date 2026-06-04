@@ -19,9 +19,10 @@ read/write per request with a free-running, priority refresh. From the Apple II:
 PR#4
 ```
 
-does `JSR $C400`. The `$C400` stub restores the BASIC output vector
-(`CSW = $FDF0` / COUT1) so screen output works, then `JMP $C800` into the
-monitor. The monitor prints a banner + `*` prompt and accepts commands:
+does `JSR $C400`. The `$C400` stub **arms the `$C800` expansion ROM** (writes
+`$AA` to `$C0C7`), restores the BASIC output vector (`CSW = $FDF0` / COUT1) so
+screen output works, then `JMP $C800` into the monitor. The monitor prints a
+banner + `*` prompt and accepts commands:
 
 | Command       | Action                                            |
 | ------------- | ------------------------------------------------- |
@@ -29,10 +30,35 @@ monitor. The monitor prints a banner + `*` prompt and accepts commands:
 | `W aaaa bb`   | Write byte `bb` to offset `aaaa` in current bank  |
 | `B bbb`       | Set bank (`$000`–`$3FF`)                          |
 | `D aaaa`      | Dump 16 bytes from `aaaa` (hex + ASCII)           |
-| `Q`           | Return to BASIC (`RTS` over PR#'s return address) |
+| `T`           | Run the 1024-bank sweep; prints `TEST PASS`/`nnnn TEST FAIL` |
+| `Q`           | Disarm `$C800` and return to BASIC                |
 
-All numbers are hex. `Q` relies on the stack staying balanced across the
-session (handlers `JMP` back to the prompt; helpers are `JSR`/`RTS`).
+All numbers are hex. `Q` jumps to a `DISARM` routine at `$C420` in the always-live
+slot ROM, which writes `$AA` to `$C0C8` and `RTS`es to BASIC.
+
+## Expansion ROM arming (the `$C800` bus-contention fix)
+
+`$C800–$CFFF` is a **shared** Apple expansion-ROM bus. The card is **silent**
+there by default — it only drives it when software arms it:
+
+- **Arm:** write `$AA` to `$C0C7`. **Disarm:** write `$AA` to `$C0C8`. Any other
+  value is ignored (symmetric magic guard).
+- **Reset / Ctrl-Reset / POR auto-disarm** — a crash recovers to silent.
+- The card drives `$C800–$CFFF` only when `rom_en & rom_armed`. With `rom_armed=0`
+  by default, **CATALOG, file copies, and disk I/O never collide** with the //e
+  internal ROM or other cards (this was the `$CEF3`-crash bug).
+- Unused expansion ROM (`$CA08–$CFFE`) is filled with `$60` (RTS), so a stray
+  fetch returns harmlessly.
+
+**Software contract:**
+- **SDRAM data access (`$C0C0–$C0C6`) never arms** — it's slot-gated and always
+  safe. `SDMTEST`/`SDRAMLIB` use only this path.
+- **Arm only to run `$C800` ROM code** (`arm → run → disarm`). Keep the window
+  short; don't do disk I/O or call other `$C800` firmware while armed (`SEI` if an
+  IRQ could touch `$C800`). `rom_en` must also be set (a `$C4xx` access) to drive
+  `$C800` — `PR#4` does this via `JSR $C400`.
+- Timing: `rom_armed` settles in ~80 ns (≪ one 6502 instruction) — no delay needed
+  after `STA $C0C7`. `SDRAMLIB` provides `SDM_ROMON`/`SDM_ROMOFF` helpers.
 
 ## Memory model
 
@@ -55,7 +81,9 @@ session (handlers `JMP` back to the prompt; helpers are `JSR`/`RTS`).
 | `$C0C5`       | R   | STATUS    | **bit7 = busy**, **bit6 = ready**; others 0       |
 | `$C0C6`       | W   | DATA      | Write → SDRAM write at `{bank,addr}`              |
 | `$C0C6`       | R   | DATA      | Read → last SDRAM read result (RD_HOLD)           |
-| `$C0C7-$C0CF` | R/W | SCRATCH   | Loopback registers                                |
+| `$C0C7`       | W   | ROM_ARM   | Write `$AA` → arm `$C800` ROM (other values ignored) |
+| `$C0C8`       | W   | ROM_DISARM| Write `$AA` → disarm `$C800` ROM                  |
+| `$C0C9-$C0CF` | R/W | SCRATCH   | Loopback registers                                |
 | `$C400-$C4FF` | R   | slot ROM  | `$C400` stub (`slot_rom.S`)                        |
 | `$C800-$CFFF` | R   | exp ROM   | monitor program (`monitor.S`); `$CFFF` unused     |
 
@@ -111,11 +139,21 @@ To program flash (only when you intend to flash):
 
 ## Bench verification checklist
 
-1. `PR#4` → monitor banner + `*` prompt.
-2. `W 0000 AA`, then `R 0000` → `0000: AA`.
-3. `B 1`, `R 0000` → value ≠ `AA` (bank isolation); `B 0`, `R 0000` → `AA`.
-4. `D 0000` → 16-byte hex + ASCII dump, first byte `AA`.
-5. `Q` → returns to BASIC `]` prompt.
+**The regression that motivated the arm switch (do this first):**
+1. Card installed, **without** `PR#4`: `CATALOG`, then **copy a file** (CopyUtils)
+   → no crash, no `$CEF3`, disks intact. (The card is disarmed = silent on `$C800`.)
+
+**Monitor + test:**
+2. `PR#4` → monitor banner + `*` prompt.
+3. `W 0000 AA`, then `R 0000` → `0000: AA`.
+4. `B 1`, `R 0000` → value ≠ `AA` (bank isolation); `B 0`, `R 0000` → `AA`.
+5. `D 0000` → 16-byte hex + ASCII dump, first byte `AA`.
+6. `T` → `TEST PASS`.
+7. `Q` → returns to BASIC `]` prompt.
+8. After `Q`: `CATALOG` / copy a file again → still clean (card re-disarmed).
+9. Ctrl-Reset mid-monitor → back to BASIC, card silent, disks fine.
+
+Capture via the `obs-screenshot` skill.
 
 ## Why "obscurus"
 
