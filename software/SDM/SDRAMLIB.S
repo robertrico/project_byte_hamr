@@ -33,6 +33,8 @@ R_BNKHI   =     SDMBASE+3
 R_TRIG    =     SDMBASE+4
 R_STAT    =     SDMBASE+5
 R_DATA    =     SDMBASE+6
+R_ARM     =     SDMBASE+7         ; $C0C7 — write $AA to arm $C800 ROM
+R_DISARM  =     SDMBASE+8         ; $C0C8 — write $AA to disarm
 
 SDM_BANK  DS    2
 SDM_ADDR  DS    2
@@ -95,4 +97,14 @@ SDM_RDNEXT
           JSR   SDM_POLL
           LDA   R_DATA
           STA   SDM_VAL
+          RTS
+
+* ---- $C800 expansion-ROM arm/disarm. ONLY needed to run ROM-resident code;
+*      SDRAM data access (SDM_READ/WRITE/etc.) NEVER needs this. ----
+SDM_ROMON LDA   #$AA
+          STA   R_ARM
+          RTS
+SDM_ROMOFF
+          LDA   #$AA
+          STA   R_DISARM
           RTS
