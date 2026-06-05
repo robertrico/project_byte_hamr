@@ -466,22 +466,29 @@ SDM_DIR  := software/SDM
 sdmtest:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) SDMTEST.S
 
-# Build a bootable ProDOS floppy with SDMTEST (BIN) + SDRAMLIB (TXT source).
-# Starts from the bootable 2.4.1 base (has PRODOS + BASIC.SYSTEM), frees space
-# by deleting unused bulk files, then imports our two files.
-SDM_PO   := $(SDM_DIR)/SDMTEST.po
+# Build a bootable /SDRAM/ floppy with SDMTEST (BIN) + SDRAMLIB.S (TXT source).
+# FRESH volume (NOT cp-base + delete-bulk): deleting big base files then
+# re-importing reused freed blocks -> ProDOS read I/O errors / cross-links on the
+# Apple (e.g. SDRAMLIB.S's first data block landing on a freed COPYIIPLUS block).
+# A fresh -pro140 volume allocates our files contiguously = clean. Boot blocks +
+# PRODOS + BASIC.SYSTEM are copied from the base so it still boots to ].
+# AC_CLASSIC = the classic AppleCommander interface (-pro140/-p/-g); $(AC) = acx
+# (used only for the TXT import --aux 0, which makes a sequential L=0 text file;
+# classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
+SDM_PO     := $(SDM_DIR)/SDMTEST.po
+AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
 sdmdisk: sdmtest
-	cp $(PRODOS_SRC) $(SDM_PO)
-	-$(AC) rm -f -d $(SDM_PO) COPYIIPLUS.7.2
-	-$(AC) rm -f -d $(SDM_PO) ADTPRO
-	-$(AC) rm -f -d $(SDM_PO) ADTPRO.BIN
-	-$(AC) rm -f -d $(SDM_PO) BITSY.BOOT
-	-$(AC) rm -f -d $(SDM_PO) QUIT.SYSTEM
-	$(AC) import -d $(SDM_PO) -f --raw -t BIN -a 0x2000 -n SDMTEST $(SDM_DIR)/SDMTEST
+	rm -f $(SDM_PO)
+	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
+	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
+	$(AC_CLASSIC) -g $(PRODOS_SRC) PRODOS > /tmp/sdm_prodos.sys
+	$(AC_CLASSIC) -p $(SDM_PO) PRODOS SYS 0x2000 < /tmp/sdm_prodos.sys
+	$(AC_CLASSIC) -g $(PRODOS_SRC) BASIC.SYSTEM > /tmp/sdm_basic.sys
+	$(AC_CLASSIC) -p $(SDM_PO) BASIC.SYSTEM SYS 0x2000 < /tmp/sdm_basic.sys
+	$(AC_CLASSIC) -p $(SDM_PO) SDMTEST BIN 0x2000 < $(SDM_DIR)/SDMTEST
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
-	$(AC) rename-disk -d $(SDM_PO) SDRAM
 	$(AC) list -d $(SDM_PO)
-	@echo "Disk ready: $(SDM_PO) — copy to ADTPro disks and send to floppy."
+	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
 
 # =============================================================================
 # Apple II Disk Utilities
