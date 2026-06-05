@@ -1,5 +1,5 @@
 * =============================================================================
-* SDRAMLIB.S — project_obscurus SDRAM register-port driver (Merlin32)
+* SDRAMLIB.S - project_obscurus SDRAM register-port driver (Merlin32)
 * =============================================================================
 * PUT-include library. NO ORG, NO zero page, NO PR#4 / $C800 / $C400 ROM.
 * All access is plain absolute STA/LDA to $C0Cx (single nDEVICE_SELECT pulse;
@@ -24,87 +24,87 @@
 * Slot configurable by the single SLOT equate.
 * =============================================================================
 
-SLOT      =     4
-SDMBASE   =     $C080+SLOT*16     ; $C0C0
-R_ADRLO   =     SDMBASE+0
-R_ADRHI   =     SDMBASE+1
-R_BNKLO   =     SDMBASE+2
-R_BNKHI   =     SDMBASE+3
-R_TRIG    =     SDMBASE+4
-R_STAT    =     SDMBASE+5
-R_DATA    =     SDMBASE+6
-R_ARM     =     SDMBASE+7         ; $C0C7 — write $AA to arm $C800 ROM
-R_DISARM  =     SDMBASE+8         ; $C0C8 — write $AA to disarm
+SLOT	=	4
+SDMBASE	=	$C080+SLOT*16	; $C0C0
+R_ADRLO	=	SDMBASE+0
+R_ADRHI	=	SDMBASE+1
+R_BNKLO	=	SDMBASE+2
+R_BNKHI	=	SDMBASE+3
+R_TRIG	=	SDMBASE+4
+R_STAT	=	SDMBASE+5
+R_DATA	=	SDMBASE+6
+R_ARM	=	SDMBASE+7	; $C0C7 - write $AA to arm $C800 ROM
+R_DISARM	=	SDMBASE+8	; $C0C8 - write $AA to disarm
 
-SDM_BANK  DS    2
-SDM_ADDR  DS    2
-SDM_VAL   DS    1
+SDM_BANK	DS	2
+SDM_ADDR	DS	2
+SDM_VAL	DS	1
 
 * ---- bounded ready wait: C=0 ready, C=1 timeout (~65536 polls) ----
-SDM_READY LDX   #0
-          LDY   #0
-:lp       BIT   R_STAT
-          BVS   :rdy            ; bit6 (ready) -> V set
-          INY
-          BNE   :lp
-          INX
-          BNE   :lp
-          SEC                   ; timed out
-          RTS
-:rdy      CLC
-          RTS
+SDM_READY LDX	#0
+	LDY	#0
+:lp	BIT	R_STAT
+	BVS	:rdy	; bit6 (ready) -> V set
+	INY
+	BNE	:lp
+	INX
+	BNE	:lp
+	SEC	; timed out
+	RTS
+:rdy	CLC
+	RTS
 
 SDM_SETBANK
-          LDA   SDM_BANK
-          STA   R_BNKLO
-          LDA   SDM_BANK+1
-          STA   R_BNKHI
-          RTS
+	LDA	SDM_BANK
+	STA	R_BNKLO
+	LDA	SDM_BANK+1
+	STA	R_BNKHI
+	RTS
 
 SDM_SETADDR
-          LDA   SDM_ADDR
-          STA   R_ADRLO
-          LDA   SDM_ADDR+1
-          STA   R_ADRHI
-          RTS
+	LDA	SDM_ADDR
+	STA	R_ADRLO
+	LDA	SDM_ADDR+1
+	STA	R_ADRHI
+	RTS
 
 * ---- wait busy clear (bit7). ops always complete; no timeout ----
-SDM_POLL  LDA   R_STAT
-          BMI   SDM_POLL        ; bit7 (busy) -> N set -> loop
-          RTS
+SDM_POLL	LDA	R_STAT
+	BMI	SDM_POLL	; bit7 (busy) -> N set -> loop
+	RTS
 
-SDM_WRITE JSR   SDM_SETBANK
-          JSR   SDM_SETADDR
-          LDA   SDM_VAL
-          STA   R_DATA          ; latch + trigger write
-          JMP   SDM_POLL        ; tail call (RTS from POLL)
+SDM_WRITE JSR	SDM_SETBANK
+	JSR	SDM_SETADDR
+	LDA	SDM_VAL
+	STA	R_DATA	; latch + trigger write
+	JMP	SDM_POLL	; tail call (RTS from POLL)
 
-SDM_READ  JSR   SDM_SETBANK
-          JSR   SDM_SETADDR
-          STA   R_TRIG          ; any write triggers a read (value ignored)
-          JSR   SDM_POLL
-          LDA   R_DATA
-          STA   SDM_VAL
-          RTS
+SDM_READ	JSR	SDM_SETBANK
+	JSR	SDM_SETADDR
+	STA	R_TRIG	; any write triggers a read (value ignored)
+	JSR	SDM_POLL
+	LDA	R_DATA
+	STA	SDM_VAL
+	RTS
 
 SDM_WRNEXT
-          LDA   SDM_VAL
-          STA   R_DATA
-          JMP   SDM_POLL
+	LDA	SDM_VAL
+	STA	R_DATA
+	JMP	SDM_POLL
 
 SDM_RDNEXT
-          STA   R_TRIG
-          JSR   SDM_POLL
-          LDA   R_DATA
-          STA   SDM_VAL
-          RTS
+	STA	R_TRIG
+	JSR	SDM_POLL
+	LDA	R_DATA
+	STA	SDM_VAL
+	RTS
 
 * ---- $C800 expansion-ROM arm/disarm. ONLY needed to run ROM-resident code;
 *      SDRAM data access (SDM_READ/WRITE/etc.) NEVER needs this. ----
-SDM_ROMON LDA   #$AA
-          STA   R_ARM
-          RTS
+SDM_ROMON LDA	#$AA
+	STA	R_ARM
+	RTS
 SDM_ROMOFF
-          LDA   #$AA
-          STA   R_DISARM
-          RTS
+	LDA	#$AA
+	STA	R_DISARM
+	RTS
