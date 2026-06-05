@@ -25,7 +25,7 @@
 * =============================================================================
 
 SLOT = 4
-SDMBASE = $C080+SLOT*16 ; $C0C0
+SDMBASE = SLOT*16+$C080 ; $C0C0 MERLIN EVALS LEFT-TO-RIGHT NO PRECEDENCE
 R_ADRLO = SDMBASE+0
 R_ADRHI = SDMBASE+1
 R_BNKLO = SDMBASE+2
