@@ -159,6 +159,18 @@ $E003  SDATA      write -> post SDRAM write {SBANK,SADDR}=data; RDY-stall till d
 A task sets `SADDR/SBANK` then `STA SDATA` to write a result anywhere in SDRAM (so two
 tasks write distinct cells). RDY-stall + single-post handshake as C0's `$E000`.
 
+**Build-it-exactly (Arlet `WE` is held HIGH for the whole stall).** Arlet's `WE` is
+`always @*` off state, **not gated by `RDY`** — when the coproc drops `rdy<=0` on a
+`STA SDATA`, Arlet freezes in the WRITE state with `WE=1` held for the entire stall. So:
+- **Address/bank latches** capture on `is_e000/1/2 & WE & rdy` — the `& rdy` is mandatory:
+  without it, a held `WE` re-latches `SADDR/SBANK` every stall cycle of a *later* post.
+- **`$E003` post** transitions state on the first `is_e003 & WE` (in the RUN state, where
+  `rdy==1`) → drop `rdy`, post exactly one SDRAM op, WAIT for done, then `rdy<=1`. The
+  state transition (not just `WE`) is what guarantees a single post despite held `WE`.
+- This is the same reason C0 gates its BRAM write `& rdy` and leaves `ST_RUN` on first
+  detect. The **port-A protection gate also keeps `& rdy`** (its `WE & in_bram & rdy &
+  ...`) so a held `WE` during a stall can't re-fire it.
+
 ## Kernel firmware (`kernel.S`, Merlin, baked into the protected region)
 
 ```
@@ -277,6 +289,17 @@ host: monitor R <cell> -> the task's result
   host verify (and detect a mis-aimed load).
 - **Arlet sync memory:** port A keeps the registered 1-cycle DI path from C0 (Arlet
   expects `DI[n]=mem[AB[n-1]]`); the dual-port array must preserve that timing.
+- **Re-dispatch / write storm:** `MAINLOOP` re-runs every registered task every pass,
+  forever. C1's tasks write a **constant** ($99/$77), so the host reads the same value
+  regardless of timing — proof holds. **C2 must add run-once / yield** (a task writing
+  varying data would be re-run continuously, and a host read could catch a cell
+  mid-update). Out of scope for C1; noted so C2 doesn't inherit a silent storm.
+- **Full vs minimum protection (deliberate):** the port-A gate blocks the TABLE
+  (`$0200–$02FF`) in addition to the kernel (`$1000+`) — one extra comparator term. Kept
+  (not minimized to kernel-only) because a **buggy** task with a wild `STA` into
+  `$0200–$02FF` would silently repoint dispatch and derail the kernel; the term costs
+  nothing legitimate (tasks never write the TABLE). Claim, mechanism, and the proof tests
+  ($1000 + $0200 + $E010) are all at this level — no claim > mechanism.
 - **Reset/POR + SDRAM ready:** keep C0's gate — the coproc must not issue SDRAM writes
   until `sdram_ctrl.ready` (the ST_BOOT lesson); a task's first `STA SDATA` stalls on
   RDY until the controller is live.
