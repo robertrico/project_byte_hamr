@@ -34,12 +34,36 @@ module coproc #(
     reg         rdy;
 
     cpu u_cpu (.clk(clk), .reset(~rst_n), .AB(AB), .DI(DI), .DO(DO), .WE(WE),
-               .IRQ(1'b0), .NMI(1'b0), .RDY(rdy));
+               // Arlet IRQ is ACTIVE-HIGH: core requests on (~I & IRQ), so feed
+               // irq_pending directly (no inversion).
+               .IRQ(irq_pending), .NMI(1'b0), .RDY(rdy));
 
     reg [7:0] task_count;
     always @(posedge clk or negedge rst_n)
         if (!rst_n)        task_count <= 8'd0;
         else if (count_wr) task_count <= count_in;
+
+    // ---- C3 preemptive tick timer ----
+    wire is_e012 = (AB==16'hE012);   // TICK_CTL: write period (0=disarm); resets cnt + clears pending
+    wire is_e013 = (AB==16'hE013);   // TICK_ACK: write clears pending
+    reg  [7:0]  tick_period;
+    reg  [15:0] tick_cnt;
+    reg         irq_pending;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            tick_period <= 8'd0; tick_cnt <= 16'd0; irq_pending <= 1'b0;
+        end else begin
+            if (is_e012 & WE & rdy) begin          // arm/disarm: reset counter + clear pending
+                tick_period <= DO; tick_cnt <= 16'd0; irq_pending <= 1'b0;
+            end else if (is_e013 & WE & rdy) begin  // ack
+                irq_pending <= 1'b0;
+            end else if (tick_period != 8'd0) begin
+                if (tick_cnt >= {tick_period, 8'h00}) begin
+                    tick_cnt <= 16'd0; irq_pending <= 1'b1;
+                end else tick_cnt <= tick_cnt + 16'd1;
+            end
+        end
+    end
 
     // 8KB resident-kernel BRAM. ECP5 DP16KD has exactly TWO ports, but this
     // yosys (oss-cad-suite) will NOT infer DP16KD for a memory with TWO write
