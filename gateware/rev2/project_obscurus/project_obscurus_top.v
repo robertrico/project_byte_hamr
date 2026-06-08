@@ -251,19 +251,39 @@ module project_obscurus_top (
     reg        m_busy = 1'b0;      // STATUS bit7 — latched at strobe
     reg        m_req = 1'b0;       // 1-cycle pulse to sdram_ctrl
 
-    assign sdram_req       = m_req;
-    assign sdram_we        = m_we;
-    assign sdram_phys_addr = {m_bank, m_addr};
-    assign sdram_wdata     = m_wdata;
+    // ---- monitor is arbiter client c0 (priority); coproc is c1 ----
+    wire        mon_busy;
+    wire [7:0]  mon_rdata;
+    wire        cop_req, cop_we;
+    wire [25:0] cop_addr;
+    wire [7:0]  cop_wdata;
+    wire        cop_busy;
+    wire [7:0]  cop_rdata;
+
+    sdram_arb u_arb (
+        .clk(clk), .rst_n(rst_n),
+        .req(sdram_req), .we(sdram_we), .phys_addr(sdram_phys_addr),
+        .wdata(sdram_wdata), .rdata(sdram_rdata), .busy(sdram_busy),
+        .c0_req(m_req), .c0_we(m_we), .c0_addr({m_bank, m_addr}),
+        .c0_wdata(m_wdata), .c0_busy(mon_busy), .c0_rdata(mon_rdata),
+        .c1_req(cop_req), .c1_we(cop_we), .c1_addr(cop_addr),
+        .c1_wdata(cop_wdata), .c1_busy(cop_busy), .c1_rdata(cop_rdata)
+    );
+
+    coproc u_coproc (
+        .clk(clk), .rst_n(rst_n),
+        .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
+        .busy(cop_busy), .rdata(cop_rdata)
+    );
 
     wire reg_wr = nds_rise & ~wr_rw_latch;   // register write commit
     // STATUS register read commit ($C0C5)
     wire status_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'h5);
 
-    // busy falling edge from controller = op complete -> auto-increment
-    reg sdram_busy_d;
-    always @(posedge clk) sdram_busy_d <= sdram_busy;
-    wire op_done = sdram_busy_d & ~sdram_busy;
+    // busy falling edge for the MONITOR's own op (via arbiter c0) = op complete
+    reg mon_busy_d;
+    always @(posedge clk) mon_busy_d <= mon_busy;
+    wire op_done = mon_busy_d & ~mon_busy;
 
     // op_complete: set when the controller finishes the access, cleared when the
     // 6502 reads STATUS. m_busy stays asserted (sticky) from the strobe until the
@@ -313,7 +333,7 @@ module project_obscurus_top (
     always @(*) begin
         case (apple_addr[3:0])
             4'h5: reg_data_out = status_byte;   // STATUS
-            4'h6: reg_data_out = sdram_rdata;   // DATA
+            4'h6: reg_data_out = mon_rdata;     // DATA (monitor's latched read)
             default: reg_data_out = scratch[apple_addr[3:0]];
         endcase
     end
