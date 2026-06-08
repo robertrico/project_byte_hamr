@@ -18,7 +18,12 @@
 //   $C0C5    R   STATUS       bit7=busy, bit6=ready
 //   $C0C6    W   DATA         write -> SDRAM write at {bank,addr}
 //            R   DATA         read  -> last SDRAM read result
-//   $C0C7-$C0CF  SCRATCH      R/W loopback registers
+//   $C0C9    W   CP_LADDR_LO  low byte of coproc BRAM load address
+//   $C0CA    W   CP_LADDR_HI  high 5 bits of 13-bit load address
+//   $C0CB    W   CP_WDATA     write -> coproc BRAM[laddr], laddr++
+//   $C0CC    R   CP_RDATA     read  -> coproc BRAM[laddr], laddr++
+//   $C0CD    W   CP_COUNT     write -> coproc task count
+//   $C0CE-$C0CF  SCRATCH      R/W loopback registers
 //
 // addr auto-increments on completion of each SDRAM read/write (busy falling
 // edge from the controller). busy is sticky from the access strobe until the
@@ -236,7 +241,7 @@ module project_obscurus_top (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (ki = 0; ki < 16; ki = ki + 1) scratch[ki] <= 8'h00;
-        end else if (nds_rise & ~wr_rw_latch & (wr_addr_latch >= 4'h9)) begin
+        end else if (nds_rise & ~wr_rw_latch & (wr_addr_latch >= 4'hE)) begin
             scratch[wr_addr_latch] <= wr_data_latch;
         end
     end
@@ -273,12 +278,32 @@ module project_obscurus_top (
     coproc u_coproc (
         .clk(clk), .rst_n(rst_n), .ready(ready),
         .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
-        .busy(cop_busy), .rdata(cop_rdata)
+        .busy(cop_busy), .rdata(cop_rdata),
+        .laddr(m_laddr), .ldata_in(wr_data_latch), .lwr(cp_wdata_wr),
+        .ldata_out(cp_ldata_out),
+        .count_in(wr_data_latch), .count_wr(cp_count_wr)
     );
 
     wire reg_wr = nds_rise & ~wr_rw_latch;   // register write commit
     // STATUS register read commit ($C0C5)
     wire status_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'h5);
+
+    // ---- C1 coproc load port ($C0C9-CD) ----
+    reg  [12:0] m_laddr = 13'd0;
+    wire        cp_wdata_wr = reg_wr & (wr_addr_latch == 4'hB);   // CP_WDATA write
+    wire        cp_rdata_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'hC); // CP_RDATA read
+    wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
+    wire [7:0]  cp_ldata_out;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) m_laddr <= 13'd0;
+        else begin
+            if (reg_wr & (wr_addr_latch == 4'h9)) m_laddr[7:0]  <= wr_data_latch;       // CP_LADDR_LO
+            if (reg_wr & (wr_addr_latch == 4'hA)) m_laddr[12:8] <= wr_data_latch[4:0];  // CP_LADDR_HI
+            if (cp_wdata_wr) m_laddr <= m_laddr + 1'b1;   // write-autoinc
+            if (cp_rdata_rd) m_laddr <= m_laddr + 1'b1;   // read-autoinc (separate addr)
+        end
+    end
 
     // busy falling edge for the MONITOR's own op (via arbiter c0) = op complete
     reg mon_busy_d;
@@ -334,6 +359,7 @@ module project_obscurus_top (
         case (apple_addr[3:0])
             4'h5: reg_data_out = status_byte;   // STATUS
             4'h6: reg_data_out = mon_rdata;     // DATA (monitor's latched read)
+            4'hC: reg_data_out = cp_ldata_out;  // CP_RDATA (coproc BRAM read-back)
             default: reg_data_out = scratch[apple_addr[3:0]];
         endcase
     end
