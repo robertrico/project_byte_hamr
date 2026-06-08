@@ -6,7 +6,8 @@ module coproc_tb;
     reg  [7:0]  rdata=0; reg busy=0;
     integer errors=0;
 
-    coproc dut(.clk(clk), .rst_n(rst_n),
+    reg ready=0;   // coproc holds in ST_BOOT until SDRAM init reports ready
+    coproc dut(.clk(clk), .rst_n(rst_n), .ready(ready),
         .req(req), .we(we), .phys_addr(phys_addr), .wdata(wdata),
         .busy(busy), .rdata(rdata));
 
@@ -24,6 +25,7 @@ module coproc_tb;
     integer g;
     initial begin
         rst_n=0; #50; rst_n=1;
+        #50; ready=1;          // release the boot gate
         g=0;
         while (!captured && g<5000) begin @(posedge clk); g=g+1; end
         if (!captured) begin errors=errors+1; $display("FAIL coproc never posted"); end

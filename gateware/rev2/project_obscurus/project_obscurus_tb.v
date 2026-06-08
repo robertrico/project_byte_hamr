@@ -191,6 +191,27 @@ module project_obscurus_tb;
         nRES_READ=1'b0; #500; nRES_READ=1'b1; #200;
         if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL reset did not disarm"); end
 
+        // --- C0: the coproc ran on its own and wrote bank0/$0040 = $42 ---
+        // Check 11 above pulsed nRES_READ low, which re-inits the SDRAM
+        // controller (back to ST_INIT). Re-wait for `ready` so both the coproc
+        // (held in ST_BOOT until ready) and the monitor port operate against a
+        // live controller. The coproc then re-runs LDA/STA and re-posts the
+        // bank0/$0040 = $42 write a few hundred ns after ready; by the time the
+        // sdram_read below issues, that write has completed.
+        wait (dut.ready);
+        // (coproc posts the write shortly after reset; by now it has completed.)
+        sdram_read(10'd0, 16'h0040, tmp);
+        if (tmp!==8'h42) begin errors=errors+1; $display("FAIL C0 coproc write got %02X want 42",tmp); end
+        else $display("PASS C0 coproc wrote 42 to bank0/$40");
+        // monitor regression: host write/read elsewhere still works with arbiter
+        // in front. Use bank1 (the sdram_model holds banks 0-1 = 64K words; bank2+
+        // is outside the model and would always read 00) at an address untouched
+        // by the coproc, to prove an independent c0 op round-trips post-arbiter.
+        sdram_write(10'd1, 16'h00AB, 8'h99);
+        sdram_read (10'd1, 16'h00AB, tmp);
+        if (tmp!==8'h99) begin errors=errors+1; $display("FAIL monitor regress %02X",tmp); end
+        else $display("PASS monitor regress");
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end

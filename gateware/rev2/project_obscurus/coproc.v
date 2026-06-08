@@ -22,6 +22,7 @@
 module coproc (
     input  wire        clk,
     input  wire        rst_n,
+    input  wire        ready,         // SDRAM init complete — gate core start
     output reg         req,
     output reg         we,
     output reg  [25:0] phys_addr,
@@ -71,16 +72,27 @@ module coproc (
     always @(posedge clk) busy_d <= busy;
     wire done = busy_d & ~busy;
 
-    localparam ST_RUN=1'b0, ST_WAIT=1'b1;
-    reg state;
+    // ST_BOOT: hold the core frozen (rdy=0) out of reset until SDRAM `ready`.
+    // Without this the Arlet core executes STA $E000 within ~10 cycles of reset
+    // — long before the controller's ~200us init completes. The arbiter would
+    // accept that early request and commit `servicing`, but sdram_ctrl gates
+    // accept on `ready` and silently drops it, so the controller never raises
+    // busy and the arbiter waits forever for an op_complete that never comes —
+    // a permanent deadlock that also starves the monitor (c0). Gating the core
+    // start on `ready` guarantees the write is issued into a live controller.
+    localparam ST_BOOT=2'd0, ST_RUN=2'd1, ST_WAIT=2'd2;
+    reg [1:0] state;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             req<=1'b0; we<=1'b0; phys_addr<=26'd0; wdata<=8'd0;
-            rdy<=1'b1; state<=ST_RUN;
+            rdy<=1'b0; state<=ST_BOOT;
         end else begin
             req <= 1'b0;
             case (state)
+                ST_BOOT: if (ready) begin
+                    rdy<=1'b1; state<=ST_RUN;     // release core once SDRAM live
+                end
                 ST_RUN: if (is_e000 & WE) begin
                     we<=1'b1; phys_addr<=26'h000_0040; wdata<=DO;
                     req<=1'b1; rdy<=1'b0; state<=ST_WAIT;
@@ -88,6 +100,7 @@ module coproc (
                 ST_WAIT: if (done) begin
                     rdy<=1'b1; state<=ST_RUN;
                 end
+                default: state<=ST_BOOT;
             endcase
         end
     end

@@ -271,7 +271,7 @@ module project_obscurus_top (
     );
 
     coproc u_coproc (
-        .clk(clk), .rst_n(rst_n),
+        .clk(clk), .rst_n(rst_n), .ready(ready),
         .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
         .busy(cop_busy), .rdata(cop_rdata)
     );
