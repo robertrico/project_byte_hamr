@@ -81,29 +81,41 @@ budget per task:** each `JSR YIELD` costs 2 bytes (return addr) + the task's own
 `$30` (48 B) is ample for a counter task but a task author must stay within `STACK_SIZE`
 (overflow corrupts the neighbor partition — cooperative-trust, noted below).
 
-**`YIELD`** (kernel routine, called `JSR YIELD` by a task):
+**`YIELD`** (`JSR YIELD` by a task) — SAVE current, pick next, fall into `RESTORE`:
 ```
-; SAVE current task — ORDER MATTERS:
-STA TMPA / STX TMPX / STY TMPY        ; save X to TMPX BEFORE the TSX below (TSX clobbers X)
-PHP / PLA / STA TMPP                   ; capture P
-TSX                                    ; X = SP (real X already saved in TMPX)
-LDY CUR_TASK                           ; Y = index into the TCB arrays
-TXA / STA TCB_SP,Y                     ; store SP, then TMPA/TMPX/TMPY/TMPP -> TCB_*,Y
-; pick next READY task round-robin from CUR_TASK+1 (wrap, skip DONE/EMPTY) -> CUR_TASK
-; RESTORE next task — restore Y (the index) LAST:
-LDY CUR_TASK / LDX TCB_SP,Y / TXS      ; switch to next task's stack
-LDA TCB_P,Y / PHA / PLP                ; P
-LDX TCB_X,Y / LDA TCB_A,Y              ; X, A
-LDA TCB_Y,Y / ... TAY  (restore Y last; the index Y is consumed only after all loads)
-RTS                                    ; resume next task at ITS last YIELD return
+; SAVE — stage everything through TMP* ZP (no register conflict):
+STA TMPA / STX TMPX / STY TMPY    ; save X to TMPX BEFORE TSX (TSX clobbers X)
+PHP / PLA / STA TMPP              ; capture P BEFORE any flag-affecting op
+TSX
+LDY CUR_TASK
+TXA / STA TCB_SP,Y               ; SP -> TCB; then TMPA/TMPX/TMPY/TMPP -> TCB_A/X/Y/P,Y
+; pick next READY round-robin from CUR_TASK+1 (wrap, skip DONE/EMPTY) -> CUR_TASK
+; fall through to RESTORE
 ```
-The switch happens mid-routine: `YIELD` enters on the old task's stack, the `TXS` swaps to
-the new task's stack, and the `RTS` returns into the new task. No separate scheduler stack.
-**Two ordering traps the plan must honor:** (1) save the task's `X` to a temp *before* `TSX`
-(which overwrites `X` with `SP`); (2) `Y` holds the TCB array index throughout, so restore
-the task's `Y` value **last**, after every `TCB_*,Y` load. Tie-break: equal budgets finish
-the same round; the order is then decided by the round-robin service order (lower task id
-goes first) — deterministic, not nondeterminism.
+**`RESTORE`** (ONE routine — called by `YIELD`, `DONE`'s switch-to-READY, and `BOOTSTRAP`'s
+first start; centralized so this subtle sequence lives ONCE and the three sites can't drift):
+```
+RESTORE:
+  LDY CUR_TASK
+  LDX TCB_SP,Y / TXS         ; switch to the next task's stack
+  LDA TCB_P,Y / PHA          ; stage P on the NEW stack  [.. P]
+  LDA TCB_A,Y / PHA          ; stage A on the NEW stack  [.. P A]
+  LDA TCB_Y,Y               ; A = task's Y
+  LDX TCB_X,Y               ; X restored (final TCB_*,Y read)
+  TAY                       ; Y restored (index retired)
+  PLA                       ; A restored (clobbers flags — fixed by next op)
+  PLP                       ; P restored — the LAST flag-affecting op before RTS
+  RTS                       ; resume the task (its YIELD return, or entry on bootstrap)
+```
+The switch happens mid-routine: `YIELD`/`RESTORE` enters on the old task's stack, `TXS`
+swaps to the new task's stack, `RTS` returns into it. No separate scheduler stack.
+**Why this exact order (the trap I must not get wrong):** TCB is ZP indexed by `Y`, so `Y`
+can't be restored until all `TCB_*,Y` reads finish — but the task's `A` and `P` must also
+survive that, so `A` and `P` are **staged on the task's own stack** (2 transient bytes,
+within `STACK_SIZE`) and pulled *after* `Y` is retired, with **`PLP` dead last** so the
+restored Z/N reach the task's `BNE`. "Restore Y last" alone is insufficient — it clobbers
+A and the flags. Tie-break: equal budgets finish the same round; order is then the
+round-robin service order (lower task id first) — deterministic.
 
 **Kernel top-level structure (COUNT-edge re-bootstrap — enables re-run/flip):** C2 is
 stateful (TCBs init once, tasks go DONE), so unlike C1's free-running re-dispatch it must
@@ -126,11 +138,12 @@ reloads `NPARAM`, writes `COUNT=2` → the kernel re-bootstraps with the new bud
 (read `$E011`, shift — see Multi-core); `ORDER=0`; for `id = 0..COUNT-1`: push `(entry-1)`
 (hi,lo) onto task `id`'s page-1 stack partition (so the first restore `RTS`es to `entry`),
 `TCB_SP[id]` = partition top - 2, `TCB_A/X/Y[id]=0`, `TCB_P[id]`=`$04` (I set), `STATE=READY`;
-for `id = COUNT..MAX_TASKS-1`: `STATE=EMPTY`. Then `CUR_TASK=0`, restore `TCB[0]`, `RTS` →
-task0. (The kernel writes each task's page-1 stack directly — `$0100-$01FF` is port-A-writable.)
+for `id = COUNT..MAX_TASKS-1`: `STATE=EMPTY`. Then `CUR_TASK=0`, **`JMP RESTORE`** → task0
+(the centralized resume — bootstrap's seeded `(entry-1)` makes `RESTORE`'s `RTS` land on
+`entry`). (The kernel writes each task's page-1 stack directly — `$0100-$01FF` is port-A-writable.)
 
 **`DONE`** (task calls `JSR DONE` when finished): `STATE[CUR_TASK]=DONE`; scan TCBs for any
-`READY` — if found, switch to it (round-robin); if none, `JMP KIDLE` (re-arm).
+`READY` — if found, set `CUR_TASK` and **`JMP RESTORE`**; if none, `JMP KIDLE` (re-arm).
 
 ### Firmware: the race task (one parameterized binary)
 A single task binary, parameterized by id so it scales to N racers:
@@ -161,10 +174,14 @@ swapped budgets to show the flip — all in one `BRUN`**:
    point at it — same code, per-task budget via `NPARAM`).
 2. Set `NPARAM[0]=10`, `NPARAM[1]=20` via the load port (kernel-ZP cells).
 3. TABLE entry0/entry1 → `$0300`; `COUNT=2` LAST (count-last) → kernel bootstraps + races.
-4. Wait, read SDRAM `RESULT_BASE+0` / `RESULT_BASE+1` → print (expect `01 02`).
-5. **Re-arm:** write `COUNT=0` (kernel → KWAIT0), set `NPARAM[0]=30`, `NPARAM[1]=20`,
-   write `COUNT=2` (the arm edge → re-bootstrap).
-6. Wait, read the result cells again → print (expect `02 01` — flipped).
+4. **Wait for completion** (ample spin — both tasks must reach DONE so the kernel parks in
+   `KWAIT0`), read SDRAM `RESULT_BASE+0` / `RESULT_BASE+1` → print (expect `01 02`). This
+   wait is **mandatory before re-arm** (see the re-arm-wait edge case — re-arming early
+   hangs the kernel).
+5. **Re-arm (only after step 4's completion):** write `COUNT=0` (kernel, parked in `KWAIT0`,
+   observes it), set `NPARAM[0]=30`, `NPARAM[1]=20`, write `COUNT=2` (the arm edge →
+   re-bootstrap).
+6. Wait for completion again, read the result cells → print (expect `02 01` — flipped).
 
 (SDRAM result cells need no pre-zeroing — each race writes both; but the host MAY zero them
 via the monitor port between runs for a clean read.)
@@ -210,6 +227,15 @@ host: read again -> RESULT_BASE+0 (=2), RESULT_BASE+1 (=1) -> task1 wins (orders
 - **Count-last (carried from C1):** all task code + NPARAM loaded while COUNT=0 (kernel
   idle, no BRAM writes), COUNT set last — avoids the single-write-port priority-mux
   collision. The host loader and tb both count-last.
+- **Re-arm wait is LOAD-BEARING (not politeness):** `COUNT` is a *level* the kernel polls
+  in `KWAIT0` (`BNE`=wait-for-0), not an edge. The host must **wait for the race to finish
+  (both result cells written → tasks DONE → kernel parked in `KWAIT0`) BEFORE** writing
+  `COUNT=0` then `COUNT=2`. If the host re-arms too early (tasks not yet DONE), the kernel
+  reaches `KWAIT0` only after `COUNT` is already 2, never observes the 0, and spins in
+  `KWAIT0` forever — a hang, not a wrong answer. The host's "read both result cells"
+  (which only become valid once both tasks `DONE`) is the completion signal; the loader
+  and tb MUST read/confirm both results before re-arming, and the spin between must be
+  ample (like C1's `:w1/:w2`). An impl must NOT trim this wait.
 - **ORDER atomicity:** the finish-order read-modify-write is done with no `YIELD` between
   read and write → atomic w.r.t. other tasks under cooperative scheduling.
 - **CORE_ID read-only:** like `$E010`, a task `STA $E011` is a no-op (gateware reg).
