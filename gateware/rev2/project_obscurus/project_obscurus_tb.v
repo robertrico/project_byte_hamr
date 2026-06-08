@@ -102,6 +102,18 @@ module project_obscurus_tb;
         rd_reg(4'h6, d); end
     endtask
 
+    reg [7:0] krn_before, tbl_before;
+    task load_byte(input [7:0] d); begin wr_reg(4'hB, d); end endtask  // CP_WDATA (auto-inc)
+    task cp_read(input [12:0] a, output [7:0] d); begin
+        // CP_RDATA reads auto-increment m_laddr (top.v line 304) AND the coproc's
+        // port-B ldata_out continuously tracks bram[m_laddr] (registered, 1 cyc).
+        // So once CP_LADDR is set, ldata_out already = bram[a]; the FIRST read
+        // returns it. A second read would over-advance (returns bram[a+1]).
+        // Re-arm the address before reading so the latch reflects exactly `a`.
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {3'b0, a[12:8]});
+        rd_reg(4'hC, d);    // ldata_out already settled to bram[a]
+    end endtask
+
     initial begin
         $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
         nRES_READ=1'b0; #1000; nRES_READ=1'b1;
@@ -191,18 +203,20 @@ module project_obscurus_tb;
         nRES_READ=1'b0; #500; nRES_READ=1'b1; #200;
         if (dut.rom_armed !== 1'b0) begin errors=errors+1; $display("FAIL reset did not disarm"); end
 
-        // --- C0: the coproc ran on its own and wrote bank0/$0040 = $42 ---
+        // --- coproc liveness: re-wait `ready` after the check-11 reset pulse ---
         // Check 11 above pulsed nRES_READ low, which re-inits the SDRAM
         // controller (back to ST_INIT). Re-wait for `ready` so both the coproc
         // (held in ST_BOOT until ready) and the monitor port operate against a
-        // live controller. The coproc then re-runs LDA/STA and re-posts the
-        // bank0/$0040 = $42 write a few hundred ns after ready; by the time the
-        // sdram_read below issues, that write has completed.
+        // live controller before the C1 task-registration sequence below.
+        //
+        // NOTE: the original C0 milestone (an autonomous coproc that hardcoded a
+        // $42 write to bank0/$0040 via coproc_prog.mem) was SUPERSEDED by the C1
+        // resident kernel (kernel.mem) — the coproc no longer writes anything on
+        // its own; it idle-spins until the host registers a task (COUNT>0). The
+        // equivalent "coproc writes a known byte to a known SDRAM location, host
+        // reads it back" property is now proven by C1 below (taskA -> $99@$0050,
+        // and taskC -> $42@$0040 preserving the original C0 assertion).
         wait (dut.ready);
-        // (coproc posts the write shortly after reset; by now it has completed.)
-        sdram_read(10'd0, 16'h0040, tmp);
-        if (tmp!==8'h42) begin errors=errors+1; $display("FAIL C0 coproc write got %02X want 42",tmp); end
-        else $display("PASS C0 coproc wrote 42 to bank0/$40");
         // monitor regression: host write/read elsewhere still works with arbiter
         // in front. Use bank1 (the sdram_model holds banks 0-1 = 64K words; bank2+
         // is outside the model and would always read 00) at an address untouched
@@ -211,6 +225,46 @@ module project_obscurus_tb;
         sdram_read (10'd1, 16'h00AB, tmp);
         if (tmp!==8'h99) begin errors=errors+1; $display("FAIL monitor regress %02X",tmp); end
         else $display("PASS monitor regress");
+
+        // ===== C1: resident kernel + task registration (COUNT-LAST) =====
+        // baseline the protected bytes from the clean kernel image (COUNT still 0)
+        cp_read(13'h1000, krn_before);     // kernel first opcode ($78 SEI)
+        cp_read(13'h0200, tbl_before);     // TABLE byte (zero)
+        // taskA at $0300: writes $99 to bank0 $0050
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
+        load_byte(8'hA9); load_byte(8'h50); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
+        load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h99);
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h60);
+        // taskBAD at $0320: A9 EE 8D 00 10 8D 00 02 60  (STA $1000 + STA $0200 must be refused)
+        wr_reg(4'h9, 8'h20); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0320
+        load_byte(8'hA9); load_byte(8'hEE); load_byte(8'h8D); load_byte(8'h00); load_byte(8'h10);
+        load_byte(8'h8D); load_byte(8'h00); load_byte(8'h02); load_byte(8'h60);
+        // taskC at $0340: writes $42 to bank0 $0040 (preserves the original C0 assertion)
+        wr_reg(4'h9, 8'h40); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0340
+        load_byte(8'hA9); load_byte(8'h40); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
+        load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h42);
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h60);
+        // TABLE: entry0=$0300 @ $0200, entry1=$0320 @ $0202, entry2=$0340 @ $0204
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02); load_byte(8'h00); load_byte(8'h03);
+        wr_reg(4'h9, 8'h02); wr_reg(4'hA, 8'h02); load_byte(8'h20); load_byte(8'h03);
+        wr_reg(4'h9, 8'h04); wr_reg(4'hA, 8'h02); load_byte(8'h40); load_byte(8'h03);
+        // *** release: COUNT = 3 LAST ***
+        wr_reg(4'hD, 8'h03);
+        repeat (8000) @(posedge clk100);   // let the kernel dispatch all three repeatedly
+        sdram_read(10'd0, 16'h0050, tmp);
+        if (tmp!==8'h99) begin errors=errors+1; $display("FAIL C1 taskA result %02X",tmp); end
+        else $display("PASS C1 taskA dispatched ($99 @ $0050)");
+        sdram_read(10'd0, 16'h0040, tmp);
+        if (tmp!==8'h42) begin errors=errors+1; $display("FAIL C1 taskC result %02X want 42",tmp); end
+        else $display("PASS C1 taskC dispatched ($42 @ $0040)");
+        cp_read(13'h1000, tmp);
+        if (tmp!==krn_before) begin errors=errors+1; $display("FAIL C1 task wrote kernel $1000"); end
+        else $display("PASS C1 kernel $1000 protected from task");
+        cp_read(13'h0200, tmp);
+        if (tmp!==tbl_before) begin errors=errors+1; $display("FAIL C1 task wrote TABLE $0200"); end
+        else $display("PASS C1 TABLE $0200 protected from task");
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;

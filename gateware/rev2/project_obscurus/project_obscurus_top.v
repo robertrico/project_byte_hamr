@@ -275,15 +275,6 @@ module project_obscurus_top (
         .c1_wdata(cop_wdata), .c1_busy(cop_busy), .c1_rdata(cop_rdata)
     );
 
-    coproc u_coproc (
-        .clk(clk), .rst_n(rst_n), .ready(ready),
-        .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
-        .busy(cop_busy), .rdata(cop_rdata),
-        .laddr(m_laddr), .ldata_in(wr_data_latch), .lwr(cp_wdata_wr),
-        .ldata_out(cp_ldata_out),
-        .count_in(wr_data_latch), .count_wr(cp_count_wr)
-    );
-
     wire reg_wr = nds_rise & ~wr_rw_latch;   // register write commit
     // STATUS register read commit ($C0C5)
     wire status_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'h5);
@@ -294,6 +285,15 @@ module project_obscurus_top (
     wire        cp_rdata_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'hC); // CP_RDATA read
     wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
     wire [7:0]  cp_ldata_out;
+
+    coproc u_coproc (
+        .clk(clk), .rst_n(rst_n), .ready(ready),
+        .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
+        .busy(cop_busy), .rdata(cop_rdata),
+        .laddr(m_laddr), .ldata_in(wr_data_latch), .lwr(cp_wdata_wr),
+        .ldata_out(cp_ldata_out),
+        .count_in(wr_data_latch), .count_wr(cp_count_wr)
+    );
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) m_laddr <= 13'd0;
