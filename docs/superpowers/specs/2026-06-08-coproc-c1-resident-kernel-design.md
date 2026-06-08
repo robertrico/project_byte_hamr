@@ -47,19 +47,37 @@ $0200-$02FF  task TABLE          (entry ptrs, 2 bytes each — up to 128 tasks, 
 $0300-$0FFF  TASK code region    (host-loaded, unprotected)
 $1000-$1FFF  KERNEL code + ISRs  (synth-baked, WRITE-PROTECTED)
 ```
-Split on **bit 12**: `$1000–$1FFF` (`addr[12]==1`) is the protected kernel region.
-**BOTH BRAM write ports are gated on `~addr[12]`** — this is the critical fix:
-- **Port B (host load):** `CP_WDATA` write ignored when `laddr[12]==1`.
-- **Port A (Arlet / running task):** the C0 core write `if (WE & in_bram & rdy)
-  bram[AB[12:0]]<=DO` becomes `if (WE & in_bram & rdy & ~AB[12])`. Without this, a
-  **task** doing `STA $1000` overwrites the kernel — port B alone does NOT stop a task
-  (the actual threat). Arlet never legitimately writes `$1000–$1FFF`: kernel code is
-  baked, kernel/ZP data lives at `$0000–$01FF` (`bit12==0`). So gating port A costs the
-  task nothing and closes the real hole.
+**Protection is two-axis (per-port × per-region) — one shared bit cannot express it.**
+The TABLE (`$0200–$02FF`) must be **host-writable** (registration) yet **task-blocked**
+(a task `STA $0200` would repoint a dispatch entry → hijack the kernel). Same addresses,
+opposite rules → two distinct gates:
 
-**COUNT is NOT a BRAM cell** — it is a register (see Host load port), so the one
-variable touched concurrently by host and kernel never collides in the dual-port BRAM.
-The TABLE region holds 128 entries exactly (`$0200`+2*127 = `$02FE/$02FF`, no spill).
+| Region | Port B (host load) | Port A (running task) |
+|---|---|---|
+| `$0000–$01FF` ZP/stack | (host doesn't write) | **allow** — shared runtime (cooperative) |
+| `$0200–$02FF` TABLE | **allow** (register) | **BLOCK** (anti-hijack) |
+| `$0300–$0FFF` task code | **allow** (load) | allow (user space) |
+| `$1000–$1FFF` kernel/ISR | **BLOCK** | **BLOCK** |
+
+- **Port B (host load):** `CP_WDATA` write ignored when `laddr[12]==1` (kernel only).
+- **Port A (Arlet/task):** C0's `if (WE & in_bram & rdy) bram[AB[12:0]]<=DO` becomes
+  `if (WE & in_bram & rdy & ~AB[12] & ~(AB[11:8]==4'h2))` — blocks **both** the kernel
+  (`$1000+`) and the TABLE (`$0200–$02FF`). A task can still write its own region
+  (`$0300–$0FFF`) and the shared ZP/stack.
+
+**Control plane vs data plane (honest boundary).** Hardware-protected from tasks: kernel
+**code+ISRs**, the **dispatch TABLE**, the **vectors** (gateware constants), and the
+**COUNT register** (`$E010` is *read-only* to Arlet — a task `STA $E010` is a no-op). So a
+task **cannot** alter kernel code, repoint dispatch, change the vectors, or bump the task
+count → it cannot hijack kernel control flow. *Cooperative (shared, trusted):* ZP/stack
+(`$0000–$01FF`), the task-code region (`$0300–$0FFF`), and SDRAM data — a misbehaving task
+can corrupt its own/another task's data or the shared ZP/stack. **Per-task ZP/stack
+isolation (separate context) is a C2+ feature**, not C1. C1's guarantee: the kernel's
+*control structures* are hardware-protected.
+
+**COUNT is a register, not BRAM** (see Host load port), so the one host/kernel-shared var
+never collides in the dual-port BRAM. The TABLE holds 128 entries exactly
+(`$0200`+2*127 = `$02FE/$02FF`, no spill).
 
 ### Dual-port BRAM collision mode (load-bearing)
 Port A (Arlet) and port B (load) are inferred as one read + one write each into a
@@ -86,12 +104,17 @@ So `$FFFE/F→$1F00` and `$FFFA/B→$1F40` are implemented even though no line i
 ### Coproc address decode (Arlet side) — priority + holes
 The coproc read mux resolves Arlet's `AB` in this priority:
 1. `AB` in `$FFFA–$FFFF` → the **6 vector constants** above (ahead of everything).
-2. `AB == $E010` → **COUNT register** (kernel reads the registered task count here).
+2. `AB == $E010` → **COUNT register**, **read-only to Arlet** (a task `STA $E010` is
+   ignored; COUNT is host-owned via `CP_COUNT`).
 3. `AB` in `$E000–$E003` → SDRAM write window (write-side; reads return don't-care).
-4. `AB` in `$0000–$1FFF` → BRAM (port A).
+4. `AB` in `$0000–$1FFF` → BRAM (port A), writes gated by the port-A protection above.
 5. anything else (`$2000–$DFFF`, `$E004–$E00F`, `$E011–$FFF9`) → **don't-care** (`$00`).
 A correct task/kernel never reads the holes; this just pins behavior. The DI 1-cycle
 registered alignment (C0) applies to all paths (vector/count/BRAM selects registered).
+**`$E000–$E003` has NO read-autoinc**, so a task may write the SDRAM window with any
+addressing mode — an indexed `STA $E003,X` dummy-reads `$E003` (`WE` low → no post) then
+writes once (one post). Only the *host* `$C0CB` carries the double-post hazard (it has a
+write-autoinc; use non-indexed `STA $C0CB`).
 
 ## Host load port (`$C0Cx`, 5 registers in the free `$C0C9–CF` scratch space)
 
@@ -145,21 +168,27 @@ RESET ($1000):
 MAINLOOP:
   LDX #0
 NEXT:
-  LDA $E010          ; COUNT register (read-only to the kernel)
-  STX TMP            ; compare X to COUNT
-  CMP TMP            ; A(count) - X
-  BEQ MAINLOOP       ; X == count -> nothing more, restart loop
-  ; (X < count: dispatch task_table[X])
-  txa; asl; tay      ; Y = X*2 index into table
-  lda TABLE,Y   / sta JVEC      ; TABLE = $0200
-  lda TABLE+1,Y / sta JVEC+1
-  jsr CALLVEC        ; CALLVEC: jmp (JVEC)
-  inx
-  jmp NEXT
+  CPX $E010          ; X vs COUNT register (CPX abs reads $E010; carry set if X>=count)
+  BCS MAINLOOP       ; X >= count -> nothing more, restart loop
+  TXA
+  ASL                ; A = X*2 entry offset (X<=127 -> no overflow)
+  TAY
+  LDA $0200,Y / STA JVEC       ; TABLE base $0200
+  LDA $0201,Y / STA JVEC+1
+  TXA
+  PHA                ; *** SAVE index on the stack — survives the task's RTS ***
+  JSR CALLVEC        ; CALLVEC: JMP (JVEC). Task may trash A/X/Y; must balance its stack.
+  PLA
+  TAX                ; *** RESTORE index ***
+  INX
+  JMP NEXT
 ```
-COUNT lives in the `$E010` register (gateware-reset to 0 on POR; host bumps it via
-`CP_COUNT`). Tasks are subroutines ending in `RTS` (return to the kernel). Cooperative:
-each task runs to its `RTS` once per loop pass.
+**Index lives on the stack across the call, not in X/ZP** — a task is arbitrary code that
+trashes A/X/Y; keeping the loop counter in X (`inx` after the `JSR`) would index off
+garbage and derail dispatch. `JVEC` (ZP) is set fresh each iteration and consumed by
+`CALLVEC` (`JMP (JVEC)`) *before* the task can touch it. `CPX $E010` reads the COUNT
+register (no ZP temp). COUNT is gateware-reset to 0 on POR; host bumps it via `CP_COUNT`.
+Tasks are subroutines ending in `RTS`. Cooperative: each runs to its `RTS` once per pass.
 
 ## Live registration protocol (lock-free, single-producer/single-consumer)
 
@@ -195,24 +224,29 @@ host: monitor R <cell> -> the task's result
    "add fns" proven.
 2. **Load-port protection:** host sets `CP_LADDR=$1000`, `STA CP_WDATA=$EE`; then
    `CP_LADDR=$1000`, `LDA CP_RDATA` returns the original kernel byte (write refused).
-3. **Task-write protection (THE guarantee):** register a hostile task whose body is
-   `LDA #$EE / STA $1000 / RTS`. After the kernel dispatches it, the host reads
-   `$1000` via `CP_RDATA` → still the original kernel byte. This exercises the **port-A**
-   gate — the test that actually proves "a task cannot corrupt the kernel/ISRs." (The
-   load-port test alone passes even with the port-A hole open, so it is necessary but not
-   sufficient.)
+3. **Task-write protection (THE control-plane guarantee):** register a hostile task whose
+   body is `LDA #$EE / STA $1000 / STA $0200 / RTS`. After the kernel dispatches it, the
+   host reads `$1000` (kernel) AND `$0200` (TABLE entry 0 lo) via `CP_RDATA` → **both**
+   still hold their original bytes. This exercises the **port-A** gate on *both* protected
+   regions — the test that actually proves "a task cannot corrupt the kernel code or
+   repoint dispatch." (The load-port test alone passes even with the port-A hole open, so
+   it is necessary but not sufficient.) Also assert a task `STA $E010` leaves COUNT
+   unchanged (count register read-only to Arlet).
 
 ## Components / files (branch `coproc`)
 
 - `coproc.v` — replace the synth-baked single program with: dual-port BRAM (port A
-  Arlet, port B load; separate `always` blocks → DP16KD old-data-on-collision); `laddr`
-  register + `CP_WDATA` write-autoinc (protect `laddr[12]`) + `CP_RDATA` read-autoinc
-  (separate addresses — anti-double-bump); a `COUNT` register (POR-reset 0, host-written,
-  Arlet reads at `$E010`); synthesized immutable vectors ($FFFC/D→$1000, $FFFE/F→$1F00,
-  $FFFA/B→$1F40) with the decode priority above; the generalized `$E000–$E003` SDRAM
-  write window (replacing C0's fixed `$0040` post); kernel-region BRAM init from
-  `kernel.mem`; IRQ/NMI tied 0. C0's HALT/LOAD/RUN job-runner FSM is removed — the kernel
-  is resident, Arlet runs from reset (keep the SDRAM-`ready` gate before the first post).
+  Arlet, port B load; separate `always` blocks → DP16KD old-data-on-collision);
+  **port-A write gate** `WE & in_bram & rdy & ~AB[12] & ~(AB[11:8]==4'h2)` (block kernel
+  `$1000+` AND TABLE `$0200–$02FF`); **port-B write gate** `CP_WDATA & ~laddr[12]`;
+  `CP_WDATA` write-autoinc + `CP_RDATA` read-autoinc (separate addresses — anti-double-bump)
+  with the registered-read `ldata_q` latch; a `COUNT` register (POR-reset 0, host-written
+  via `CP_COUNT`, Arlet reads `$E010` read-only); synthesized immutable vectors — **all 6**
+  ($FFFC/D→$1000, $FFFE/F→$1F00, $FFFA/B→$1F40) per the decode priority; the generalized
+  `$E000–$E003` SDRAM write window (replacing C0's fixed `$0040` post); kernel BRAM init
+  from `kernel.mem` at offset `$1000`; IRQ/NMI tied 0. C0's HALT/LOAD/RUN FSM is removed —
+  the kernel is resident, Arlet runs from reset (keep the SDRAM-`ready` gate before the
+  first post).
 - `kernel.S` → `kernel.mem` — the baked kernel (boot + dispatch loop + ISR stubs at
   `$1F00/$1F40`), Merlin `ORG $1000`. **Real `.S→.mem` Makefile target in the synth
   graph** (retire `coproc_prog.mem`; the "hamr_rom.mem stale for weeks" lesson — verify
@@ -266,10 +300,12 @@ host: monitor R <cell> -> the task's result
 ## Success criteria
 
 Two host-registered Merlin tasks run under a resident, never-halting kernel and write
-distinct SDRAM results the host reads; **both** a host load AND a running task's write
-aimed at the kernel region (`$1000`) are refused by hardware (read-back unchanged). The
-coproc is now a programmable mini-RTOS with a genuinely protected kernel — the foundation
-for C2 (scheduling + the race).
+distinct SDRAM results the host reads; a running task's writes to **both** the kernel
+region (`$1000`) and the dispatch TABLE (`$0200`) are refused by hardware (read-back
+unchanged), a task `STA $E010` leaves COUNT unchanged, and a host load to `$1000` is
+refused. The coproc is a programmable mini-RTOS whose **control plane** (kernel code,
+ISRs, vectors, dispatch table, count) is hardware-protected from tasks — the foundation
+for C2 (scheduling + the race; per-task data isolation also lands there).
 
 ## Non-goals (later rungs)
 
