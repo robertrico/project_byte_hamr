@@ -1,40 +1,39 @@
 `timescale 1ns/1ps
 module coproc_tb;
     reg clk=0; always #5 clk=~clk;
-    reg rst_n=0;
-    wire        req, we; wire [25:0] phys_addr; wire [7:0] wdata;
-    reg  [7:0]  rdata=0; reg busy=0;
+    reg rst_n=0, ready=0;
+    wire req, we; wire [25:0] phys_addr; wire [7:0] wdata;
+    reg [7:0] rdata=0; reg busy=0;
+    reg  [12:0] laddr=0; reg [7:0] ldata_in=0; reg lwr=0;
+    wire [7:0]  ldata_out;
+    reg  [7:0]  count_in=0; reg count_wr=0;
     integer errors=0;
 
-    reg ready=0;   // coproc holds in ST_BOOT until SDRAM init reports ready
     coproc dut(.clk(clk), .rst_n(rst_n), .ready(ready),
         .req(req), .we(we), .phys_addr(phys_addr), .wdata(wdata),
-        .busy(busy), .rdata(rdata));
+        .busy(busy), .rdata(rdata),
+        .laddr(laddr), .ldata_in(ldata_in), .lwr(lwr), .ldata_out(ldata_out),
+        .count_in(count_in), .count_wr(count_wr));
 
-    reg [7:0] got_data; reg [25:0] got_addr; reg got_we; reg captured=0;
-    reg [2:0] mcnt=0;
-    always @(posedge clk) begin
-        if (req && !busy) begin
-            got_we<=we; got_addr<=phys_addr; got_data<=wdata; captured<=1;
-            busy<=1; mcnt<=3'd4;
-        end else if (busy) begin
-            if (mcnt>1) mcnt<=mcnt-1; else busy<=0;
-        end
-    end
+    task pbwrite(input [12:0] a, input [7:0] d); begin
+        @(posedge clk); laddr=a; ldata_in=d; lwr=1; @(posedge clk); lwr=0; @(posedge clk);
+    end endtask
+    task pbread(input [12:0] a, output [7:0] d); begin
+        @(posedge clk); laddr=a; @(posedge clk); @(posedge clk); d=ldata_out;
+    end endtask
 
-    integer g;
+    reg [7:0] v;
     initial begin
-        rst_n=0; #50; rst_n=1;
-        #50; ready=1;          // release the boot gate
-        g=0;
-        while (!captured && g<5000) begin @(posedge clk); g=g+1; end
-        if (!captured) begin errors=errors+1; $display("FAIL coproc never posted"); end
-        else begin
-            if (got_we!==1'b1)            begin errors=errors+1; $display("FAIL we=%b",got_we); end
-            if (got_addr!==26'h000_0040)  begin errors=errors+1; $display("FAIL addr=%h",got_addr); end
-            if (got_data!==8'h42)         begin errors=errors+1; $display("FAIL data=%02X",got_data); end
-        end
-        if (errors==0) $display("PASS coproc posts 42"); else $display("FAIL coproc %0d",errors);
+        rst_n=0; #50; rst_n=1; ready=1;
+        #200;
+        pbwrite(13'h0300, 8'h99);
+        pbread (13'h0300, v);
+        if (v!==8'h99) begin errors=errors+1; $display("FAIL readback %02X",v); end
+        pbwrite(13'h1000, 8'hEE);
+        pbread (13'h1000, v);
+        if (v===8'hEE) begin errors=errors+1; $display("FAIL kernel $1000 was written"); end
+        @(posedge clk); count_in=8'h02; count_wr=1; @(posedge clk); count_wr=0;
+        if (errors==0) $display("PASS coproc-c1 port B"); else $display("FAIL coproc-c1 %0d",errors);
         $finish;
     end
 endmodule
