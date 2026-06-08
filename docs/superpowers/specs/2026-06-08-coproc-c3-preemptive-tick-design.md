@@ -55,8 +55,10 @@ the tick ISR and `YIELD` funnel into `SWITCH`.
 `Y=CUR` (`STA TCB_A,Y` ...), but `LDY CUR` would clobber the task's `Y` *before* it's
 saved. So **the caller stages `A/X/Y` to non-indexed scratch ZP (`TMPA/TMPX/TMPY`) FIRST**,
 then `SWITCH` does `LDY CUR / TSX / STX TCB_SP,Y` and copies `TMPA/TMPX/TMPY → TCB_A/X/Y,Y`.
-- **Tick ISR:** `STA TMPA / STX TMPX / STY TMPY` immediately after the B-check (before
-  `LDY CUR`).
+- **Tick ISR:** `STA TMPA / STX TMPX / STY TMPY` **FIRST** — before `TSX` and the B-check.
+  ZP stores don't move `SP`, so the `$0101,X` offset stays valid; and this saves the task's
+  `X` *before* `TSX` overwrites it with `SP` and saves `A` before `LDA $0101,X` overwrites
+  it. (The BRK leg then restores `A`/`X` from `TMP*` before `RTI` — see #1.)
 - **`YIELD`:** `STA TMPA / STX TMPX / STY TMPY` at the very start — *before* the frame
   `+1` manipulation (which uses `A`). Then build the frame, then `JMP SWITCH`.
 The `TMP*` scratch is safe (kernel is non-reentrant: tick is I-set; `YIELD`/`DONE` `SEI`).
@@ -92,13 +94,25 @@ covers the RMW + stamp + the transition into `DONE`).
 ## The 14 robustness requirements (red-team → design)
 
 **6502 / IRQ:**
-1. **BRK shares `$FFFE`.** **Pinned ISR order** (the `$0101,X` offset depends on it): the
-   ISR does `TSX` FIRST (X = SP = entry value, before any push/reg-save), reads the stacked
-   P at `$0101,X`, tests bit4 (B): if **B=1** it's a `BRK`, not a tick → `RTI` immediately
-   (stack untouched — ignore the stray BRK; do NOT ack the timer, do NOT switch). Only
-   **B=0** falls through to the register save (`STA TMPA`...) + ack + `SWITCH`. The B-check
-   must precede any reg-save — reg-save is to `TMP*` (no stack change), so `SP`/the offset
-   stays valid until `SWITCH`'s `PICKNEXT JSR`.
+1. **BRK shares `$FFFE`.** **Pinned ISR order** (a `TSX`/`LDA` clobbers A/X, so save them
+   first — ZP stores leave `SP` untouched, keeping the `$0101,X` offset valid):
+   ```
+   ISR ($1F00):
+     STA TMPA / STX TMPX / STY TMPY   ; save task A/X/Y FIRST (ZP; SP unchanged)
+     TSX                              ; X = SP (= entry, orig-3); task X safe in TMPX
+     LDA $0101,X                      ; stacked P
+     AND #$10                         ; B bit
+     BNE BRKLEG
+     ; B=0 (real tick): ack + switch
+     STA TICK_ACK (any) ; $E013       ; (A is the P value here; task A is in TMPA)
+     JMP SWITCH                       ; SWITCH stages from TMP* (A/X/Y already saved)
+   BRKLEG:                            ; B=1 (stray BRK): NOT a tick
+     LDA TMPA / LDX TMPX              ; restore A,X (TSX/LDA clobbered them; Y untouched)
+     RTI                              ; resume the task; do NOT ack timer, do NOT switch
+   ```
+   "Stack untouched" is insufficient for BRK — registers must be restored too. `SWITCH`
+   owns the authoritative `TSX` (the YIELD path's `SP` differs); the ISR's `TSX` is only
+   for the B-check and is harmless to repeat (no stack push between).
 2. **Tick during the `$E003` RDY-stall** is deferred until the post finishes (Arlet frozen
    while `rdy=0`; `irq_pending` is a held level) → SDRAM posts are atomic vs ticks. Verify
    in sim that Arlet services the pending IRQ after `rdy` returns.
