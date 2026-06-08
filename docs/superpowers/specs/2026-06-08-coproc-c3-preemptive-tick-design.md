@@ -37,8 +37,9 @@ Every suspended task has an **IRQ frame `[PCH, PCL, P]` on its own page-1 stack*
 frame). One resume path everywhere: `SP←TCB`, restore A/X/Y, **`RTI`** (pops P+PC). Three
 producers of that one format:
 - **TICK ISR** (`$1F00`): the 6502 IRQ already pushed `[PCH,PCL,P]` → the natural frame.
-- **`YIELD`** (`$1003`): manufactures it — pull the `JSR` return, **`+1`** (JSR pushes
-  `ret-1`; RTI wants the exact PC), push back `[PCH,PCL,P]` with **I-clear**.
+- **`YIELD`** (`$1003`): manufactures it — pull the `JSR` return, **16-bit `+1`** (`INC`
+  lo; `BNE` skip; `INC` hi — JSR pushes `ret-1`, RTI wants the exact PC; the carry into PCH
+  matters if `JSR YIELD`'s return straddles a page), push back `[PCH,PCL,P]` with **I-clear**.
 - **`BOOTSTRAP`**: seeds each new task's stack `[PCH(entry), PCL(entry), P=$00]`
   (I-clear → preemptible), `SP = top-3`. `RTI` resumes at the **exact** entry (no `-1`,
   unlike C2's RTS seeding).
@@ -49,6 +50,17 @@ frame, so no flag-staging juggling (simpler + robuster than C2's RESTORE).
 
 `SWITCH` (shared core): save current `{SP,A,X,Y}`→TCB, `JSR PICKNEXT`, `JMP RESTORE`. Both
 the tick ISR and `YIELD` funnel into `SWITCH`.
+
+**Register-save contract (pin — silent-clobber trap).** The TCB store is indexed by
+`Y=CUR` (`STA TCB_A,Y` ...), but `LDY CUR` would clobber the task's `Y` *before* it's
+saved. So **the caller stages `A/X/Y` to non-indexed scratch ZP (`TMPA/TMPX/TMPY`) FIRST**,
+then `SWITCH` does `LDY CUR / TSX / STX TCB_SP,Y` and copies `TMPA/TMPX/TMPY → TCB_A/X/Y,Y`.
+- **Tick ISR:** `STA TMPA / STX TMPX / STY TMPY` immediately after the B-check (before
+  `LDY CUR`).
+- **`YIELD`:** `STA TMPA / STX TMPX / STY TMPY` at the very start — *before* the frame
+  `+1` manipulation (which uses `A`). Then build the frame, then `JMP SWITCH`.
+The `TMP*` scratch is safe (kernel is non-reentrant: tick is I-set; `YIELD`/`DONE` `SEI`).
+`TMPP` is gone — P rides the frame. So `SWITCH`'s precondition is "A/X/Y already in `TMP*`."
 
 ### I-flag discipline (the robustness backbone)
 - **Tasks run I-clear** (seeded/yield/restored frame P has I=0) → preemptible.
@@ -62,8 +74,10 @@ the tick ISR and `YIELD` funnel into `SWITCH`.
 - `$E012` **TICK_PERIOD/arm** (write; `0` = disarmed; nonzero = tick every `period*256`
   clk cycles), `$E013` **TICK_ACK** (write clears `irq_pending`). `irq_pending` →
   `cpu .IRQ` (was tied 0).
-- A free-running counter while armed; at `period*256` it sets `irq_pending` (held = level
-  IRQ) and reloads. The ISR acks (`$E013`) to clear it; it re-asserts next period.
+- A counter while armed; at `period*256` it sets `irq_pending` (held = level IRQ) and
+  reloads. The ISR acks (`$E013`) to clear it; it re-asserts next period. **On arm (`$E012`
+  write nonzero) the counter resets to 0** so the first tick period is deterministic (not
+  whatever phase it stalled at), and arm acks any stale pending (#9).
 - **Disarmed until the kernel arms it** (in `BOOTSTRAP`, after seeding TCBs, right before
   starting task0) and **disarmed + pending-acked on `KIDLE`** (idle). **Ack-first on arm**
   (clear any stale pending). Minimum period enforced (≫ ISR time — see #10).
@@ -78,9 +92,13 @@ covers the RMW + stamp + the transition into `DONE`).
 ## The 14 robustness requirements (red-team → design)
 
 **6502 / IRQ:**
-1. **BRK shares `$FFFE`.** The ISR reads the stacked P (`$0101,X` after the auto-push):
-   if **B=1** it's a `BRK`, not a tick → do NOT ack the timer, do NOT switch — just `RTI`
-   back to the task (ignore the stray BRK). Only B=0 (real IRQ) runs the tick switch.
+1. **BRK shares `$FFFE`.** **Pinned ISR order** (the `$0101,X` offset depends on it): the
+   ISR does `TSX` FIRST (X = SP = entry value, before any push/reg-save), reads the stacked
+   P at `$0101,X`, tests bit4 (B): if **B=1** it's a `BRK`, not a tick → `RTI` immediately
+   (stack untouched — ignore the stray BRK; do NOT ack the timer, do NOT switch). Only
+   **B=0** falls through to the register save (`STA TMPA`...) + ack + `SWITCH`. The B-check
+   must precede any reg-save — reg-save is to `TMP*` (no stack change), so `SP`/the offset
+   stays valid until `SWITCH`'s `PICKNEXT JSR`.
 2. **Tick during the `$E003` RDY-stall** is deferred until the post finishes (Arlet frozen
    while `rdy=0`; `irq_pending` is a held level) → SDRAM posts are atomic vs ticks. Verify
    in sim that Arlet services the pending IRQ after `rdy` returns.
@@ -92,8 +110,11 @@ covers the RMW + stamp + the transition into `DONE`).
    frame (3) + ISR saves + `PICKNEXT` `JSR` (2) ≈ 8 B kernel transient. Budget it; the sim
    adds a **max-stack-depth assert per partition** (fail if a task's SP crosses its
    partition floor). (No separate kernel stack — YAGNI for solo use.)
-5. **`YIELD` `+1`** — manufacture the frame PC as `JSR_return + 1`. The kept C2 cooperative
-   racetask test exercises this exact path.
+5. **`YIELD` `+1`** — manufacture the frame PC as a **16-bit** `JSR_return + 1` (carry into
+   PCH). The kept C2 cooperative racetask test exercises the path but only at its fixed
+   addresses — it won't hit the page-cross carry unless a `JSR YIELD` happens to sit at
+   `$xxFF`. **Coverage caveat:** the impl must do the 16-bit `+1`; the carry leg isn't
+   directly tested (acceptable — solo use).
 6. **ISR/switch stack-balanced** per task (staging `PHA`/`PLA` net zero) so a task's own
    preempted `PHA`/`PLA` pair survives.
 
