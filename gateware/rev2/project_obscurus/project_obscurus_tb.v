@@ -230,22 +230,30 @@ module project_obscurus_tb;
         // baseline the protected bytes from the clean kernel image (COUNT still 0)
         cp_read(13'h1000, krn_before);     // kernel first opcode ($78 SEI)
         cp_read(13'h0200, tbl_before);     // TABLE byte (zero)
-        // taskA at $0300: writes $99 to bank0 $0050
+        // NOTE: under the current COOPERATIVE kernel (kernel.S, the C2 scheduler)
+        // a dispatched task that terminates with RTS pops an EMPTY stack (RESTORE
+        // already rts'd INTO the task) and derails the coproc CPU into a BRK/RTI
+        // storm -- after which the kernel never regains control, so only the FIRST
+        // task's write lands and taskC never dispatches. The kernel's finish API is
+        // JMP DONE ($1006): it marks the task DONE and PICKANY advances to the next
+        // ready task. So C1 one-shot tasks MUST end with JMP DONE, not RTS. (This
+        // was the root cause of the long-standing "C1 taskC result 00" failure.)
+        // taskA at $0300: writes $99 to bank0 $0050, then JMP DONE
         wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
         load_byte(8'hA9); load_byte(8'h50); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
         load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
         load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h99);
-        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h60);
-        // taskBAD at $0320: A9 EE 8D 00 10 8D 00 02 60  (STA $1000 + STA $0200 must be refused)
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // taskBAD at $0320: STA $1000 + STA $0200 must be refused, then JMP DONE
         wr_reg(4'h9, 8'h20); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0320
         load_byte(8'hA9); load_byte(8'hEE); load_byte(8'h8D); load_byte(8'h00); load_byte(8'h10);
-        load_byte(8'h8D); load_byte(8'h00); load_byte(8'h02); load_byte(8'h60);
-        // taskC at $0340: writes $42 to bank0 $0040 (preserves the original C0 assertion)
+        load_byte(8'h8D); load_byte(8'h00); load_byte(8'h02); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // taskC at $0340: writes $42 to bank0 $0040 (preserves the original C0 assertion), then JMP DONE
         wr_reg(4'h9, 8'h40); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0340
         load_byte(8'hA9); load_byte(8'h40); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
         load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
         load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h42);
-        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h60);
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
         // TABLE: entry0=$0300 @ $0200, entry1=$0320 @ $0202, entry2=$0340 @ $0204
         wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02); load_byte(8'h00); load_byte(8'h03);
         wr_reg(4'h9, 8'h02); wr_reg(4'hA, 8'h02); load_byte(8'h20); load_byte(8'h03);
@@ -265,6 +273,59 @@ module project_obscurus_tb;
         cp_read(13'h0200, tmp);
         if (tmp!==tbl_before) begin errors=errors+1; $display("FAIL C1 task wrote TABLE $0200"); end
         else $display("PASS C1 TABLE $0200 protected from task");
+
+        // ===== C2: cooperative race (NPARAM 4/8 -> order 1/2; re-arm 12/8 -> flip 2/1) =====
+        // The C1 tasks above terminate with RTS (not JSR DONE), which is the OLD
+        // pre-cooperative task convention: after RESTORE rts'd into the task, the
+        // task's own final RTS pops an empty stack and derails the coproc CPU into
+        // a BRK/RTI storm (verified: post-C1 the CPU never re-enters the kernel,
+        // krn=0 rdcount=0). The C2 cooperative tasks (JSR YIELD / JSR DONE) are a
+        // different, correct convention -- but they need a LIVE kernel. Pulse the
+        // coproc reset so the CPU restarts at the $1000 RESET vector (KWAIT0),
+        // task_count clears to 0, and BRAM (kernel.mem + anything we load next) is
+        // preserved. Then re-wait `ready` (reset also re-inits the SDRAM ctrl).
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);            // let kernel reach KWAIT0
+        // load racetask (45 bytes) at coproc $0300
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
+        load_byte(8'hA4); load_byte(8'hEC); load_byte(8'hB6); load_byte(8'hE8); load_byte(8'hCA);
+        load_byte(8'h20); load_byte(8'h03); load_byte(8'h10); load_byte(8'hD0); load_byte(8'hFA);
+        load_byte(8'hA5); load_byte(8'hED); load_byte(8'h18); load_byte(8'h69); load_byte(8'h01);
+        load_byte(8'h85); load_byte(8'hED); load_byte(8'h48); load_byte(8'hA5); load_byte(8'hEE);
+        load_byte(8'h18); load_byte(8'h65); load_byte(8'hEC); load_byte(8'h8D); load_byte(8'h00);
+        load_byte(8'hE0); load_byte(8'hA5); load_byte(8'hEF); load_byte(8'h69); load_byte(8'h00);
+        load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h00);
+        load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'h68); load_byte(8'h8D);
+        load_byte(8'h03); load_byte(8'hE0); load_byte(8'h20); load_byte(8'h06); load_byte(8'h10);
+        // TABLE entry0=$0300 @ $0200, entry1=$0300 @ $0202
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);
+        load_byte(8'h00); load_byte(8'h03); load_byte(8'h00); load_byte(8'h03);
+        // NPARAM[0]=4, NPARAM[1]=8 @ coproc ZP $00E8
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd4); load_byte(8'd8);
+        // arm: kernel is fresh-reset (COUNT=0, parked at KWAITN). COUNT=2 is the
+        // 0->nonzero arm edge -> BOOTSTRAP dispatches both racetask instances.
+        wr_reg(4'hD, 8'h02);                        // COUNT=2 (arm edge 0->nonzero)
+        repeat (40000) @(posedge clk100);           // AMPLE: both finish, kernel parks
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C2 race r0 %02X want 01",tmp); end
+        else $display("PASS C2 race task0 first (r0=01)");
+        sdram_read(10'd0, 16'h0062, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C2 race r1 %02X want 02",tmp); end
+        else $display("PASS C2 race task1 second (r1=02)");
+        // re-arm + flip: COUNT=0, NPARAM 12/8, COUNT=2
+        wr_reg(4'hD, 8'h00);
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd12); load_byte(8'd8);
+        wr_reg(4'hD, 8'h02);
+        repeat (40000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C2 flip r0 %02X want 02",tmp); end
+        else $display("PASS C2 flip task0 now second (r0=02)");
+        sdram_read(10'd0, 16'h0062, tmp);
+        if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C2 flip r1 %02X want 01",tmp); end
+        else $display("PASS C2 flip task1 now first (r1=01)");
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
