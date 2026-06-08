@@ -188,8 +188,9 @@ $(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
 endif
 
 # project_obscurus coprocessor KERNEL image. Merlin32 source ORG $1000 -> .bin ->
-# .mem (raw kernel bytes, one hex/line). coproc.v loads it with
-# $readmemh("kernel.mem", bram, 13'h1000) so it lands at BRAM $1000-$1FFF.
+# .mem (full 8192-byte BRAM image: zeros $0000-$0FFF, kernel spliced at $1000).
+# coproc.v loads it with $readmemh("kernel.mem", bram) at offset 0 -- a single
+# init with no procedural for-loop, so Yosys infers DP16KD cleanly.
 OBSCURUS_KERNEL_MEM := $(GATEWARE_DIR)/project_obscurus/kernel.mem
 OBSCURUS_KERNEL_SRC := $(GATEWARE_DIR)/project_obscurus/kernel.S
 
@@ -197,7 +198,7 @@ ifneq ($(wildcard $(OBSCURUS_KERNEL_SRC)),)
 $(OBSCURUS_KERNEL_MEM): $(OBSCURUS_KERNEL_SRC)
 	@echo "=== Assembling coproc kernel (Merlin32) ==="
 	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) kernel.S
-	python3 -c "b=open('$(GATEWARE_DIR)/project_obscurus/kernel.bin','rb').read(); open('$(OBSCURUS_KERNEL_MEM)','w').write('\n'.join('%02x'%x for x in b)+'\n')"
+	python3 -c "b=open('$(GATEWARE_DIR)/project_obscurus/kernel.bin','rb').read(); m=bytearray(8192); m[0x1000:0x1000+len(b)]=b; open('$(OBSCURUS_KERNEL_MEM)','w').write('\n'.join('%02x'%x for x in m)+'\n')"
 endif
 
 # Force project_obscurus to depend on its slot ROM and monitor ROM

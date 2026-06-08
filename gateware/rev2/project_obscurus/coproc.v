@@ -39,15 +39,28 @@ module coproc (
         if (!rst_n)        task_count <= 8'd0;
         else if (count_wr) task_count <= count_in;
 
+    // 8KB resident-kernel BRAM. ECP5 DP16KD has exactly TWO ports, but this
+    // yosys (oss-cad-suite) will NOT infer DP16KD for a memory with TWO write
+    // ports (each combined with a read) -- it always falls back to FF mapping
+    // (verified: 1W+2R maps via $__DP16KD_, any 2W maps to FFs -> 150k LUTs).
+    // So we present ONE write port (a priority mux of the two writers) plus two
+    // independent read ports. Port B (host load) is a deliberate 6502 setup
+    // sequence and takes priority; port A (Arlet) writes only when rdy=1. They
+    // never legitimately collide, so the host>Arlet priority is safe and the
+    // two-port execute/load semantics are preserved.
     reg [7:0] bram [0:8191];
-    integer gi;
-    initial begin
-        for (gi=0; gi<8192; gi=gi+1) bram[gi] = 8'h00;
-        $readmemh("kernel.mem", bram, 13'h1000);
-    end
+    initial $readmemh("kernel.mem", bram);
 
     wire in_bram = (AB[15:13] == 3'b000);
     wire a_wr_ok = WE & in_bram & rdy & ~AB[12] & ~(AB[11:8]==4'h2);
+    wire b_wr_ok = lwr & ~laddr[12];
+
+    // single shared write port (host load wins over Arlet)
+    wire        wr_en   = a_wr_ok | b_wr_ok;
+    wire [12:0] wr_addr = b_wr_ok ? laddr : AB[12:0];
+    wire [7:0]  wr_data = b_wr_ok ? ldata_in : DO;
+    always @(posedge clk)
+        if (wr_en) bram[wr_addr] <= wr_data;
 
     wire is_rstlo=(AB==16'hFFFC), is_rsthi=(AB==16'hFFFD);
     wire is_irqlo=(AB==16'hFFFE), is_irqhi=(AB==16'hFFFF);
@@ -56,8 +69,7 @@ module coproc (
     reg [7:0] bram_qa;
     reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q;
     always @(posedge clk) begin
-        if (a_wr_ok) bram[AB[12:0]] <= DO;
-        bram_qa    <= bram[AB[12:0]];
+        bram_qa    <= bram[AB[12:0]];   // port A read
         in_bram_q  <= in_bram;
         is_rstlo_q <= is_rstlo; is_rsthi_q <= is_rsthi;
         is_irqlo_q <= is_irqlo; is_irqhi_q <= is_irqhi;
@@ -71,10 +83,8 @@ module coproc (
               : in_bram_q  ? bram_qa
               :              8'h00;
 
-    always @(posedge clk) begin
-        if (lwr & ~laddr[12]) bram[laddr] <= ldata_in;
-        ldata_out <= bram[laddr];
-    end
+    always @(posedge clk)
+        ldata_out <= bram[laddr];        // port B read
 
     wire is_e000=(AB==16'hE000), is_e001=(AB==16'hE001),
          is_e002=(AB==16'hE002), is_e003=(AB==16'hE003);
