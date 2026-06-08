@@ -594,40 +594,39 @@ git commit -m "feat(coproc-c1): host loader CPREG + taskA/taskB (register 2 copr
 
 The tb drives the monitor `$C0Cx` port (`wr_reg(r,d)` writes `$C0C{r}`, `sdram_read(bank,a,d)` reads SDRAM). After the existing checks, before the final summary, register two tasks **through the load port** exactly as the host loader does, let the resident kernel dispatch them, and assert both SDRAM results + the three protection properties. (Use `wr_reg` for `$C0C9–CD`; `tmp`/`errors` exist.)
 
+**COUNT-LAST (mandatory — priority-mux collision).** The BRAM has a single shared write
+port, host-priority. If the host port-B-writes while the kernel dispatches (its `PHA`/`JSR`
+stack pushes), the kernel write is dropped. So **load BOTH tasks + both entries while
+COUNT=0** (kernel idle-spins, zero BRAM writes), then bump COUNT once. Capture the
+protected-region baselines BEFORE the first load (clean kernel image).
 ```verilog
-        // ===== C1: resident kernel + task registration =====
-        // taskA bytes (writes $99 to bank0 $0050) loaded at coproc BRAM $0300
-        // (19 bytes: A9 50 8D 00 E0 A9 00 8D 01 E0 8D 02 E0 A9 99 8D 03 E0 60)
+        // ===== C1: resident kernel + task registration (COUNT-LAST) =====
+        // baseline the protected bytes from the clean kernel image (COUNT still 0)
+        cp_read(13'h1000, krn_before);     // kernel first opcode ($78 SEI)
+        cp_read(13'h0200, tbl_before);     // TABLE byte (zero)
+        // taskA at $0300: writes $99 to bank0 $0050
+        //   A9 50 8D 00 E0 A9 00 8D 01 E0 8D 02 E0 A9 99 8D 03 E0 60
         wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
         load_byte(8'hA9); load_byte(8'h50); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
         load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
         load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h99);
         load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h60);
-        // TABLE entry 0 = $0300 at laddr $0200
-        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);
-        load_byte(8'h00); load_byte(8'h03);
-        // register: COUNT = 1 (release)
-        wr_reg(4'hD, 8'h01);
-        // let the kernel dispatch (it loops fast at 25 MHz); wait many cycles
-        repeat (4000) @(posedge clk);
-        sdram_read(10'd0, 16'h0050, tmp);
-        if (tmp!==8'h99) begin errors=errors+1; $display("FAIL C1 taskA result %02X",tmp); end
-        else $display("PASS C1 taskA dispatched ($99 @ $0050)");
-
-        // --- protection: a task that writes $1000 (kernel) + $0200 (TABLE) is refused ---
-        // taskBAD at $0320: LDA #$EE / STA $1000 / STA $0200 / RTS
+        // taskBAD at $0320: LDA #$EE / STA $1000 / STA $0200 / RTS  (both writes must be refused)
         //   A9 EE 8D 00 10 8D 00 02 60
         wr_reg(4'h9, 8'h20); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0320
         load_byte(8'hA9); load_byte(8'hEE); load_byte(8'h8D); load_byte(8'h00); load_byte(8'h10);
         load_byte(8'h8D); load_byte(8'h00); load_byte(8'h02); load_byte(8'h60);
-        // capture kernel byte @ $1000 and TABLE byte @ $0200 BEFORE dispatch (read-back)
-        cp_read(13'h1000, krn_before);
-        cp_read(13'h0200, tbl_before);
-        // TABLE entry 1 = $0320, COUNT = 2
-        wr_reg(4'h9, 8'h02); wr_reg(4'hA, 8'h02);
-        load_byte(8'h20); load_byte(8'h03);
+        // TABLE: entry0=$0300 @ $0200, entry1=$0320 @ $0202
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02); load_byte(8'h00); load_byte(8'h03);
+        wr_reg(4'h9, 8'h02); wr_reg(4'hA, 8'h02); load_byte(8'h20); load_byte(8'h03);
+        // *** release: COUNT = 2 LAST (after all BRAM loads) ***
         wr_reg(4'hD, 8'h02);
-        repeat (4000) @(posedge clk);
+        repeat (8000) @(posedge clk);      // let the kernel dispatch both, repeatedly
+        // taskA ran:
+        sdram_read(10'd0, 16'h0050, tmp);
+        if (tmp!==8'h99) begin errors=errors+1; $display("FAIL C1 taskA result %02X",tmp); end
+        else $display("PASS C1 taskA dispatched ($99 @ $0050)");
+        // taskBAD's writes to kernel + TABLE were refused:
         cp_read(13'h1000, tmp);
         if (tmp!==krn_before) begin errors=errors+1; $display("FAIL C1 task wrote kernel $1000"); end
         else $display("PASS C1 kernel $1000 protected from task");
