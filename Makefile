@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace sdmdisk extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -487,6 +487,10 @@ cprace:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) racetask.S
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPRACE.S
 
+cprace3:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) racetask3.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPRACE3.S
+
 # Build a bootable /SDRAM/ floppy with SDMTEST (BIN) + SDRAMLIB.S (TXT source).
 # FRESH volume (NOT cp-base + delete-bulk): deleting big base files then
 # re-importing reused freed blocks -> ProDOS read I/O errors / cross-links on the
@@ -498,7 +502,7 @@ cprace:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace
+sdmdisk: sdmtest cpreg cprace cprace3
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -509,6 +513,7 @@ sdmdisk: sdmtest cpreg cprace
 	$(AC_CLASSIC) -p $(SDM_PO) SDMTEST BIN 0x2000 < $(SDM_DIR)/SDMTEST
 	$(AC_CLASSIC) -p $(SDM_PO) CPREG BIN 0x6000 < $(SDM_DIR)/CPREG
 	$(AC_CLASSIC) -p $(SDM_PO) CPRACE BIN 0x6000 < $(SDM_DIR)/CPRACE
+	$(AC_CLASSIC) -p $(SDM_PO) CPRACE3 BIN 0x6000 < $(SDM_DIR)/CPRACE3
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
