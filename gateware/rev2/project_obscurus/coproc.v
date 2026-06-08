@@ -8,7 +8,9 @@
 // HELD HIGH through the stall, so latches gate on & rdy and the post is one-shot
 // via state transition). See spec 2026-06-08.
 // =============================================================================
-module coproc (
+module coproc #(
+    parameter [7:0] CORE_ID = 8'd0
+) (
     input  wire        clk,
     input  wire        rst_n,
     input  wire        ready,
@@ -66,8 +68,9 @@ module coproc (
     wire is_irqlo=(AB==16'hFFFE), is_irqhi=(AB==16'hFFFF);
     wire is_nmilo=(AB==16'hFFFA), is_nmihi=(AB==16'hFFFB);
     wire is_count=(AB==16'hE010);
+    wire is_coreid=(AB==16'hE011);
     reg [7:0] bram_qa;
-    reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q;
+    reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q;
     always @(posedge clk) begin
         bram_qa    <= bram[AB[12:0]];   // port A read
         in_bram_q  <= in_bram;
@@ -75,11 +78,13 @@ module coproc (
         is_irqlo_q <= is_irqlo; is_irqhi_q <= is_irqhi;
         is_nmilo_q <= is_nmilo; is_nmihi_q <= is_nmihi;
         is_count_q <= is_count;
+        is_coreid_q <= is_coreid;
     end
     assign DI = is_rstlo_q ? 8'h00 : is_rsthi_q ? 8'h10
               : is_irqlo_q ? 8'h00 : is_irqhi_q ? 8'h1F
               : is_nmilo_q ? 8'h40 : is_nmihi_q ? 8'h1F
-              : is_count_q ? task_count
+              : is_count_q  ? task_count
+              : is_coreid_q ? CORE_ID
               : in_bram_q  ? bram_qa
               :              8'h00;
 

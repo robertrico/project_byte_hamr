@@ -286,7 +286,7 @@ module project_obscurus_top (
     wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
     wire [7:0]  cp_ldata_out;
 
-    coproc u_coproc (
+    coproc #(.CORE_ID(8'd0)) u_coproc (
         .clk(clk), .rst_n(rst_n), .ready(ready),
         .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
         .busy(cop_busy), .rdata(cop_rdata),
