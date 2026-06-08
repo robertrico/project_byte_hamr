@@ -122,10 +122,14 @@ decode (`$FFFC/D → $0200`), so no vector bytes are needed in the image.
   until the controller is ready; that's correct.
 - **Arbiter contention:** if monitor and coproc request the same cycle, monitor wins;
   coproc holds `req` (Arlet stays `RDY`-stalled) until granted. No lost ops.
-- **RDY semantics:** Arlet must honor `RDY` low = stall (standard 6502 RDY). Verify the
-  vendored core stalls cleanly (some cores only honor RDY on read cycles — for a write
-  stall we may instead hold the write posted and keep `RDY` low one extra cycle; the
-  plan validates this against the actual core and picks the correct stall point).
+- **RDY semantics (CONFIRMED from Arlet `cpu.v`):** `RDY` is a **global clock-enable** —
+  `RDY=0` freezes *all* register updates on **both read and write** cycles, and
+  `AB`/`DO`/`WE` **hold stable** (combinational off the frozen state). So the
+  `$E000` write-stall is: on `AB==$E000 & WE & !posted`, latch `{bank0,addr0,DO}`,
+  pulse the arbiter `req` **once**, set `posted`, hold `RDY=0`; when `busy` falls,
+  release `RDY=1` and clear `posted` (Arlet then advances past the `STA`,
+  deasserting `$E000`/`WE`). The single `req` pulse prevents a double write while
+  stalled. Arlet **reset is active-high** (drive from `~rst_n`).
 - **BRAM read latency:** Arlet expects `DI` the cycle after `AB` (synchronous). ECP5
   BRAM registered read matches; the decode mux for vector/`$E000`/else must align to
   the same 1-cycle latency (register the decoded `DI`).
