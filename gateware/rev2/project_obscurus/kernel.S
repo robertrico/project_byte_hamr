@@ -1,7 +1,7 @@
-* kernel.S - C2 coproc cooperative scheduler. ORG $1000 (write-protected region).
-* Fixed API: $1000 JMP RESET (reset vector), $1003 JMP YIELD, $1006 JMP DONE.
-* Per-task TCBs in ZP $D0-, per-task page-1 stacks, YIELD/RESTORE context switch,
-* BOOTSTRAP on each COUNT 0->nonzero edge, DONE/idle. ISR stubs $1F00/$1F40.
+* kernel.S - C3 coproc PREEMPTIVE scheduler. ORG $1000 (write-protected).
+* Uniform IRQ-frame context (TCB drops P; frame carries P; one RTI resume).
+* Timer tick ($E012 arm/$E013 ack) -> IRQ -> $1F00 ISR -> SWITCH. YIELD ($1003)
+* manufactures the same frame. Tasks run I-clear (preemptible); kernel/ISR I-set.
  LST OFF
  TYP $06
  DSK kernel.bin
@@ -11,8 +11,9 @@ TCB_SP = $D0
 TCB_A  = $D4
 TCB_X  = $D8
 TCB_Y  = $DC
-TCB_P  = $E0
 TCB_ST = $E4
+TMPL   = $E0
+TMPH   = $E1
 NPARAM = $E8
 CUR    = $EC
 ORDER  = $ED
@@ -21,14 +22,12 @@ COREBH = $EF
 TMPA   = $F0
 TMPX   = $F1
 TMPY   = $F2
-TMPP   = $F3
 
-COUNT  = $E010
-COREID = $E011
-SADRLO = $E000
-SADRHI = $E001
-SBANK  = $E002
-SDATA  = $E003
+COUNT   = $E010
+COREID  = $E011
+TICKCTL = $E012
+TICKACK = $E013
+TICKPER = $02
 
  JMP RESET
  JMP YIELD
@@ -46,6 +45,8 @@ KWAITN
  BEQ KWAITN
  JSR BOOTSTRAP
 KIDLE
+ LDA #$00
+ STA TICKCTL
  LDX #$FF
  TXS
  JMP KWAIT0
@@ -74,26 +75,23 @@ BSL
  STA TCB_A,X
  STA TCB_X,X
  STA TCB_Y,X
- LDA #$04
- STA TCB_P,X
-* push TABLE[X]-1 (hi,lo) so RESTORE's RTS lands at TABLE[X]=$0200+2*X
  STX TMPX
  TXA
  ASL
  TAX
- LDA $0200,X
- SEC
- SBC #$01
- STA TMPA
  LDA $0201,X
- SBC #$00
- STA TMPY
+ STA TMPH
+ LDA $0200,X
+ STA TMPL
  LDX TMPX
  LDY STKTOP,X
- LDA TMPY
+ LDA TMPH
  STA $0100,Y
  DEY
- LDA TMPA
+ LDA TMPL
+ STA $0100,Y
+ DEY
+ LDA #$00
  STA $0100,Y
  DEY
  TYA
@@ -110,30 +108,23 @@ BSEMP
 BSGO
  LDA #$00
  STA CUR
+ LDA #TICKPER
+ STA TICKCTL
  JMP RESTORE
 
 RESTORE
  LDY CUR
  LDX TCB_SP,Y
  TXS
- LDA TCB_P,Y
- PHA
  LDA TCB_A,Y
  PHA
  LDA TCB_Y,Y
  LDX TCB_X,Y
  TAY
  PLA
- PLP
- RTS
+ RTI
 
-YIELD
- STA TMPA
- STX TMPX
- STY TMPY
- PHP
- PLA
- STA TMPP
+SWITCH
  TSX
  LDY CUR
  TXA
@@ -144,19 +135,39 @@ YIELD
  STA TCB_X,Y
  LDA TMPY
  STA TCB_Y,Y
- LDA TMPP
- STA TCB_P,Y
  JSR PICKNEXT
  JMP RESTORE
 
+YIELD
+ SEI
+ STA TMPA
+ STX TMPX
+ STY TMPY
+ PLA
+ STA TMPL
+ PLA
+ STA TMPH
+ INC TMPL
+ BNE YNC
+ INC TMPH
+YNC
+ LDA TMPH
+ PHA
+ LDA TMPL
+ PHA
+ LDA #$00
+ PHA
+ JMP SWITCH
+
 DONE
+ SEI
  LDY CUR
  LDA #$02
  STA TCB_ST,Y
  JSR PICKANY
- BCC :go
+ BCC DGO
  JMP KIDLE
-:go
+DGO
  JMP RESTORE
 
 PICKNEXT
@@ -195,6 +206,20 @@ PAF
 STKTOP DFB $2F,$5F,$8F,$BF
 
  DS $1F00-*
-IRQH RTI
+IRQH
+ STA TMPA
+ STX TMPX
+ STY TMPY
+ TSX
+ LDA $0101,X
+ AND #$10
+ BNE IRQBRK
+ STA TICKACK
+ JMP SWITCH
+IRQBRK
+ LDA TMPA
+ LDX TMPX
+ RTI
+
  DS $1F40-*
 NMIH RTI
