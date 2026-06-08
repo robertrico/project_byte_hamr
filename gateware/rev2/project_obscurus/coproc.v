@@ -33,6 +33,14 @@ module coproc #(
     wire [7:0]  DI;
     reg         rdy;
 
+    // ---- C3 preemptive tick timer state (declared before the cpu instance so
+    // the active-high IRQ binding resolves under iverilog -g2005) ----
+    wire is_e012 = (AB==16'hE012);   // TICK_CTL: write period (0=disarm); resets cnt + clears pending
+    wire is_e013 = (AB==16'hE013);   // TICK_ACK: write clears pending
+    reg  [7:0]  tick_period;
+    reg  [15:0] tick_cnt;
+    reg         irq_pending;
+
     cpu u_cpu (.clk(clk), .reset(~rst_n), .AB(AB), .DI(DI), .DO(DO), .WE(WE),
                // Arlet IRQ is ACTIVE-HIGH: core requests on (~I & IRQ), so feed
                // irq_pending directly (no inversion).
@@ -44,11 +52,6 @@ module coproc #(
         else if (count_wr) task_count <= count_in;
 
     // ---- C3 preemptive tick timer ----
-    wire is_e012 = (AB==16'hE012);   // TICK_CTL: write period (0=disarm); resets cnt + clears pending
-    wire is_e013 = (AB==16'hE013);   // TICK_ACK: write clears pending
-    reg  [7:0]  tick_period;
-    reg  [15:0] tick_cnt;
-    reg         irq_pending;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             tick_period <= 8'd0; tick_cnt <= 16'd0; irq_pending <= 1'b0;

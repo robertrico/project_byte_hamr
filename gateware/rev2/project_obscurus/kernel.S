@@ -22,6 +22,7 @@ COREBH = $EF
 TMPA   = $F0
 TMPX   = $F1
 TMPY   = $F2
+TMPP   = $F3
 
 COUNT   = $E010
 COREID  = $E011
@@ -139,10 +140,14 @@ SWITCH
  JMP RESTORE
 
 YIELD
+ PHP                ; capture caller flags (N/Z/C/V) BEFORE we touch them
  SEI
  STA TMPA
  STX TMPX
  STY TMPY
+ PLA                ; A = caller P (I-bit reflects pre-SEI, irrelevant)
+ AND #$FB           ; force I clear so the resumed task stays preemptible
+ STA TMPP           ; stash flags for the manufactured frame
  PLA
  STA TMPL
  PLA
@@ -155,7 +160,7 @@ YNC
  PHA
  LDA TMPL
  PHA
- LDA #$00
+ LDA TMPP           ; frame P = caller flags (was #$00 -> destroyed Z across yield)
  PHA
  JMP SWITCH
 

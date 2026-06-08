@@ -327,6 +327,83 @@ module project_obscurus_tb;
         if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C2 flip r1 %02X want 01",tmp); end
         else $display("PASS C2 flip task1 now first (r1=01)");
 
+        // ===== C3: PREEMPTIVE race (no-yield tasks sliced by the timer tick) =====
+        // Isolate the scenario exactly like the C2 block: pulse the coproc reset so
+        // the CPU restarts at the $1000 RESET vector (KWAIT0), task_count clears to 0,
+        // and BRAM (kernel.mem + anything we load next) is preserved. Re-wait `ready`
+        // (reset also re-inits the SDRAM ctrl) and let the kernel reach KWAIT0.
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);            // let kernel reach KWAIT0
+        // load racetask3 (49 bytes) at coproc $0300:
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);
+        load_byte(8'hA4); load_byte(8'hEC); load_byte(8'hB6); load_byte(8'hE8); load_byte(8'hA9);
+        load_byte(8'h80); load_byte(8'h38); load_byte(8'hE9); load_byte(8'h01); load_byte(8'hD0);
+        load_byte(8'hFC); load_byte(8'hCA); load_byte(8'hD0); load_byte(8'hF6); load_byte(8'h78);
+        load_byte(8'hA5); load_byte(8'hED); load_byte(8'h18); load_byte(8'h69); load_byte(8'h01);
+        load_byte(8'h85); load_byte(8'hED); load_byte(8'h48); load_byte(8'h98); load_byte(8'h18);
+        load_byte(8'h65); load_byte(8'hEE); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
+        load_byte(8'hA5); load_byte(8'hEF); load_byte(8'h69); load_byte(8'h00); load_byte(8'h8D);
+        load_byte(8'h01); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D);
+        load_byte(8'h02); load_byte(8'hE0); load_byte(8'h68); load_byte(8'h8D); load_byte(8'h03);
+        load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // TABLE entry0=$0300@$0200, entry1=$0300@$0202
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);
+        load_byte(8'h00); load_byte(8'h03); load_byte(8'h00); load_byte(8'h03);
+        // NPARAM[0]=4, NPARAM[1]=12 (clear margin; small for sim) @ $00E8
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd4); load_byte(8'd12);
+        wr_reg(4'hD, 8'h02);                         // COUNT=2 (arm)
+        repeat (200000) @(posedge clk100);           // ample - inner-delay tasks run long
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C3 race r0 %02X want 01",tmp); end
+        else $display("PASS C3 preemptive race task0 first (r0=01)");
+        sdram_read(10'd0, 16'h0062, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C3 race r1 %02X want 02",tmp); end
+        else $display("PASS C3 preemptive race task1 second (r1=02)");
+        // re-arm FLIP (this is the preemption proof): COUNT=0, NPARAM 20/12, COUNT=2
+        wr_reg(4'hD, 8'h00);
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd20); load_byte(8'd12);
+        wr_reg(4'hD, 8'h02);
+        repeat (200000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C3 flip r0 %02X want 02 (timer not preempting?)",tmp); end
+        else $display("PASS C3 flip task0 now second (r0=02)");
+        sdram_read(10'd0, 16'h0062, tmp);
+        if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C3 flip r1 %02X want 01",tmp); end
+        else $display("PASS C3 flip task1 now first (r1=01)");
+
+        // ===== C3 BRK-safety: a stray BRK in a task must NOT corrupt the scheduler =====
+        // The ISR's B-bit leg ($1F00: AND #$10 -> IRQBRK -> RTI) returns into the BRK
+        // task so it proceeds to JMP DONE; a paired marker task must still run and
+        // land its write. Isolate like the other scenarios (reset -> re-bootstrap).
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);
+        // clear any stale marker
+        sdram_write(10'd0, 16'h0070, 8'h00);
+        // task0 (marker) at $0300: write $5A -> bank0 $0070 via $E000 window, JMP DONE
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);
+        load_byte(8'hA9); load_byte(8'h70); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0);
+        load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h5A);
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // task1 (BRK) at $0320: BRK, pad, JMP DONE  (00 00 4C 06 10)
+        wr_reg(4'h9, 8'h20); wr_reg(4'hA, 8'h03);
+        load_byte(8'h00); load_byte(8'h00); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // TABLE entry0=$0300 @ $0200, entry1=$0320 @ $0202
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);
+        load_byte(8'h00); load_byte(8'h03); load_byte(8'h20); load_byte(8'h03);
+        // NPARAM (unused by these tasks, but BOOTSTRAP touches it): small values
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd4); load_byte(8'd4);
+        wr_reg(4'hD, 8'h02);                         // COUNT=2 (arm)
+        repeat (40000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0070, tmp);
+        if (tmp!==8'h5A) begin errors=errors+1; $display("FAIL C3 BRK-safety marker %02X want 5A (BRK corrupted scheduler?)",tmp); end
+        else $display("PASS C3 BRK-safety: marker landed ($5A @ $0070); stray BRK RTI'd clean");
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
