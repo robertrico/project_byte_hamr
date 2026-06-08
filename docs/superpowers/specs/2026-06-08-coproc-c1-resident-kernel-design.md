@@ -47,11 +47,19 @@ $0200-$02FF  task TABLE          (entry ptrs, 2 bytes each — up to 128 tasks, 
 $0300-$0FFF  TASK code region    (host-loaded, unprotected)
 $1000-$1FFF  KERNEL code + ISRs  (synth-baked, WRITE-PROTECTED)
 ```
-Split on **bit 12**: `laddr[12]==0` → `$0000–$0FFF` writable by the load port;
-`laddr[12]==1` → `$1000–$1FFF` protected. **COUNT is NOT a BRAM cell** — it is a
-register (see Host load port), so the one variable touched concurrently by host and
-kernel never collides in the dual-port BRAM. The TABLE region holds 128 entries
-exactly (`$0200`+2*127 = `$02FE/$02FF`, no spill into the task region).
+Split on **bit 12**: `$1000–$1FFF` (`addr[12]==1`) is the protected kernel region.
+**BOTH BRAM write ports are gated on `~addr[12]`** — this is the critical fix:
+- **Port B (host load):** `CP_WDATA` write ignored when `laddr[12]==1`.
+- **Port A (Arlet / running task):** the C0 core write `if (WE & in_bram & rdy)
+  bram[AB[12:0]]<=DO` becomes `if (WE & in_bram & rdy & ~AB[12])`. Without this, a
+  **task** doing `STA $1000` overwrites the kernel — port B alone does NOT stop a task
+  (the actual threat). Arlet never legitimately writes `$1000–$1FFF`: kernel code is
+  baked, kernel/ZP data lives at `$0000–$01FF` (`bit12==0`). So gating port A costs the
+  task nothing and closes the real hole.
+
+**COUNT is NOT a BRAM cell** — it is a register (see Host load port), so the one
+variable touched concurrently by host and kernel never collides in the dual-port BRAM.
+The TABLE region holds 128 entries exactly (`$0200`+2*127 = `$02FE/$02FF`, no spill).
 
 ### Dual-port BRAM collision mode (load-bearing)
 Port A (Arlet) and port B (load) are inferred as one read + one write each into a
@@ -68,10 +76,12 @@ $FFFC/D RESET -> $1000  (kernel entry)
 $FFFE/F IRQ   -> $1F00  (kernel IRQ ISR, in the protected region)
 $FFFA/B NMI   -> $1F40  (kernel NMI ISR, in the protected region)
 ```
-A task cannot repoint these — they are gateware constants. For C1 the IRQ/NMI lines are
-tied 0 (no interrupts fire yet); the ISRs are `RTI` stubs. The vector + protected-region
-infrastructure is built and tested in C1; the *preemptive timer tick* that uses them is
-C2.
+A task cannot repoint these — they are gateware constants. **All 6 vector bytes
+(`$FFFA–$FFFF`) MUST be decoded** — not just reset (C0 only did `$FFFC/D`). The IRQ/NMI
+lines are tied 0 (no async interrupt fires in C1), but a task executing **`BRK`** reads
+`$FFFE/F`; if those return `$00` the core jumps to `$0000` (ZP) and derails the kernel.
+So `$FFFE/F→$1F00` and `$FFFA/B→$1F40` are implemented even though no line is wired, with
+`RTI` stubs at `$1F00/$1F40`. The preemptive timer tick that *uses* IRQ is C2.
 
 ### Coproc address decode (Arlet side) — priority + holes
 The coproc read mux resolves Arlet's `AB` in this priority:
@@ -105,6 +115,14 @@ on READ.** The `STA $C0CB`/`STA $C0CB,X` dummy read hits `$C0CB` *as a read* —
 no read-autoinc — so it cannot bump. Read-back uses `$C0CC` (its own read-autoinc). The
 loader SHOULD still prefer non-indexed `STA $C0CB` / `LDA $C0CC` (4-cycle, single pulse),
 but the split makes it safe even under indexed addressing.
+
+**Read-back latency — port B read is REGISTERED (use the monitor's DATA pattern).** The
+dual-port BRAM read is 1-cycle registered (like Arlet's port A), but the host register
+read mux is combinational same-cycle — naive wiring returns stale data. Continuously
+latch `ldata_q <= bram_portB[laddr]`; the `CP_RDATA` ($C0CC) read returns `ldata_q`, then
+post-increments `laddr`. The new `ldata_q` settles in ~40 ns (1 clk @ 25 MHz) — far
+inside the next ~1 µs 6502 bus cycle — so the *next* `LDA $C0CC` sees the right byte.
+Same class of fix as the monitor's sticky-busy/DATA latch.
 
 ## Coproc SDRAM write window (generalize C0's fixed `$E000`)
 
@@ -175,9 +193,14 @@ host: monitor R <cell> -> the task's result
    `R 0050` = `99`. Register task B (`writes $77 to bank0 $0051`) → `R 0050`=`99`,
    `R 0051`=`77`. Both registered fns run under the resident kernel. "fn that runs" +
    "add fns" proven.
-2. **Protection:** host sets `CP_LADDR=$1000`, `STA CP_WDATA=$EE`; then `CP_LADDR=$1000`,
-   `LDA CP_RDATA` returns the original kernel byte (write refused). A task cannot corrupt
-   the kernel/ISRs.
+2. **Load-port protection:** host sets `CP_LADDR=$1000`, `STA CP_WDATA=$EE`; then
+   `CP_LADDR=$1000`, `LDA CP_RDATA` returns the original kernel byte (write refused).
+3. **Task-write protection (THE guarantee):** register a hostile task whose body is
+   `LDA #$EE / STA $1000 / RTS`. After the kernel dispatches it, the host reads
+   `$1000` via `CP_RDATA` → still the original kernel byte. This exercises the **port-A**
+   gate — the test that actually proves "a task cannot corrupt the kernel/ISRs." (The
+   load-port test alone passes even with the port-A hole open, so it is necessary but not
+   sufficient.)
 
 ## Components / files (branch `coproc`)
 
@@ -190,8 +213,13 @@ host: monitor R <cell> -> the task's result
   write window (replacing C0's fixed `$0040` post); kernel-region BRAM init from
   `kernel.mem`; IRQ/NMI tied 0. C0's HALT/LOAD/RUN job-runner FSM is removed — the kernel
   is resident, Arlet runs from reset (keep the SDRAM-`ready` gate before the first post).
-- `kernel.S` → `kernel.mem` — the baked kernel (boot + dispatch loop + ISR stubs),
-  assembled to the `$1000–$1FFF` image (Makefile rule, in synth graph).
+- `kernel.S` → `kernel.mem` — the baked kernel (boot + dispatch loop + ISR stubs at
+  `$1F00/$1F40`), Merlin `ORG $1000`. **Real `.S→.mem` Makefile target in the synth
+  graph** (retire `coproc_prog.mem`; the "hamr_rom.mem stale for weeks" lesson — verify
+  the artifact is actually consumed by synth). `$readmemh` loads from index 0, so EITHER
+  emit a full 8 KB padded image (zeros `$0000–$0FFF`, kernel `$1000+`) OR
+  `$readmemh("kernel.mem", bram, 13'h1000)` with a kernel-only `.mem`. Verify `bram[$1000]`
+  = the kernel's first opcode after build.
 - `project_obscurus_top.v` — decode `CP_LADDR_LO/HI` ($C0C9/CA), `CP_WDATA` ($C0CB),
   `CP_RDATA` ($C0CC), `CP_COUNT` ($C0CD) → drive coproc port B + the count register;
   route `CP_RDATA` read-back into the register read mux. `CP_WDATA` auto-inc fires only on
@@ -224,16 +252,24 @@ host: monitor R <cell> -> the task's result
 - **Sim (unit):** port B write/read-back + protection (`$1000` write ignored); the
   SDRAM-window post.
 - **Sim (integration):** drive the load port to register a task into a kernel-loaded
-  BRAM, run, assert the SDRAM result; assert the protection refusal. iverilog `-g2005`.
-- **Bench:** flash; boot; run the Merlin loader; `R 0050`/`R 0051` show both task
-  results; the protection read-back shows the kernel byte intact.
+  BRAM, run, assert the SDRAM result; assert BOTH protection refusals — load-port write to
+  `$1000` AND a dispatched task's `STA $1000` (port-A gate). iverilog `-g2005`.
+- **Build/EBR check:** after synth, confirm the synth report maps the coproc 8 KB BRAM to
+  **EBR (DP16KD)**, NOT distributed LUTs — adding port B (second `always` block) can defeat
+  DP inference and explode to LUTRAM. Pin the DP16KD coding style so a port-A/port-B
+  same-address same-cycle collision returns **old data, not `X`** (the TABLE/code region's
+  publish-before-read makes live collisions unlikely, but the mode is the guarantee). Report
+  EBR count (C0 was 4).
+- **Bench:** flash; boot; run the Merlin loader; `R 0050`/`R 0051` show both task results;
+  the load-port AND task-write read-backs show the kernel byte intact.
 
 ## Success criteria
 
 Two host-registered Merlin tasks run under a resident, never-halting kernel and write
-distinct SDRAM results the host reads; a load aimed at the kernel region is refused by
-hardware. The coproc is now a programmable mini-RTOS with a protected kernel — the
-foundation for C2 (scheduling + the race).
+distinct SDRAM results the host reads; **both** a host load AND a running task's write
+aimed at the kernel region (`$1000`) are refused by hardware (read-back unchanged). The
+coproc is now a programmable mini-RTOS with a genuinely protected kernel — the foundation
+for C2 (scheduling + the race).
 
 ## Non-goals (later rungs)
 
