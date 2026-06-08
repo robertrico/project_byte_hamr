@@ -1,40 +1,187 @@
-* kernel.S - C1 coproc resident kernel. ORG $1000 (write-protected region).
-* Boots, loops dispatching TABLE[$0200..] entries 0..COUNT-1 (COUNT = $E010 reg).
-* Index kept on the STACK across the task call (tasks trash A/X/Y). ISR stubs at
-* $1F00/$1F40 (vectors point here; IRQ/NMI tied 0 in C1, but BRK reads $FFFE/F).
+* kernel.S - C2 coproc cooperative scheduler. ORG $1000 (write-protected region).
+* Fixed API: $1000 JMP RESET (reset vector), $1003 JMP YIELD, $1006 JMP DONE.
+* Per-task TCBs in ZP $D0-, per-task page-1 stacks, YIELD/RESTORE context switch,
+* BOOTSTRAP on each COUNT 0->nonzero edge, DONE/idle. ISR stubs $1F00/$1F40.
  LST OFF
  TYP $06
  DSK kernel.bin
  ORG $1000
 
-JVEC = $00          ; ZP 2-byte indirect dispatch pointer (consumed before task runs)
+TCB_SP = $D0
+TCB_A  = $D4
+TCB_X  = $D8
+TCB_Y  = $DC
+TCB_P  = $E0
+TCB_ST = $E4
+NPARAM = $E8
+CUR    = $EC
+ORDER  = $ED
+COREBL = $EE
+COREBH = $EF
+TMPA   = $F0
+TMPX   = $F1
+TMPY   = $F2
+TMPP   = $F3
+
+COUNT  = $E010
+COREID = $E011
+SADRLO = $E000
+SADRHI = $E001
+SBANK  = $E002
+SDATA  = $E003
+
+ JMP RESET
+ JMP YIELD
+ JMP DONE
 
 RESET
  SEI
  LDX #$FF
  TXS
-KMAIN
- LDX #0
-KNEXT
- CPX $E010          ; X vs COUNT (abs read of the count register)
- BCS KMAIN          ; X >= COUNT -> nothing more, restart
- TXA
- ASL                ; A = X*2 (entry offset; X<=127 -> no overflow)
- TAY
- LDA $0200,Y
- STA JVEC
- LDA $0201,Y
- STA JVEC+1
- TXA
- PHA                ; save index on the stack (survives the task's RTS)
- JSR KCALL
- PLA
- TAX                ; restore index
- INX
- JMP KNEXT
-KCALL JMP (JVEC)
+KWAIT0
+ LDA COUNT
+ BNE KWAIT0
+KWAITN
+ LDA COUNT
+ BEQ KWAITN
+ JSR BOOTSTRAP
+KIDLE
+ LDX #$FF
+ TXS
+ JMP KWAIT0
 
- DS $1F00-*         ; pad to the IRQ ISR
+BOOTSTRAP
+ LDA COREID
+ ASL
+ ASL
+ ASL
+ ASL
+ CLC
+ ADC #$61
+ STA COREBL
+ LDA #$00
+ ADC #$00
+ STA COREBH
+ LDA #$00
+ STA ORDER
+ LDX #$00
+BSL
+ CPX COUNT
+ BCS BSEMP
+ LDA #$01
+ STA TCB_ST,X
+ LDA #$00
+ STA TCB_A,X
+ STA TCB_X,X
+ STA TCB_Y,X
+ LDA #$04
+ STA TCB_P,X
+ LDY STKTOP,X
+ LDA #$02
+ STA $0100,Y
+ DEY
+ LDA #$FF
+ STA $0100,Y
+ DEY
+ TYA
+ STA TCB_SP,X
+ INX
+ JMP BSL
+BSEMP
+ CPX #$04
+ BCS BSGO
+ LDA #$00
+ STA TCB_ST,X
+ INX
+ JMP BSEMP
+BSGO
+ LDA #$00
+ STA CUR
+ JMP RESTORE
+
+RESTORE
+ LDY CUR
+ LDX TCB_SP,Y
+ TXS
+ LDA TCB_P,Y
+ PHA
+ LDA TCB_A,Y
+ PHA
+ LDA TCB_Y,Y
+ LDX TCB_X,Y
+ TAY
+ PLA
+ PLP
+ RTS
+
+YIELD
+ STA TMPA
+ STX TMPX
+ STY TMPY
+ PHP
+ PLA
+ STA TMPP
+ TSX
+ LDY CUR
+ TXA
+ STA TCB_SP,Y
+ LDA TMPA
+ STA TCB_A,Y
+ LDA TMPX
+ STA TCB_X,Y
+ LDA TMPY
+ STA TCB_Y,Y
+ LDA TMPP
+ STA TCB_P,Y
+ JSR PICKNEXT
+ JMP RESTORE
+
+DONE
+ LDY CUR
+ LDA #$02
+ STA TCB_ST,Y
+ JSR PICKANY
+ BCC :go
+ JMP KIDLE
+:go
+ JMP RESTORE
+
+PICKNEXT
+ LDX CUR
+PNL
+ INX
+ CPX #$04
+ BCC PNNW
+ LDX #$00
+PNNW
+ LDA TCB_ST,X
+ CMP #$01
+ BEQ PNF
+ CPX CUR
+ BNE PNL
+PNF
+ STX CUR
+ RTS
+
+PICKANY
+ LDX #$00
+PAL
+ LDA TCB_ST,X
+ CMP #$01
+ BEQ PAF
+ INX
+ CPX #$04
+ BCC PAL
+ SEC
+ RTS
+PAF
+ STX CUR
+ CLC
+ RTS
+
+STKTOP DFB $2F,$5F,$8F,$BF
+
+ DS $1F00-*
 IRQH RTI
- DS $1F40-*         ; pad to the NMI ISR
+ DS $1F40-*
 NMIH RTI
