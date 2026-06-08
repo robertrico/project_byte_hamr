@@ -43,13 +43,24 @@ test shows the kernel byte unchanged.
 ```
 $0000-$00FF  ZP
 $0100-$01FF  stack
-$0200        task COUNT          (host-written, last; kernel reads)
-$0201-$02FF  task TABLE          (entry ptrs, 2 bytes each — up to ~127 tasks)
+$0200-$02FF  task TABLE          (entry ptrs, 2 bytes each — up to 128 tasks, idx 0..127)
 $0300-$0FFF  TASK code region    (host-loaded, unprotected)
 $1000-$1FFF  KERNEL code + ISRs  (synth-baked, WRITE-PROTECTED)
 ```
 Split on **bit 12**: `laddr[12]==0` → `$0000–$0FFF` writable by the load port;
-`laddr[12]==1` → `$1000–$1FFF` protected.
+`laddr[12]==1` → `$1000–$1FFF` protected. **COUNT is NOT a BRAM cell** — it is a
+register (see Host load port), so the one variable touched concurrently by host and
+kernel never collides in the dual-port BRAM. The TABLE region holds 128 entries
+exactly (`$0200`+2*127 = `$02FE/$02FF`, no spill into the task region).
+
+### Dual-port BRAM collision mode (load-bearing)
+Port A (Arlet) and port B (load) are inferred as one read + one write each into a
+single reg-array, **in separate `always @(posedge clk)` blocks** so Yosys maps them to
+ECP5 `DP16KD` with **read-returns-OLD-data on a same-address collision** (no
+write-through, no `X`). The TABLE/code region is published *before* it is read
+(count-last barrier), so a live same-cell read-during-write never happens for a
+dispatched task; the old-data mode is the belt-and-suspenders guarantee. The sim BRAM
+model must mirror this (read old value on collision, never `X`).
 
 ### Immutable vectors (synthesized in `coproc.v`, not in writable memory)
 ```
@@ -62,16 +73,38 @@ tied 0 (no interrupts fire yet); the ISRs are `RTI` stubs. The vector + protecte
 infrastructure is built and tested in C1; the *preemptive timer tick* that uses them is
 C2.
 
-## Host load port (`$C0Cx`, 3 new registers in the free `$C0C9–CF` scratch space)
+### Coproc address decode (Arlet side) — priority + holes
+The coproc read mux resolves Arlet's `AB` in this priority:
+1. `AB` in `$FFFA–$FFFF` → the **6 vector constants** above (ahead of everything).
+2. `AB == $E010` → **COUNT register** (kernel reads the registered task count here).
+3. `AB` in `$E000–$E003` → SDRAM write window (write-side; reads return don't-care).
+4. `AB` in `$0000–$1FFF` → BRAM (port A).
+5. anything else (`$2000–$DFFF`, `$E004–$E00F`, `$E011–$FFF9`) → **don't-care** (`$00`).
+A correct task/kernel never reads the holes; this just pins behavior. The DI 1-cycle
+registered alignment (C0) applies to all paths (vector/count/BRAM selects registered).
+
+## Host load port (`$C0Cx`, 5 registers in the free `$C0C9–CF` scratch space)
 
 ```
 $C0C9  CP_LADDR_LO   W   low  8 bits of the 13-bit BRAM load address
 $C0CA  CP_LADDR_HI   W   high 5 bits (laddr[12:8]); laddr[12] selects protected half
-$C0CB  CP_LDATA      W   BRAM[laddr] <= data, then laddr++  (IGNORED if laddr[12]==1)
-                     R   data = BRAM[laddr], then laddr++   (read-back to verify a load)
+$C0CB  CP_WDATA      W   BRAM[laddr] <= data, then laddr++   (IGNORED if laddr[12]==1)
+$C0CC  CP_RDATA      R   data = BRAM[laddr], then laddr++    (read-back to verify)
+$C0CD  CP_COUNT      W   registered task count (the release barrier; kernel reads at $E010)
 ```
-Drives **port B** of the dual-port BRAM. The write-protect (`laddr[12]==1` → write
-ignored) is the hardware guarantee. Read-back is allowed for all addresses (debug/verify).
+Drives **port B** of the dual-port BRAM. Write-protect (`laddr[12]==1` → write ignored)
+is the hardware guarantee. `CP_COUNT` is a register, not BRAM (see collision note).
+
+**SEPARATE write-autoinc and read-autoinc addresses — mandatory (CLAUDE.md rule #1).**
+`STA abs,X` does a *dummy read of the target* (an `R_nW=1` pulse) on cycle 4 before the
+write on cycle 5 — so a single address that auto-increments on BOTH read and write would
+**double-bump `laddr`** and corrupt the load (a bug this project has hit repeatedly). C1
+splits the paths exactly like the monitor's `TRIG_RD`/`DATA`: **`CP_WDATA` ($C0CB)
+auto-increments only on WRITE-commit (`R_nW=0`); `CP_RDATA` ($C0CC) auto-increments only
+on READ.** The `STA $C0CB`/`STA $C0CB,X` dummy read hits `$C0CB` *as a read* — which has
+no read-autoinc — so it cannot bump. Read-back uses `$C0CC` (its own read-autoinc). The
+loader SHOULD still prefer non-indexed `STA $C0CB` / `LDA $C0CC` (4-cycle, single pulse),
+but the split makes it safe even under indexed addressing.
 
 ## Coproc SDRAM write window (generalize C0's fixed `$E000`)
 
@@ -90,35 +123,38 @@ tasks write distinct cells). RDY-stall + single-post handshake as C0's `$E000`.
 ```
 RESET ($1000):
   init SP ($01FF), any kernel state
-  ; do NOT clear COUNT here unless first-boot — see note
-  ; (host registers AFTER the kernel has booted; kernel boots in us, host in seconds)
-  clear COUNT=0 once at boot
+  ; COUNT is a coproc register, reset to 0 by gateware on POR — kernel need not clear it
 MAINLOOP:
   LDX #0
 NEXT:
-  CPX COUNT          ; $0200
-  BCS MAINLOOP       ; X >= count -> nothing more, restart loop
-  ; dispatch task_table[X] (2-byte entry) via an indirect JSR trampoline
+  LDA $E010          ; COUNT register (read-only to the kernel)
+  STX TMP            ; compare X to COUNT
+  CMP TMP            ; A(count) - X
+  BEQ MAINLOOP       ; X == count -> nothing more, restart loop
+  ; (X < count: dispatch task_table[X])
   txa; asl; tay      ; Y = X*2 index into table
-  lda TABLE,Y   / sta JVEC
+  lda TABLE,Y   / sta JVEC      ; TABLE = $0200
   lda TABLE+1,Y / sta JVEC+1
   jsr CALLVEC        ; CALLVEC: jmp (JVEC)
   inx
   jmp NEXT
 ```
-Tasks are subroutines ending in `RTS` (return to the kernel). Cooperative: each task runs
-to its `RTS` once per loop pass.
+COUNT lives in the `$E010` register (gateware-reset to 0 on POR; host bumps it via
+`CP_COUNT`). Tasks are subroutines ending in `RTS` (return to the kernel). Cooperative:
+each task runs to its `RTS` once per loop pass.
 
 ## Live registration protocol (lock-free, single-producer/single-consumer)
 
-Host, via the load port (port B), in THIS ORDER:
-1. Write the task **code** bytes → `$0300 + slot_offset`.
-2. Write the task **entry ptr** (lo,hi) → `TABLE + 2*idx` (`$0201+`).
-3. Write **COUNT = idx+1** → `$0200` **last**.
+Host, in THIS ORDER:
+1. Write the task **code** bytes → BRAM `$0300 + slot_offset` (via `CP_LADDR` + `CP_WDATA`).
+2. Write the task **entry ptr** (lo,hi) → BRAM `TABLE + 2*idx` (`$0200+`, via the load port).
+3. Write `CP_COUNT` (`$C0CD`) = `idx+1` **last** (the register, the release barrier).
 
-The kernel reads `COUNT` then dispatches `TABLE[0..COUNT-1]`. Because COUNT is bumped
-last, a task is dispatched only once its code + entry are fully in place. A single-byte
-COUNT write is atomic w.r.t. the kernel's read. No lock needed.
+The kernel reads `COUNT` (the `$E010` register) then dispatches `TABLE[0..COUNT-1]`.
+Because `CP_COUNT` is bumped last, a task is dispatched only once its code + entry are
+fully in BRAM. COUNT being a register (not a BRAM cell) means the one host/kernel-shared
+variable never hits a dual-port collision; a single-byte register read returns old-or-new
+(both safe — old → picked up next pass), atomic in the single 25 MHz clock domain. No lock.
 
 ## Data flow
 
@@ -126,10 +162,10 @@ COUNT write is atomic w.r.t. the kernel's read. No lock needed.
 (boot) coproc reset -> kernel $1000 -> COUNT=0 -> MAINLOOP (dispatches nothing)
 host loader (Merlin, on disk):
   for each task:
-    POKE CP_LADDR=$0300.. ; POKE CP_LDATA=<task byte> ...   (load code, port B)
-    POKE CP_LADDR=TABLE+2*idx ; POKE entry lo/hi
-    POKE CP_LADDR=$0200 ; POKE COUNT=idx+1                  (register, last)
-kernel: sees COUNT>0 -> JSR task -> task sets SADDR/SBANK, STA SDATA -> SDRAM write
+    set CP_LADDR=$0300.. ; STA CP_WDATA per byte ...        (load code, port B)
+    set CP_LADDR=$0200+2*idx ; STA CP_WDATA entry lo/hi
+    STA CP_COUNT = idx+1                                    (register, last)
+kernel: reads COUNT@$E010 > 0 -> JSR task -> task sets SADDR/SBANK, STA SDATA -> SDRAM write
 host: monitor R <cell> -> the task's result
 ```
 
@@ -139,22 +175,27 @@ host: monitor R <cell> -> the task's result
    `R 0050` = `99`. Register task B (`writes $77 to bank0 $0051`) → `R 0050`=`99`,
    `R 0051`=`77`. Both registered fns run under the resident kernel. "fn that runs" +
    "add fns" proven.
-2. **Protection:** host loads a byte to `CP_LADDR=$1000`, `CP_LDATA=$EE`; read-back of
-   `$1000` returns the original kernel byte (write refused). A task cannot corrupt the
-   kernel/ISRs.
+2. **Protection:** host sets `CP_LADDR=$1000`, `STA CP_WDATA=$EE`; then `CP_LADDR=$1000`,
+   `LDA CP_RDATA` returns the original kernel byte (write refused). A task cannot corrupt
+   the kernel/ISRs.
 
 ## Components / files (branch `coproc`)
 
 - `coproc.v` — replace the synth-baked single program with: dual-port BRAM (port A
-  Arlet, port B load), `laddr` register + write-protect (`laddr[12]`), read-back;
-  synthesized immutable vectors ($FFFC/D→$1000, $FFFE/F→$1F00, $FFFA/B→$1F40); the
-  generalized `$E000–$E003` SDRAM write window (replacing the fixed `$0040` post);
-  kernel-region BRAM init from `kernel.mem`; IRQ/NMI tied 0. The HALT/LOAD/RUN job-runner
-  FSM is removed — the kernel is resident, Arlet runs from reset.
+  Arlet, port B load; separate `always` blocks → DP16KD old-data-on-collision); `laddr`
+  register + `CP_WDATA` write-autoinc (protect `laddr[12]`) + `CP_RDATA` read-autoinc
+  (separate addresses — anti-double-bump); a `COUNT` register (POR-reset 0, host-written,
+  Arlet reads at `$E010`); synthesized immutable vectors ($FFFC/D→$1000, $FFFE/F→$1F00,
+  $FFFA/B→$1F40) with the decode priority above; the generalized `$E000–$E003` SDRAM
+  write window (replacing C0's fixed `$0040` post); kernel-region BRAM init from
+  `kernel.mem`; IRQ/NMI tied 0. C0's HALT/LOAD/RUN job-runner FSM is removed — the kernel
+  is resident, Arlet runs from reset (keep the SDRAM-`ready` gate before the first post).
 - `kernel.S` → `kernel.mem` — the baked kernel (boot + dispatch loop + ISR stubs),
   assembled to the `$1000–$1FFF` image (Makefile rule, in synth graph).
-- `project_obscurus_top.v` — decode `CP_LADDR_LO/HI`/`CP_LDATA` ($C0C9–CB) → drive
-  coproc port B (addr/data/we + read-back data to the register read mux).
+- `project_obscurus_top.v` — decode `CP_LADDR_LO/HI` ($C0C9/CA), `CP_WDATA` ($C0CB),
+  `CP_RDATA` ($C0CC), `CP_COUNT` ($C0CD) → drive coproc port B + the count register;
+  route `CP_RDATA` read-back into the register read mux. `CP_WDATA` auto-inc fires only on
+  the write-commit (`reg_wr`); `CP_RDATA` auto-inc only on its read strobe.
 - `software/SDM/` — host loader (Merlin, e.g. `CPREG.S`) that loads + registers task(s)
   + reads results + runs the protection test; two tiny task binaries (`taskA.S`,
   `taskB.S`) authored in Merlin, their bytes carried by / loaded via the loader.
@@ -164,8 +205,9 @@ host: monitor R <cell> -> the task's result
 
 ## Error handling / edge cases
 
-- **Boot ordering:** kernel clears COUNT once at boot (µs after reset); host registers
-  seconds later — no race. If a re-register happens, host bumps COUNT to the new total.
+- **Boot ordering:** the `COUNT` register is gateware-reset to 0 on POR (µs after
+  config); the host registers seconds later — no race, and the kernel never writes COUNT.
+  Re-register = host bumps `CP_COUNT` to the new total.
 - **A-read / B-write collision:** the kernel (port A) only reads a task's code after its
   COUNT is bumped (post-load); the task being loaded isn't dispatched yet — no same-cell
   read-during-write on live tasks.
