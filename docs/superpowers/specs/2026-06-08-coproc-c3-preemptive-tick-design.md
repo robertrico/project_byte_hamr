@@ -104,7 +104,7 @@ covers the RMW + stamp + the transition into `DONE`).
      AND #$10                         ; B bit
      BNE BRKLEG
      ; B=0 (real tick): ack + switch
-     STA TICK_ACK (any) ; $E013       ; (A is the P value here; task A is in TMPA)
+     STA TICK_ACK (any) ; $E013       ; (A here = masked B bit; ack is value-agnostic; task A safe in TMPA)
      JMP SWITCH                       ; SWITCH stages from TMP* (A/X/Y already saved)
    BRKLEG:                            ; B=1 (stray BRK): NOT a tick
      LDA TMPA / LDX TMPX              ; restore A,X (TSX/LDA clobbered them; Y untouched)
@@ -160,12 +160,18 @@ covers the RMW + stamp + the transition into `DONE`).
 
 ## Components / files (branch `coproc`)
 - `coproc.v` — add the timer: `$E012` period/arm reg, `$E013` ack, `irq_pending` counter,
-  wire `.IRQ(irq_pending)` (was `1'b0`). Reset → disarmed.
+  wire `.IRQ(irq_pending)` (was `1'b0`). Reset → disarmed. **Confirm the gateware still
+  synthesizes the IRQ vector `$FFFE/$FFFF → $1F00`** (C1's all-6-vectors DI mux:
+  `is_irqlo_q→$00`, `is_irqhi_q→$1F`) — that's where the tick lands; without it the IRQ
+  goes nowhere. (NMI `$FFFA/B→$1F40` + reset `$FFFC/D→$1000` unchanged.)
 - `project_obscurus_top.v` — no change (timer is internal to `coproc`; CORE_ID inst stays).
 - `kernel.S` — rework to the uniform frame: `RESTORE`(RTI, no P), `SWITCH`, `YIELD`(+1
   frame, SEI), `DONE`(SEI), `BOOTSTRAP`(seed `[PCH,PCL,$00]` exact entry, arm timer last,
-  ack-first), `KIDLE`(disarm+ack), **TICK ISR at `$1F00`** (B-bit check, save A/X/Y, ack,
-  `JMP SWITCH`). Drop `TCB_P`. Re-bake `kernel.mem`.
+  ack-first), `KIDLE`(disarm+ack), **TICK ISR — MUST be located at exactly `$1F00`** (the
+  gateware IRQ vector; pad/`ORG` so the ISR entry is `$1F00`) doing the pinned order
+  (ZP-save A/X/Y → `TSX` → B-check → BRK-leg restore+`RTI`, else ack+`JMP SWITCH`). Drop
+  `TCB_P` (keep `TMPA/TMPX/TMPY` scratch). Re-bake `kernel.mem`. (Verify `$1F00` lands the
+  ISR, like C1/C2 verified the API table — `xxd`/`sed` the offset.)
 - `software/SDM/racetask3.S` — tight-loop (no-yield) race task; id cached in Y; finish
   `SEI`/RMW/stamp/`JMP DONE`. `CPRACE3.S` host loader (load, register 2, **arm via `$E012`
   is done by the kernel — host just sets COUNT**, race, re-arm flip). Disk.
