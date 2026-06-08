@@ -187,9 +187,23 @@ $(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048 0x60
 endif
 
+# project_obscurus coprocessor BRAM image (8KB, Arlet $0000-$1FFF). Merlin32
+# source ORG $0200 -> .bin -> 8192-byte .mem with the program at offset $0200
+# (reset vector synthesized in coproc.v). Plain offset placement (NOT rom2mem,
+# whose base math is monitor-specific).
+OBSCURUS_COPROC_MEM := $(GATEWARE_DIR)/project_obscurus/coproc_prog.mem
+OBSCURUS_COPROC_SRC := $(GATEWARE_DIR)/project_obscurus/coproc_prog.S
+
+ifneq ($(wildcard $(OBSCURUS_COPROC_SRC)),)
+$(OBSCURUS_COPROC_MEM): $(OBSCURUS_COPROC_SRC)
+	@echo "=== Assembling coproc program (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) coproc_prog.S
+	python3 -c "b=open('$(GATEWARE_DIR)/project_obscurus/coproc_prog.bin','rb').read(); m=bytearray(8192); m[0x200:0x200+len(b)]=b; open('$(OBSCURUS_COPROC_MEM)','w').write('\n'.join('%02x'%x for x in m)+'\n')"
+endif
+
 # Force project_obscurus to depend on its slot ROM and monitor ROM
 ifeq ($(DESIGN),project_obscurus)
-$(JSON): $(OBSCURUS_ROM_MEM) $(OBSCURUS_MON_MEM)
+$(JSON): $(OBSCURUS_ROM_MEM) $(OBSCURUS_MON_MEM) $(OBSCURUS_COPROC_MEM)
 endif
 
 # Flash Hamr menu volume (picker + ProDOS)
