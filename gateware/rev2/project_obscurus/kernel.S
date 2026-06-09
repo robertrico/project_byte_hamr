@@ -30,6 +30,8 @@ TMPP   = $F3
 BUDGET = $C0
 TMPS   = $C4
 TMPSK  = $C5
+FRESH  = $C6        ; DISPATCH's freshly-spawned-this-tick mask (was TMPSK; SPAWN clobbered it)
+IDLEF  = $C7        ; 1 = interrupt hit idle spin / CUR is not a live task; 0 = a task is running
 SLOTZP = $80
 
 COUNT   = $E010
@@ -76,6 +78,8 @@ KIDLE
  SEI                ; reset the idle stack to $01FF (ABOVE all task stacks, max
  LDX #$FF           ; STKTOP=$BF) so a later GO's JSR BOOTSTRAP / SPAWN frame-build
  TXS                ; can't collide with leftover idle-stack return bytes
+ LDA #$01           ; mark: the ISR now interrupts the IDLE spin, not a live task
+ STA IDLEF
  CLI                ; idle MUST be I-clear so the free-running tick ISR fires
 KISPIN
  LDA GOSTAT
@@ -147,6 +151,8 @@ SPAWN
  RTS
 
 RESTORE
+ LDA #$00           ; a task is about to run (reached from SWITCH/BSGO/ISGORESTORE)
+ STA IDLEF
  LDY CUR
  LDX TCB_SP,Y
  TXS
@@ -250,7 +256,7 @@ PAF
 *      NMIH at the gateware-pinned $1F40 with IRQH at $1F00) ----
 DISPATCH
  LDA #$00
- STA TMPSK          ; freshly-spawned mask = 0
+ STA FRESH          ; freshly-spawned mask = 0 (own ZP; SPAWN uses TMPSK for skill_id)
  LDX #$00
 DSCAN
  LDA CALLREQ
@@ -266,8 +272,8 @@ DSCAN
  PLA                ; A=skill_id, X=slot
  JSR SPAWN
  LDA DBIT,X
- ORA TMPSK
- STA TMPSK          ; mark X freshly-spawned
+ ORA FRESH
+ STA FRESH          ; mark X freshly-spawned
  STX TMPS
  LDA TMPS
  STA CALLACK        ; ack call_req[X]
@@ -282,7 +288,7 @@ DBUD
  CMP #$01
  BNE DBNEXT
  LDA DBIT,X
- AND TMPSK          ; freshly-spawned this tick? skip (off-by-one R4)
+ AND FRESH          ; freshly-spawned this tick? skip (off-by-one R4)
  BNE DBNEXT
  LDA BUDGET,X
  BEQ DBNEXT         ; 0 = no limit
@@ -331,8 +337,8 @@ FORCEDONE
 ISERV
  LDA SNAPBSY        ; snapshot mask: skip dispatch during C-flash restore/save
  AND #$01
- BNE ISRET
- LDA CALLREQ        ; fast-path: nothing pending AND no budgets -> just SWITCH/idle
+ BNE ISRESUME       ; interrupted ctx intact (no dispatch) -> resume it cleanly
+ LDA CALLREQ        ; fast-path: nothing pending AND no budgets -> resume/SWITCH
  BNE ISDISP
  LDX #$00
 ISBUD
@@ -341,25 +347,32 @@ ISBUD
  INX
  CPX #$04
  BCC ISBUD
- JMP ISRUN
+ LDA IDLEF          ; fast path: idle spin interrupted -> resume idle, no switch
+ BNE ISRESUME
+ JMP SWITCH         ; live task, no dispatch -> normal C3 preemption (batch race)
 ISDISP
  JSR DISPATCH
-ISRUN
- LDX #$00          ; any task RUNNABLE (TCB_ST==1)? if so preempt via SWITCH
-ISRCL
+ ; post-dispatch: decide save-and-switch vs pick-without-save vs idle
+ LDA IDLEF
+ BNE ISPICK         ; interrupt hit idle -> do NOT save the idle frame
+ LDX CUR
  LDA TCB_ST,X
  CMP #$01
- BEQ ISGOSW
- INX
- CPX #$04
- BCC ISRCL
-ISRET                ; nothing runnable -> clean idle return (no context switch)
+ BEQ ISGOSW         ; a LIVE task was interrupted -> SWITCH (save CUR + round-robin)
+ ; else CUR was force-completed (TCB_ST=2) -> do not resume/save it
+ISPICK
+ JSR PICKANY
+ BCC ISGORESTORE    ; found a runnable slot -> RESTORE it (uses its OWN seeded SP)
+ JMP KIDLE          ; nothing runnable -> safe idle (discards dead/idle frame)
+ISGORESTORE
+ JMP RESTORE
+ISGOSW
+ JMP SWITCH
+ISRESUME             ; resume an intact interrupted context (idle or unchanged task)
  LDA TMPA
  LDX TMPX
  LDY TMPY
  RTI
-ISGOSW
- JMP SWITCH
 
 STKTOP DFB $2F,$5F,$8F,$BF
 
@@ -377,6 +390,7 @@ IRQH
 IRQBRK
  LDA TMPA
  LDX TMPX
+ LDY TMPY
  RTI
 
  DS $1F40-*
