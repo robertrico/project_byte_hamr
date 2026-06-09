@@ -21,6 +21,9 @@ module project_obscurus_tb;
     wire [3:0] sdram_cmd = {SDRAM_nCS,SDRAM_nRAS,SDRAM_nCAS,SDRAM_nWE};
     wire [15:0] sdram_dq;
 
+    // SPI flash model nets (declared before dut so the port connections bind)
+    wire FLASH_nCS_w, FLASH_MOSI_w, flash_miso_w;
+
     project_obscurus_top dut (
         .CLK_100MHz(clk100),
         .SDRAM_CLK(SDRAM_CLK), .SDRAM_CKE(SDRAM_CKE), .SDRAM_nCS(SDRAM_nCS),
@@ -48,6 +51,8 @@ module project_obscurus_tb;
         .R_nW(R_nW),.nDEVICE_SELECT(nDEVICE_SELECT),.nI_O_SELECT(nI_O_SELECT),
         .nI_O_STROBE(nI_O_STROBE),.DMA_OUT(1'b1),.INT_OUT(1'b1),.RDY(1'b1),
         .nRES_READ(nRES_READ),
+        .FLASH_nCS(FLASH_nCS_w),.FLASH_MOSI(FLASH_MOSI_w),.FLASH_MISO(flash_miso_w),
+        .FLASH_nWP(),.FLASH_nHOLD(),
         .nIRQ(),.nNMI(),.nINH(),.nDMA(),.nRES(),.DMA_IN(),.INT_IN(),.DATA_OE(),
         .GPIO_1(),.GPIO_2(),.GPIO_3(),.GPIO_4(),.GPIO_5(),.GPIO_6(),.GPIO_7(),
         .GPIO_8(),.GPIO_9(),.GPIO_10(),.GPIO_11(),.GPIO_12(),.GPIO_13(),.GPIO_14(),
@@ -57,6 +62,23 @@ module project_obscurus_tb;
     sdram_model model (
         .clk(SDRAM_CLK), .cmd(sdram_cmd), .ba({SDRAM_BA1,SDRAM_BA0}),
         .a(sdram_a), .dqm0(SDRAM_DQM0), .dqm1(SDRAM_DQM1), .dq(sdram_dq)
+    );
+
+    // ----- SPI flash model for the C-flash integration proof (Task 6) -----
+    // SUBTLETY 1: the top routes SPI SCK through the ECP5 USRMCLK primitive,
+    // which is compiled out under `ifndef SYNTHESIS, leaving `spi_sck` as a plain
+    // internal wire (NOT a top-level port). Reach it by HIERARCHICAL REFERENCE
+    // (dut.spi_sck) via an assign-probe so it can drive the model's .sck port.
+    // FLASH_MISO is a DUT INPUT driven by the model. The model has NO reset port,
+    // so its backing store persists across the nRES_READ pulse -- essential for
+    // the SAVE -> RAM-loss -> RESTORE proof below.
+    wire flash_sck_probe;
+    assign flash_sck_probe = dut.spi_sck;
+    spi_flash_model u_flash (
+        .sck (flash_sck_probe),
+        .ncs (FLASH_nCS_w),
+        .mosi(FLASH_MOSI_w),
+        .miso(flash_miso_w)
     );
 
     integer errors = 0;
@@ -436,8 +458,121 @@ module project_obscurus_tb;
         if (tmp!==8'h5A) begin errors=errors+1; $display("FAIL C3 BRK-safety marker %02X want 5A (BRK corrupted scheduler?)",tmp); end
         else $display("PASS C3 BRK-safety: marker landed ($5A @ $0070); stray BRK RTI'd clean");
 
+        // ===== C-flash: SAVE registry -> RAM loss -> auto-RESTORE -> run service =====
+        // The END-TO-END proof. Persist the host-registered service to SPI flash,
+        // EXPLICITLY wipe the BRAM task region (simulating the power-cycle RAM loss
+        // that a sim reset does NOT model -- $readmemh runs only once at t=0), then
+        // pulse the coproc reset to re-arm the restore FSM, which must repopulate the
+        // task region FROM FLASH. If the service then runs, the ONLY path the code
+        // took to BRAM is the flash restore. (See SUBTLETY 1 for the SCK hookup and
+        // SUBTLETY 2 for why the explicit zero-fill makes this proof meaningful.)
+        //
+        // Isolate like the other scenarios: reset coproc, re-wait ready, let park.
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);            // let kernel reach KWAITN
+
+        // 1. Host-load racetask3 (49 bytes) @ coproc $0300 -- the SAME service the
+        //    C3/C3.1 blocks register. This is the pre-save "registry" in BRAM.
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
+        load_byte(8'hA4); load_byte(8'hEC); load_byte(8'hB6); load_byte(8'hE8); load_byte(8'hA9);
+        load_byte(8'h80); load_byte(8'h38); load_byte(8'hE9); load_byte(8'h01); load_byte(8'hD0);
+        load_byte(8'hFC); load_byte(8'hCA); load_byte(8'hD0); load_byte(8'hF6); load_byte(8'h78);
+        load_byte(8'hA5); load_byte(8'hED); load_byte(8'h18); load_byte(8'h69); load_byte(8'h01);
+        load_byte(8'h85); load_byte(8'hED); load_byte(8'h48); load_byte(8'h98); load_byte(8'h18);
+        load_byte(8'h65); load_byte(8'hEE); load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0);
+        load_byte(8'hA5); load_byte(8'hEF); load_byte(8'h69); load_byte(8'h00); load_byte(8'h8D);
+        load_byte(8'h01); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D);
+        load_byte(8'h02); load_byte(8'hE0); load_byte(8'h68); load_byte(8'h8D); load_byte(8'h03);
+        load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);
+        // TABLE entry0=$0300@$0200, entry1=$0300@$0202 (both instances of the task)
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);
+        load_byte(8'h00); load_byte(8'h03); load_byte(8'h00); load_byte(8'h03);
+
+        // 2. SAVE to flash: write $5A to $C0CF, wait save_busy (b7) to clear.
+        wr_reg(4'hF, 8'h5A);
+        repeat (50) @(posedge clk100);              // let save_busy assert
+        begin : wsave
+            integer g; g=0;
+            rd_reg(4'hF, tmp);
+            while (tmp[7]) begin
+                repeat (500) @(posedge clk100); rd_reg(4'hF, tmp);
+                g=g+1; if (g>4000) begin
+                    $display("FAIL C-flash SAVE never completed (b7 stuck)");
+                    errors=errors+1; disable wsave; end
+            end
+        end
+        $display("PASS C-flash SAVE complete");
+        // Confirm magic "CR" landed in the flash model's header page (0x400000 ->
+        // sector-relative byte 0/1).  Diagnostic only (not the proof itself).
+        if (u_flash.mem[0]!==8'h43 || u_flash.mem[1]!==8'h52)
+            $display("WARN C-flash header magic = %02X %02X (want 43 52)",
+                     u_flash.mem[0], u_flash.mem[1]);
+
+        // 3. EXPLICITLY ZERO the task region $0200-$0FFF (3584 bytes) via the host
+        //    load port -- simulates the RAM loss a power-cycle causes (BRAM is NOT
+        //    wiped by a sim reset). This wipes BOTH the TABLE ($0200) and the task
+        //    code ($0300). After this, the service is GONE from BRAM.
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);   // CP_LADDR = $0200
+        begin : zerofill
+            integer k;
+            for (k=0; k<3584; k=k+1) load_byte(8'h00);
+        end
+        // verify the wipe: TABLE byte and task first opcode now read back 00
+        cp_read(13'h0200, tmp);
+        if (tmp!==8'h00) begin errors=errors+1; $display("FAIL C-flash zero TABLE %02X",tmp); end
+        cp_read(13'h0300, tmp);
+        if (tmp!==8'h00) begin errors=errors+1; $display("FAIL C-flash zero task %02X",tmp); end
+        else $display("PASS C-flash task region zeroed");
+
+        // 4. Pulse the coproc reset: rst_n drops -> the restore FSM's `started` latch
+        //    clears (re-arms) AND the CPU restarts; boot_done(por_n) stays high so the
+        //    restore re-runs: reads flash header (valid "CR" now) -> streams 3584 data
+        //    bytes back into BRAM $0200-$0FFF, repopulating the zeroed region.
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        // 5. Wait for restore to finish: poll $C0CF b1 (restore_done).
+        begin : wrest
+            integer g; g=0;
+            rd_reg(4'hF, tmp);
+            while (!tmp[1]) begin
+                repeat (1000) @(posedge clk100); rd_reg(4'hF, tmp);
+                g=g+1; if (g>4000) begin
+                    $display("FAIL C-flash RESTORE never completed (b1 stuck)");
+                    errors=errors+1; disable wrest; end
+            end
+        end
+        // 6. Assert restore_valid (b0) == 1.
+        rd_reg(4'hF, tmp);
+        if (!tmp[0]) begin errors=errors+1;
+            $display("FAIL C-flash restore_valid=0 (magic/round-trip broken) stat=%02X",tmp); end
+        else $display("PASS C-flash auto-restore valid");
+        repeat (2000) @(posedge clk100);            // let kernel reach KWAITN
+
+        // 7. Set NPARAM fresh ($00E8 is ZP, BELOW the saved $0200-$0FFF region, so it
+        //    is NOT restored from flash -- the host must re-supply it). NPARAM[0]=4,
+        //    NPARAM[1]=16 -> task0 (smaller budget) finishes first -> r0=01, r1=02.
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd4); load_byte(8'd16);
+        // clear stale result cells so a non-running task can't masquerade as a pass
+        sdram_write(10'd0, 16'h0061, 8'h00);
+        sdram_write(10'd0, 16'h0062, 8'h00);
+        // GO: COUNT=2 is the 0->nonzero arm edge -> BOOTSTRAP dispatches the RESTORED
+        //     task. If this runs, the code reached BRAM ONLY via the flash restore.
+        wr_reg(4'hD, 8'h02);
+        repeat (200000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0061, tmp); krn_before = tmp;     // reuse reg for r0
+        sdram_read(10'd0, 16'h0062, tmp); tbl_before = tmp;     // reuse reg for r1
+        if (krn_before!==8'h01 || tbl_before!==8'h02) begin
+            errors=errors+1;
+            $display("FAIL C-flash service did NOT run from flash (r0=%02X r1=%02X want 01 02)",
+                     krn_before, tbl_before);
+        end else
+            $display("PASS C-flash service ran from flash (r0=%02X r1=%02X)",
+                     krn_before, tbl_before);
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
-    initial begin #20_000_000; $display("TIMEOUT"); $finish; end
+    initial begin #45_000_000; $display("TIMEOUT"); $finish; end
 endmodule
