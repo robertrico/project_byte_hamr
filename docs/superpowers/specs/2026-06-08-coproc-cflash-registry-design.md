@@ -18,8 +18,8 @@ once, power-cycle, the services are back without re-loading from disk.
 A host `SAVE` command writes the coproc's registry (table + service code) to flash; on the
 next FPGA configuration the gateware auto-restores it into BRAM and reports valid. Success =
 load a service, register it, `SAVE`, power-cycle, then trigger it (`GO`) with **no re-load**
-and it runs — on the bench. And a bricking-class bug is **impossible** (the flash writer
-cannot touch the bitstream region).
+and it runs — on the bench. (A SAVE bug can't clobber the bitstream — bounded `>= 0x400000`
+for free — but that's hygiene, not a hard mandate; the bitstream is re-flashable anyway.)
 
 ## Architecture
 
@@ -62,12 +62,13 @@ parametrizes per run.
   primitive (not a normal IO). The top muxes `flash_writer`/`flash_reader` onto
   `FLASH_nCS/MOSI/MISO` + `USRMCLK` for SCK.
 
-### CRITICAL — bitstream-safety write-bound (must-have, brick-proof)
-Bricking the board is the one unrecoverable failure. **Every flash address the SAVE path
-emits is hard-bounded to `>= 0x400000` in gateware** — `flash_addr = 24'h400000 | offset`
-where `offset` is masked to the sector size, so no erase/program can land below `0x400000`
-even with a logic bug. The write-bound is a structural constant, not a runtime check. (The
-restore path only *reads*, so it can't corrupt anything regardless.)
+### Bitstream-safety write-bound (sensible hygiene, free)
+A SAVE bug that wrote below `0x400000` would clobber the bitstream — **recoverable** (just
+re-flash, which we do routinely), but an annoying mid-session detour. So bound it for free:
+every SAVE flash address is `flash_addr = 24'h400000 | offset` with `offset` masked to the
+sector, so erase/program can't land below `0x400000` even with a logic bug. Structural, not
+a runtime check — costs nothing, avoids the detour. (Restore only *reads* → can't corrupt
+regardless.)
 
 ### Robustness
 - **Magic validation** on restore: header magic != "CR" → no restore; BRAM stays
@@ -137,8 +138,9 @@ BOOT:  FPGA config -> boot_done -> cflash_restore: read flash header
 
 ## Success criteria
 A registered service survives a power-cycle: SAVE → reconfigure → auto-restore → run, with no
-host re-load, and the SAVE path provably cannot write below `0x400000` (no brick possible).
-The persistent registry — "register once, it's there on the next boot."
+host re-load. (The SAVE path is bounded `>= 0x400000` so it won't clobber the bitstream — a
+free guard against an avoidable re-flash, not a hard safety mandate.) The persistent registry
+— "register once, it's there on the next boot."
 
 ## Non-goals
 - No SDRAM-backed service heaps / >8 KB services (the "less RAM-hindered" model — deferred;
