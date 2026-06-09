@@ -54,6 +54,13 @@ module project_obscurus_top (
     inout  wire        SDRAM_D8, SDRAM_D9, SDRAM_D10, SDRAM_D11,
     inout  wire        SDRAM_D12, SDRAM_D13, SDRAM_D14, SDRAM_D15,
 
+    // ----- SPI Flash (config flash; SCK via USRMCLK singleton) -----
+    output wire        FLASH_nCS,
+    output wire        FLASH_MOSI,
+    input  wire        FLASH_MISO,
+    output wire        FLASH_nWP,
+    output wire        FLASH_nHOLD,
+
     // ----- Apple II Bus -----
     input  wire        A0, A1, A2, A3, A4, A5, A6, A7,
     input  wire        A8, A9, A10, A11, A12, A13, A14, A15,
@@ -286,11 +293,116 @@ module project_obscurus_top (
     wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
     wire [7:0]  cp_ldata_out;
 
+    // =========================================================================
+    // C-flash: persistent registry to SPI flash (0x400000).
+    //   SAVE    : host writes $5A to $C0CF ($C0CF=4'hF) -> erase + program
+    //             coproc BRAM $0200-$0FFF (+ header) to flash. Active = save_busy.
+    //   RESTORE : auto at boot_done; reads header magic "CR", and if valid copies
+    //             14 data pages back into coproc BRAM $0200-$0FFF via port B.
+    //   STATUS  : $C0CE (svc_count) / $C0CF (b7=save_busy,b1=done,b0=valid).
+    // flash_writer drives SPI during SAVE; flash_reader drives during boot/restore
+    // and idle. They never overlap (SAVE only after boot), so save_busy muxes SPI.
+    // =========================================================================
+    wire        boot_done = por_n;          // post-config (POR-derived)
+
+    // flash_writer <-> cflash_save
+    wire        fw_erase, fw_prog;
+    wire [23:0] fw_addr;
+    wire [7:0]  fw_data;
+    wire        fw_dvalid, fw_req, fw_busy, fw_wdone;
+    wire        writer_sck, writer_ncs, writer_mosi;
+
+    // flash_reader <-> cflash_restore
+    wire        fr_start, fr_ready, fr_busy, fr_rdone, fr_dvalid;
+    wire [23:0] fr_addr, fr_count;
+    wire [7:0]  fr_data;
+    wire        reader_sck, reader_ncs, reader_mosi;
+
+    // FSM status / port-B load
+    wire        save_busy;
+    wire [12:0] save_laddr, rst_laddr;
+    wire [7:0]  rst_ldata;
+    wire        rst_lwr;
+    wire        restore_done, restore_valid;
+    wire [7:0]  svc_count;
+    wire        restore_busy = ~restore_done;   // restore owns port B until done
+
+    // CP_SAVE: write $5A to $C0CF (4'hF) -> 1-cycle save_start pulse
+    wire        save_start = reg_wr & (wr_addr_latch == 4'hF) & (wr_data_latch == 8'h5A);
+
+    flash_writer u_fw (
+        .clk(clk), .rst_n(rst_n),
+        .start_erase(fw_erase), .start_program(fw_prog), .flash_addr(fw_addr),
+        .prog_data(fw_data), .prog_data_valid(fw_dvalid), .prog_data_req(fw_req),
+        .busy(fw_busy), .done(fw_wdone),
+        .spi_sck(writer_sck), .spi_ncs(writer_ncs), .spi_mosi(writer_mosi),
+        .spi_miso(FLASH_MISO)
+    );
+
+    flash_reader u_fr (
+        .clk(clk), .rst_n(rst_n),
+        .start(fr_start), .start_addr(fr_addr), .byte_count(fr_count),
+        .busy(fr_busy), .done(fr_rdone), .data_out(fr_data),
+        .data_valid(fr_dvalid), .data_ready(fr_ready),
+        .flash_ncs(reader_ncs), .flash_mosi(reader_mosi), .flash_miso(FLASH_MISO),
+        .flash_nwp(), .flash_nhold(), .flash_sck_pin(reader_sck)
+    );
+
+    cflash_save u_save (
+        .clk(clk), .rst_n(rst_n), .save_start(save_start), .svc_count(8'd0),
+        .laddr(save_laddr), .ldata(cp_ldata_out),
+        .fw_start_erase(fw_erase), .fw_start_program(fw_prog), .fw_flash_addr(fw_addr),
+        .fw_prog_data(fw_data), .fw_prog_data_valid(fw_dvalid),
+        .fw_prog_data_req(fw_req), .fw_busy(fw_busy), .fw_done(fw_wdone),
+        .save_busy(save_busy)
+    );
+
+    cflash_restore u_rst (
+        .clk(clk), .rst_n(rst_n), .boot_done(boot_done),
+        .fr_start(fr_start), .fr_start_addr(fr_addr), .fr_byte_count(fr_count),
+        .fr_data_ready(fr_ready),
+        .fr_busy(fr_busy), .fr_done(fr_rdone), .fr_data_out(fr_data),
+        .fr_data_valid(fr_dvalid),
+        .laddr(rst_laddr), .ldata(rst_ldata), .lwr(rst_lwr),
+        .restore_done(restore_done), .restore_valid(restore_valid),
+        .svc_count(svc_count)
+    );
+
+    // ---- SPI bus mux: writer during SAVE, reader during boot/restore/idle ----
+    wire spi_sck  = save_busy ? writer_sck  : reader_sck;
+    wire spi_ncs  = save_busy ? writer_ncs  : reader_ncs;
+    wire spi_mosi = save_busy ? writer_mosi : reader_mosi;
+    assign FLASH_nCS   = spi_ncs;
+    assign FLASH_MOSI  = spi_mosi;
+    assign FLASH_nWP   = 1'b1;
+    assign FLASH_nHOLD = 1'b1;
+
+    // ---- USRMCLK: ECP5 singleton for post-config SPI clock ----
+`ifndef SYNTHESIS
+    // Simulation: spi_sck visible as a plain wire (no USRMCLK primitive)
+`else
+    USRMCLK u_usrmclk (
+        .USRMCLKI (spi_sck),
+        .USRMCLKTS(1'b0)
+    );
+`endif
+
+    // ---- coproc port-B mux: restore > save > host ----
+    // RESTORE writes BRAM ($0200-$0FFF). SAVE only reads (drives save_laddr; lwr=0).
+    // HOST drives the $C0C9-CD load path otherwise.
+    wire [12:0] cp_laddr_mux = restore_busy ? rst_laddr
+                             : save_busy    ? save_laddr
+                             :                m_laddr;
+    wire [7:0]  cp_ldata_mux = restore_busy ? rst_ldata : wr_data_latch;
+    wire        cp_lwr_mux   = restore_busy ? rst_lwr
+                             : save_busy    ? 1'b0
+                             :                cp_wdata_wr;
+
     coproc #(.CORE_ID(8'd0)) u_coproc (
         .clk(clk), .rst_n(rst_n), .ready(ready),
         .req(cop_req), .we(cop_we), .phys_addr(cop_addr), .wdata(cop_wdata),
         .busy(cop_busy), .rdata(cop_rdata),
-        .laddr(m_laddr), .ldata_in(wr_data_latch), .lwr(cp_wdata_wr),
+        .laddr(cp_laddr_mux), .ldata_in(cp_ldata_mux), .lwr(cp_lwr_mux),
         .ldata_out(cp_ldata_out),
         .count_in(wr_data_latch), .count_wr(cp_count_wr)
     );
@@ -360,6 +472,8 @@ module project_obscurus_top (
             4'h5: reg_data_out = status_byte;   // STATUS
             4'h6: reg_data_out = mon_rdata;     // DATA (monitor's latched read)
             4'hC: reg_data_out = cp_ldata_out;  // CP_RDATA (coproc BRAM read-back)
+            4'hE: reg_data_out = svc_count;     // CP_SVCNT (restored header svc_count)
+            4'hF: reg_data_out = {save_busy, 5'b0, restore_done, restore_valid}; // CP_FSTAT
             default: reg_data_out = scratch[apple_addr[3:0]];
         endcase
     end
