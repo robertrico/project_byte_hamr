@@ -52,6 +52,24 @@ WAITRACE
  BNE :w1
  RTS
 
+* zero SDRAM result cells bank0 $0061/$0062 before arming the race
+ZEROCELLS
+ LDA #$00
+ STA SDM_BANK
+ STA SDM_BANK+1
+ LDA #$61
+ STA SDM_ADDR
+ LDA #$00
+ STA SDM_ADDR+1
+ STA SDM_VAL
+ JSR SDM_WRITE
+ LDA #$62
+ STA SDM_ADDR
+ LDA #$00
+ STA SDM_VAL
+ JSR SDM_WRITE
+ RTS
+
 * read bank0 $0061 -> print, then $0062 -> print, CR
 SHOWRESULTS
  LDA #$00
@@ -116,13 +134,12 @@ MAIN JSR SDM_READY     ; card present + SDRAM ready
  LDA #20
  STA CPWDATA          ; NPARAM[1]
 * --- COUNT = 2 LAST (release) ---
+ JSR ZEROCELLS
  LDA #$02
  STA CPCOUNT
  JSR WAITRACE
  JSR SHOWRESULTS
 * --- re-arm with swapped budgets: NPARAM[0]=30 NPARAM[1]=20 ---
- LDA #$00
- STA CPCOUNT          ; park kernel before reloading params
  LDA #$E8
  STA CPLADDRLO
  LDA #$00
@@ -131,6 +148,7 @@ MAIN JSR SDM_READY     ; card present + SDRAM ready
  STA CPWDATA          ; NPARAM[0]
  LDA #20
  STA CPWDATA          ; NPARAM[1]
+ JSR ZEROCELLS
  LDA #$02
  STA CPCOUNT
  JSR WAITRACE
