@@ -314,8 +314,7 @@ module project_obscurus_tb;
         sdram_read(10'd0, 16'h0062, tmp);
         if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C2 race r1 %02X want 02",tmp); end
         else $display("PASS C2 race task1 second (r1=02)");
-        // re-arm + flip: COUNT=0, NPARAM 12/8, COUNT=2
-        wr_reg(4'hD, 8'h00);
+        // re-arm + flip: NPARAM 12/8, single GO write (COUNT=0 park removed)
         wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
         load_byte(8'd12); load_byte(8'd8);
         wr_reg(4'hD, 8'h02);
@@ -361,8 +360,7 @@ module project_obscurus_tb;
         sdram_read(10'd0, 16'h0062, tmp);
         if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C3 race r1 %02X want 02",tmp); end
         else $display("PASS C3 preemptive race task1 second (r1=02)");
-        // re-arm FLIP (this is the preemption proof): COUNT=0, NPARAM 20/12, COUNT=2
-        wr_reg(4'hD, 8'h00);
+        // re-arm FLIP (this is the preemption proof): NPARAM 20/12, single GO write
         wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
         load_byte(8'd20); load_byte(8'd12);
         wr_reg(4'hD, 8'h02);
@@ -373,6 +371,40 @@ module project_obscurus_tb;
         sdram_read(10'd0, 16'h0062, tmp);
         if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C3 flip r1 %02X want 01",tmp); end
         else $display("PASS C3 flip task1 now first (r1=01)");
+
+        // ===== C3.1 GO-trigger regression: back-to-back, NO reset between =====
+        // The C3 block just ran (racetask3 @ $0300). Its FINAL flip (NPARAM 20/12,
+        // task1 smaller) left A's result = $0061=02, $0062=01 (task1 first).
+        // Scenario B: re-arm with ONE CP_COUNT write (no COUNT=0 park, NO nRES).
+        // If GO works, B re-bootstraps fresh and writes B's OWN result.
+        // If the old COUNT-level bug were present, B would read A's stale cells.
+        //
+        // DISCRIMINATION: A left 02/01. The task's suggested B (16/4) would also give
+        // 02/01 -> a stale read would be INDISTINGUISHABLE from fresh. So B must be
+        // task0-first: NPARAM[0]=4, NPARAM[1]=16 -> task0 (smaller budget) finishes
+        // first -> r0=01, r1=02. stale(02/01) != fresh(01/02) -> the test discriminates.
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd4); load_byte(8'd16);
+        wr_reg(4'hD, 8'h02);                          // single GO write, no COUNT=0, no reset
+        repeat (200000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h01) begin errors=errors+1; $display("FAIL C3.1 regress r0 %02X want 01 (stale 02 = GO didn't fire?)",tmp); end
+        else $display("PASS C3.1 GO re-bootstrap fresh (r0=01)");
+        sdram_read(10'd0, 16'h0062, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C3.1 regress r1 %02X want 02 (stale 01?)",tmp); end
+        else $display("PASS C3.1 GO regression task0 first (r1=02)");
+        // CP_COUNT=0 must be a benign park (nonzero gate) - NOT crash the kernel.
+        // After the park, GO with task1-first NPARAM (16/4 -> r0=02) so the result
+        // DIFFERS from B's 01 above: proves the post-park run is a fresh dispatch.
+        wr_reg(4'hD, 8'h00);                          // park (no GO)
+        repeat (2000) @(posedge clk100);
+        wr_reg(4'h9, 8'hE8); wr_reg(4'hA, 8'h00);
+        load_byte(8'd16); load_byte(8'd4);            // task1 smaller -> r0=02
+        wr_reg(4'hD, 8'h02);
+        repeat (200000) @(posedge clk100);
+        sdram_read(10'd0, 16'h0061, tmp);
+        if (tmp!==8'h02) begin errors=errors+1; $display("FAIL C3.1 after-park r0 %02X want 02 (CP_COUNT=0 crashed kernel?)",tmp); end
+        else $display("PASS C3.1 kernel survived CP_COUNT=0 park (r0=02)");
 
         // ===== C3 BRK-safety: a stray BRK in a task must NOT corrupt the scheduler =====
         // The ISR's B-bit leg ($1F00: AND #$10 -> IRQBRK -> RTI) returns into the BRK
