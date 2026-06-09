@@ -141,8 +141,22 @@ breaking "call mid-execution, run concurrently." So C4:
   `restore_busy | save_busy`** (the gateware exposes a snapshot-busy bit the ISR tests first).
   C4 + C-flash compose ONLY with this mask. (A CALL rung during a snapshot stays pending in
   `CALL_REQ` and is serviced on the first tick after the snapshot completes — benign.)
-The batch `go_pending` path (C3.1) is preserved as a second front-end that also feeds the slot
-spawn machinery (for the regression demos).
+**Batch `go_pending` (C3.1) is polled in the idle spin, NOT the ISR** — its old `KWAITGO` home
+is gone, so pin its new home: the `CLI`'d idle spin polls `go_pending` (batch GO = idle-triggered,
+exactly as C3.1: a batch race starts only from idle), while `CALL_REQ` is serviced in the ISR
+(mid-flight). Batch GO and CALL are thus two front-ends to the same spawn machinery but on
+different triggers — keeping batch off the per-tick ISR path.
+
+**Protecting the race regression (the C2/C3.1 golden `0102→0201` flip).** Those golden values are
+scheduling-dependent: adding the `CALL_REQ` scan + budget-decrement to the ISR ahead of `SWITCH`
+changes per-tick cycle count → the batch race could resolve to a different finisher → the
+regression fails on *altered scheduling*, not a bug. Mitigation: the ISR **fast-paths the batch
+case** — gate the scan + budget work on a cheap "any `CALL_REQ` pending OR any slot has an active
+budget" test; when none (pure batch mode), fall straight through to the C3.1-identical `SWITCH`
+path. The plan MUST verify the `0102→0201` golden still holds; if the gate-test alone still
+perturbs timing, **re-bless the race golden values** (and say so) — the load-bearing invariant is
+the *flip* (tune NPARAM → winner flips = preemption proof), not the exact first-run bytes, which
+are tuning-dependent. Pin one outcome (fast-path preserves / re-bless) in the plan, with evidence.
 
 ### Run-budget (the abort-lite, weighted to CALL)
 `CP_CALL` carries a `run_budget` (ticks). The tick ISR decrements each RUNNING slot's budget;
@@ -198,6 +212,10 @@ Three documented paradigms: **async-interleave** (`CALL` → work → `POLL`/`RE
   `RUNNING[3:0]` (kernel `$E0xx` publishes), `ACTIVE`=`CALL_REQ|RUNNING|DONE` (host reads
   `$C0C1`), `TIMEDOUT[3:0]` (kernel set, host reads `$C0C2`), `irq_enable` (v1 unused). Uses the
   free R/W half-nibbles (host side) + free `$E0xx` (kernel side). `nIRQ` stays `1'bZ` in v1.
+  **ALSO add a `snapshot_busy` INPUT port + an `$E0xx` read decode** so the ISR can test it for
+  the N1 mask: `restore_busy`/`save_busy` live in `project_obscurus_top.v` (top.v:393-399), NOT in
+  `coproc.v` (port list coproc.v:14-29 has no such input). The top wires `restore_busy |
+  save_busy` → `coproc.snapshot_busy`; the kernel reads it via the `$E0xx` decode + early-RTIs.
 - `kernel.S` — **the dispatcher-in-ISR rewrite (the core change):** the tick ISR (`$1F00`) gains
   a `CALL_REQ` scan + per-slot spawn (generalized `BOOTSTRAP` into a chosen slot, loading
   `run_budget` + publishing `RUNNING`) + per-slot budget decrement/force-complete, all BEFORE the
@@ -232,7 +250,11 @@ Three documented paradigms: **async-interleave** (`CALL` → work → `POLL`/`RE
   discard its live context + `SWITCH` away (mirror the skill-initiated DONE handler — kernel.S:166,
   `TCB_ST=#$02` + `PICKANY`) and ensure the subsequent SWITCH does NOT `RESTORE` the dead slot; if
   it's a non-CUR RUNNING slot, just mark it done/free (no context discard). Either way tear the
-  slot down cleanly (reset stack/state) so it's reusable, set `DONE` + `TIMEDOUT`.
+  slot down cleanly (reset stack/state) so it's reusable, set `DONE` + `TIMEDOUT`. **Spawn-tick
+  off-by-one (plan):** since spawn precedes the budget-decrement in the ISR, a slot spawned THIS
+  tick must NOT be decremented this tick (else `budget=1` → 1→0→TIMEDOUT before executing one
+  instruction) — decrement only slots that were RUNNING at ISR entry (exclude freshly-spawned),
+  or load `budget+1`.
 - **Reentrancy violation:** a skill using fixed globals breaks when called twice concurrently —
   documented contract, not silicon-enforced. (A non-reentrant skill simply shouldn't be called
   twice in flight.)
