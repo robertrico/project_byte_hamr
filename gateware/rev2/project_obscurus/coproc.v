@@ -68,6 +68,18 @@ module coproc #(
         end
     end
 
+    // ---- C3.1 GO trigger: a NONZERO CP_COUNT write re-bootstraps; $E014 status/ack ----
+    // (count_wr = the CP_COUNT write strobe; count_in = the value.) The nonzero gate
+    // keeps CP_COUNT=0 a benign park - a zero write would otherwise GO into a 0-task
+    // BOOTSTRAP -> RESTORE on an uninitialized TCB -> crash.
+    wire is_e014 = (AB==16'hE014);
+    reg  go_pending;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)                             go_pending <= 1'b0;
+        else if (count_wr & (count_in != 8'd0)) go_pending <= 1'b1;   // set wins (before ack)
+        else if (is_e014 & WE & rdy)            go_pending <= 1'b0;    // kernel ack
+    end
+
     // 8KB resident-kernel BRAM. ECP5 DP16KD has exactly TWO ports, but this
     // yosys (oss-cad-suite) will NOT infer DP16KD for a memory with TWO write
     // ports (each combined with a read) -- it always falls back to FF mapping
@@ -97,7 +109,7 @@ module coproc #(
     wire is_count=(AB==16'hE010);
     wire is_coreid=(AB==16'hE011);
     reg [7:0] bram_qa;
-    reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q;
+    reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q,is_e014_q;
     always @(posedge clk) begin
         bram_qa    <= bram[AB[12:0]];   // port A read
         in_bram_q  <= in_bram;
@@ -106,12 +118,14 @@ module coproc #(
         is_nmilo_q <= is_nmilo; is_nmihi_q <= is_nmihi;
         is_count_q <= is_count;
         is_coreid_q <= is_coreid;
+        is_e014_q <= is_e014;
     end
     assign DI = is_rstlo_q ? 8'h00 : is_rsthi_q ? 8'h10
               : is_irqlo_q ? 8'h00 : is_irqhi_q ? 8'h1F
               : is_nmilo_q ? 8'h40 : is_nmihi_q ? 8'h1F
               : is_count_q  ? task_count
               : is_coreid_q ? CORE_ID
+              : is_e014_q   ? {7'b0, go_pending}
               : in_bram_q  ? bram_qa
               :              8'h00;
 
