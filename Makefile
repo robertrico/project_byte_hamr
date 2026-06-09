@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -156,6 +156,55 @@ $(HAMR_ROM_MEM): $(HAMR_ROM_SRC)
 	@echo "=== Assembling Flash Hamr boot ROM (Merlin32) ==="
 	cd $(GATEWARE_DIR)/flash_hamr && $(MERLIN32) $(MERLIN_LIB) hamr_rom.S
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/flash_hamr/hamr_rom.bin $@
+
+# project_obscurus slot ROM (256 bytes at $C400). Merlin32 source -> .bin ->
+# .mem. rom2mem.py "base" arg controls placement inside the .mem file: passing
+# $C000 with size 256 puts bin at .mem[0], matching Verilog's index by A[7:0].
+OBSCURUS_ROM_MEM := $(GATEWARE_DIR)/project_obscurus/slot_rom.mem
+OBSCURUS_ROM_SRC := $(GATEWARE_DIR)/project_obscurus/slot_rom.S
+
+$(OBSCURUS_ROM_MEM): $(OBSCURUS_ROM_SRC)
+	@echo "=== Assembling project_obscurus slot ROM (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) slot_rom.S
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/slot_rom.bin $@ 0xC000 256
+
+# project_obscurus monitor ROM (2KB at $C800). Merlin32 source -> .bin -> .mem.
+# NOTE: rom2mem base MUST be 0xC000 (not 0xC800): rom2mem computes
+# offset = base - 0xC000 and writes bin at rom[offset]; base=0xC800 gives
+# offset==size -> the guard rejects every byte -> all-$FF brick. base=0xC000
+# -> offset 0 -> bin lands at mem[0], indexed by monitor_mem[apple_addr[10:0]].
+OBSCURUS_MON_MEM := $(GATEWARE_DIR)/project_obscurus/monitor.mem
+OBSCURUS_MON_SRC := $(GATEWARE_DIR)/project_obscurus/monitor.S
+
+# Only auto-assemble the monitor ROM when its Merlin32 source actually exists.
+# Until the real monitor.S lands, a zero-filled monitor.mem stub is committed so
+# $readmemh works; without this guard make would try (and fail) to derive the
+# stub .mem from a non-existent .S.
+ifneq ($(wildcard $(OBSCURUS_MON_SRC)),)
+$(OBSCURUS_MON_MEM): $(OBSCURUS_MON_SRC)
+	@echo "=== Assembling project_obscurus monitor ROM (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) monitor.S
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/project_obscurus/monitor.bin $@ 0xC000 2048 0x60
+endif
+
+# project_obscurus coprocessor KERNEL image. Merlin32 source ORG $1000 -> .bin ->
+# .mem (full 8192-byte BRAM image: zeros $0000-$0FFF, kernel spliced at $1000).
+# coproc.v loads it with $readmemh("kernel.mem", bram) at offset 0 -- a single
+# init with no procedural for-loop, so Yosys infers DP16KD cleanly.
+OBSCURUS_KERNEL_MEM := $(GATEWARE_DIR)/project_obscurus/kernel.mem
+OBSCURUS_KERNEL_SRC := $(GATEWARE_DIR)/project_obscurus/kernel.S
+
+ifneq ($(wildcard $(OBSCURUS_KERNEL_SRC)),)
+$(OBSCURUS_KERNEL_MEM): $(OBSCURUS_KERNEL_SRC)
+	@echo "=== Assembling coproc kernel (Merlin32) ==="
+	cd $(GATEWARE_DIR)/project_obscurus && $(MERLIN32) $(MERLIN_LIB) kernel.S
+	python3 -c "b=open('$(GATEWARE_DIR)/project_obscurus/kernel.bin','rb').read(); m=bytearray(8192); m[0x1000:0x1000+len(b)]=b; open('$(OBSCURUS_KERNEL_MEM)','w').write('\n'.join('%02x'%x for x in m)+'\n')"
+endif
+
+# Force project_obscurus to depend on its slot ROM and monitor ROM
+ifeq ($(DESIGN),project_obscurus)
+$(JSON): $(OBSCURUS_ROM_MEM) $(OBSCURUS_MON_MEM) $(OBSCURUS_KERNEL_MEM)
+endif
 
 # Flash Hamr menu volume (picker + ProDOS)
 FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
@@ -295,7 +344,7 @@ sim: $(SIM_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
-$(SIM_OUT): $(VERILOG_SRC) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
+$(SIM_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
 	@echo "=== Compiling Testbench ==="
 	@# Copy any .mem files to build directory for simulation
 	@for f in $(MEM_FILES); do cp "$$f" $(BUILD_DIR)/; done
@@ -334,9 +383,9 @@ unit: $(UNIT_OUT)
 	cd $(BUILD_DIR) && $(VVP) $(MODULE)_tb.vvp
 	@if [ -f $(UNIT_VCD) ]; then echo "VCD written to $(UNIT_VCD)"; fi
 
-$(UNIT_OUT): $(VERILOG_SRC) $(UNIT_TB) | $(BUILD_DIR)
+$(UNIT_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB) | $(BUILD_DIR)
 	@echo "=== Compiling Unit Testbench: $(MODULE) ==="
-	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(UNIT_TB)
+	$(IVERILOG) -o $@ -s $(MODULE)_tb $(VERILOG_SRC) $(SIM_MODELS) $(UNIT_TB)
 
 unit-wave: unit
 	@echo "=== Opening Unit Test Waveform ==="
@@ -355,7 +404,7 @@ unit-wave: unit
 # Format: --pins TDI:TDO:TCK:TMS
 CABLE    := ft231X
 JTAG_PINS := RI:CTS:DSR:DCD
-SERIAL   ?= DT03D4KG
+SERIAL   ?= DP0517RX
 
 prog: $(BIT)
 	@echo "=== Programming via JTAG (SRAM) ==="
@@ -425,6 +474,57 @@ ifndef ASM_SRC
 	@exit 1
 endif
 	$(MERLIN32) $(MERLIN_LIB) $(ASM_SRC)
+
+# project_obscurus SDRAM driver test (BRUN BIN at $2000)
+SDM_DIR  := software/SDM
+sdmtest:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) SDMTEST.S
+
+cpreg:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPREG.S
+
+cprace:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) racetask.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPRACE.S
+
+cprace3:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) racetask3.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPRACE3.S
+
+cpsave:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPSAVE.S
+
+cpboot:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPBOOT.S
+
+# Build a bootable /SDRAM/ floppy with SDMTEST (BIN) + SDRAMLIB.S (TXT source).
+# FRESH volume (NOT cp-base + delete-bulk): deleting big base files then
+# re-importing reused freed blocks -> ProDOS read I/O errors / cross-links on the
+# Apple (e.g. SDRAMLIB.S's first data block landing on a freed COPYIIPLUS block).
+# A fresh -pro140 volume allocates our files contiguously = clean. Boot blocks +
+# PRODOS + BASIC.SYSTEM are copied from the base so it still boots to ].
+# AC_CLASSIC = the classic AppleCommander interface (-pro140/-p/-g); $(AC) = acx
+# (used only for the TXT import --aux 0, which makes a sequential L=0 text file;
+# classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
+SDM_PO     := $(SDM_DIR)/SDMTEST.po
+AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
+sdmdisk: sdmtest cpreg cprace cprace3 cpsave cpboot
+	rm -f $(SDM_PO)
+	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
+	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
+	$(AC_CLASSIC) -g $(PRODOS_SRC) PRODOS > /tmp/sdm_prodos.sys
+	$(AC_CLASSIC) -p $(SDM_PO) PRODOS SYS 0x2000 < /tmp/sdm_prodos.sys
+	$(AC_CLASSIC) -g $(PRODOS_SRC) BASIC.SYSTEM > /tmp/sdm_basic.sys
+	$(AC_CLASSIC) -p $(SDM_PO) BASIC.SYSTEM SYS 0x2000 < /tmp/sdm_basic.sys
+	$(AC_CLASSIC) -p $(SDM_PO) SDMTEST BIN 0x2000 < $(SDM_DIR)/SDMTEST
+	$(AC_CLASSIC) -p $(SDM_PO) CPREG BIN 0x6000 < $(SDM_DIR)/CPREG
+	$(AC_CLASSIC) -p $(SDM_PO) CPRACE BIN 0x6000 < $(SDM_DIR)/CPRACE
+	$(AC_CLASSIC) -p $(SDM_PO) CPRACE3 BIN 0x6000 < $(SDM_DIR)/CPRACE3
+	$(AC_CLASSIC) -p $(SDM_PO) CPSAVE BIN 0x6000 < $(SDM_DIR)/CPSAVE
+	$(AC_CLASSIC) -p $(SDM_PO) CPBOOT BIN 0x6000 < $(SDM_DIR)/CPBOOT
+	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
+	$(AC) list -d $(SDM_PO)
+	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
 
 # =============================================================================
 # Apple II Disk Utilities

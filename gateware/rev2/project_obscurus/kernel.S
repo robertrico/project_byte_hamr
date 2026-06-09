@@ -1,0 +1,229 @@
+* kernel.S - C3 coproc PREEMPTIVE scheduler. ORG $1000 (write-protected).
+* Uniform IRQ-frame context (TCB drops P; frame carries P; one RTI resume).
+* Timer tick ($E012 arm/$E013 ack) -> IRQ -> $1F00 ISR -> SWITCH. YIELD ($1003)
+* manufactures the same frame. Tasks run I-clear (preemptible); kernel/ISR I-set.
+ LST OFF
+ TYP $06
+ DSK kernel.bin
+ ORG $1000
+
+TCB_SP = $D0
+TCB_A  = $D4
+TCB_X  = $D8
+TCB_Y  = $DC
+TCB_ST = $E4
+TMPL   = $E0
+TMPH   = $E1
+NPARAM = $E8
+CUR    = $EC
+ORDER  = $ED
+COREBL = $EE
+COREBH = $EF
+TMPA   = $F0
+TMPX   = $F1
+TMPY   = $F2
+TMPP   = $F3
+
+COUNT   = $E010
+COREID  = $E011
+TICKCTL = $E012
+TICKACK = $E013
+GOSTAT  = $E014
+TICKPER = $02
+
+ JMP RESET
+ JMP YIELD
+ JMP DONE
+
+RESET
+ SEI
+ LDX #$FF
+ TXS
+KWAITGO
+ LDA GOSTAT
+ BEQ KWAITGO
+ STA GOSTAT
+ JSR BOOTSTRAP
+KIDLE
+ LDA #$00
+ STA TICKCTL
+ LDX #$FF
+ TXS
+ JMP KWAITGO
+
+BOOTSTRAP
+ LDA COREID
+ ASL
+ ASL
+ ASL
+ ASL
+ CLC
+ ADC #$61
+ STA COREBL
+ LDA #$00
+ ADC #$00
+ STA COREBH
+ LDA #$00
+ STA ORDER
+ LDX #$00
+BSL
+ CPX COUNT
+ BCS BSEMP
+ LDA #$01
+ STA TCB_ST,X
+ LDA #$00
+ STA TCB_A,X
+ STA TCB_X,X
+ STA TCB_Y,X
+ STX TMPX
+ TXA
+ ASL
+ TAX
+ LDA $0201,X
+ STA TMPH
+ LDA $0200,X
+ STA TMPL
+ LDX TMPX
+ LDY STKTOP,X
+ LDA TMPH
+ STA $0100,Y
+ DEY
+ LDA TMPL
+ STA $0100,Y
+ DEY
+ LDA #$00
+ STA $0100,Y
+ DEY
+ TYA
+ STA TCB_SP,X
+ INX
+ JMP BSL
+BSEMP
+ CPX #$04
+ BCS BSGO
+ LDA #$00
+ STA TCB_ST,X
+ INX
+ JMP BSEMP
+BSGO
+ LDA #$00
+ STA CUR
+ LDA #TICKPER
+ STA TICKCTL
+ JMP RESTORE
+
+RESTORE
+ LDY CUR
+ LDX TCB_SP,Y
+ TXS
+ LDA TCB_A,Y
+ PHA
+ LDA TCB_Y,Y
+ LDX TCB_X,Y
+ TAY
+ PLA
+ RTI
+
+SWITCH
+ TSX
+ LDY CUR
+ TXA
+ STA TCB_SP,Y
+ LDA TMPA
+ STA TCB_A,Y
+ LDA TMPX
+ STA TCB_X,Y
+ LDA TMPY
+ STA TCB_Y,Y
+ JSR PICKNEXT
+ JMP RESTORE
+
+YIELD
+ PHP                ; capture caller flags (N/Z/C/V) BEFORE we touch them
+ SEI
+ STA TMPA
+ STX TMPX
+ STY TMPY
+ PLA                ; A = caller P (I-bit reflects pre-SEI, irrelevant)
+ AND #$FB           ; force I clear so the resumed task stays preemptible
+ STA TMPP           ; stash flags for the manufactured frame
+ PLA
+ STA TMPL
+ PLA
+ STA TMPH
+ INC TMPL
+ BNE YNC
+ INC TMPH
+YNC
+ LDA TMPH
+ PHA
+ LDA TMPL
+ PHA
+ LDA TMPP           ; frame P = caller flags (was #$00 -> destroyed Z across yield)
+ PHA
+ JMP SWITCH
+
+DONE
+ SEI
+ LDY CUR
+ LDA #$02
+ STA TCB_ST,Y
+ JSR PICKANY
+ BCC DGO
+ JMP KIDLE
+DGO
+ JMP RESTORE
+
+PICKNEXT
+ LDX CUR
+PNL
+ INX
+ CPX #$04
+ BCC PNNW
+ LDX #$00
+PNNW
+ LDA TCB_ST,X
+ CMP #$01
+ BEQ PNF
+ CPX CUR
+ BNE PNL
+PNF
+ STX CUR
+ RTS
+
+PICKANY
+ LDX #$00
+PAL
+ LDA TCB_ST,X
+ CMP #$01
+ BEQ PAF
+ INX
+ CPX #$04
+ BCC PAL
+ SEC
+ RTS
+PAF
+ STX CUR
+ CLC
+ RTS
+
+STKTOP DFB $2F,$5F,$8F,$BF
+
+ DS $1F00-*
+IRQH
+ STA TMPA
+ STX TMPX
+ STY TMPY
+ TSX
+ LDA $0101,X
+ AND #$10
+ BNE IRQBRK
+ STA TICKACK
+ JMP SWITCH
+IRQBRK
+ LDA TMPA
+ LDX TMPX
+ RTI
+
+ DS $1F40-*
+NMIH RTI
