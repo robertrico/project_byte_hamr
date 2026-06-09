@@ -83,6 +83,8 @@ module project_obscurus_tb;
 
     integer errors = 0;
     reg [7:0] tmp;
+    reg       c4ok;
+    reg [7:0] r0, r1;
 
     task wr_reg(input [3:0] r, input [7:0] d);
         begin
@@ -135,6 +137,39 @@ module project_obscurus_tb;
         wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {3'b0, a[12:8]});
         rd_reg(4'hC, d);    // ldata_out already settled to bram[a]
     end endtask
+
+    // ---- C4 async-dispatch helpers ----
+    // Per-slot mailbox in coproc BRAM = $0F80 + slot*32: +0 skill_id, +1 budget,
+    // +2 arg0, +16 result. cmpskill (skill 0 @ $0300) computes result = arg0+1.
+    task stage_mbox(input [1:0] slot, input [7:0] skill,
+                    input [7:0] budget, input [7:0] arg0);
+        reg [7:0] lo;
+        begin
+            lo = 8'h80 + {slot, 5'b0};                 // $0F80 + slot*32 low byte
+            wr_reg(4'h9, lo); wr_reg(4'hA, 8'h0F);     // CP_LADDR = mailbox base
+            load_byte(skill); load_byte(budget); load_byte(arg0);
+        end
+    endtask
+    task ring   (input [1:0] slot); begin wr_reg(4'h5, {6'b0, slot}); end endtask // CP_RING
+    task collect(input [1:0] slot); begin wr_reg(4'hC, {6'b0, slot}); end endtask // CP_COLLECT
+    task read_result(input [1:0] slot, output [7:0] d); begin
+        cp_read(13'h0F90 + {slot, 5'b0}, d);           // mailbox+16
+    end endtask
+    // poll DONE ($C0C0, nibble 0) until (done & mask)==mask, or maxcyc clk100 cycles.
+    // Leaves the last DONE read in `tmp`; ok=1 if satisfied, 0 if timed out.
+    task wait_done(input [3:0] mask, input integer maxcyc, output ok);
+        begin : wd
+            integer g; g = 0; ok = 1'b0;
+            rd_reg(4'h0, tmp);
+            while ((tmp[3:0] & mask) != mask) begin
+                repeat (500) @(posedge clk100);
+                rd_reg(4'h0, tmp);
+                g = g + 500;
+                if (g > maxcyc) disable wd;
+            end
+            ok = 1'b1;
+        end
+    endtask
 
     initial begin
         $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
@@ -571,8 +606,148 @@ module project_obscurus_tb;
             $display("PASS C-flash service ran from flash (r0=%02X r1=%02X)",
                      krn_before, tbl_before);
 
+        // ===== C4: ASYNC SKILL DISPATCH (positive verification of the kernel) =====
+        // Isolate like every other block: pulse coproc reset -> RESET re-runs
+        // (CLEARSLOTS, arm free-running tick, reach KIDLE/KISPIN CLI-idle), and the
+        // gateware control-plane regs (call_req/running/done/timedout/go_pending)
+        // all clear on rst_n. The reset also re-arms the C-flash restore FSM, which
+        // repopulates BRAM $0200-$0FFF from flash; WAIT for restore_done before we
+        // host-load cmpskill (restore owns coproc port B until done).
+        nRES_READ=1'b0; #1000; nRES_READ=1'b1; #200;
+        wait (dut.ready);
+        begin : c4_wrest
+            integer g; g=0;
+            rd_reg(4'hF, tmp);
+            while (!tmp[1]) begin
+                repeat (1000) @(posedge clk100); rd_reg(4'hF, tmp);
+                g=g+1; if (g>4000) begin
+                    $display("FAIL C4 restore never completed (b1 stuck)");
+                    errors=errors+1; disable c4_wrest; end
+            end
+        end
+        repeat (4000) @(posedge clk100);            // let kernel reach KIDLE/KISPIN
+
+        // --- C4.1 Register cmpskill (skill 0): load 68 bytes @ coproc $0300, TABLE[0]=$0300
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
+        load_byte(8'hA5); load_byte(8'hEC); load_byte(8'h0A); load_byte(8'h0A); load_byte(8'h0A);
+        load_byte(8'h0A); load_byte(8'h18); load_byte(8'h69); load_byte(8'h80); load_byte(8'hAA);
+        load_byte(8'hA5); load_byte(8'hEC); load_byte(8'h0A); load_byte(8'h0A); load_byte(8'h0A);
+        load_byte(8'h0A); load_byte(8'h0A); load_byte(8'h18); load_byte(8'h69); load_byte(8'h80);
+        load_byte(8'h95); load_byte(8'h00); load_byte(8'hA9); load_byte(8'h0F); load_byte(8'h95);
+        load_byte(8'h01); load_byte(8'hF6); load_byte(8'h00); load_byte(8'hF6); load_byte(8'h00);
+        load_byte(8'hA1); load_byte(8'h00); load_byte(8'h95); load_byte(8'h02); load_byte(8'h95);
+        load_byte(8'h03); load_byte(8'hB5); load_byte(8'h02); load_byte(8'hF0); load_byte(8'h0B);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h38); load_byte(8'hE9); load_byte(8'h01);
+        load_byte(8'hD0); load_byte(8'hFB); load_byte(8'hD6); load_byte(8'h02); load_byte(8'hD0);
+        load_byte(8'hF5); load_byte(8'hB5); load_byte(8'h00); load_byte(8'h18); load_byte(8'h69);
+        load_byte(8'h0E); load_byte(8'h95); load_byte(8'h00); load_byte(8'hB5); load_byte(8'h03);
+        load_byte(8'h18); load_byte(8'h69); load_byte(8'h01); load_byte(8'h81); load_byte(8'h00);
+        load_byte(8'h4C); load_byte(8'h06); load_byte(8'h10);                       // 68 bytes
+        // TABLE entry skill 0 = $0300 @ coproc $0200
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02); load_byte(8'h00); load_byte(8'h03);
+        // verify it landed (re-arm addr, read first opcode = $A5)
+        cp_read(13'h0300, tmp);
+        if (tmp!==8'hA5) begin errors=errors+1; $display("FAIL C4 cmpskill not loaded @ $0300 = %02X",tmp); end
+        else $display("PASS C4 cmpskill registered (skill 0 -> $0300)");
+
+        // --- C4.2 Single CALL from idle (BUG-FIX #2: CALL into slot 0 from idle must RUN)
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h04);      // skill 0, budget 0 (no limit), arg0=4
+        ring(2'd0);
+        wait_done(4'b0001, 300000, c4ok);
+        if (!c4ok) begin
+            errors=errors+1;
+            rd_reg(4'h1, r0); rd_reg(4'h2, r1);
+            $display("FAIL C4 single CALL-from-idle never completed: DONE=%02X ACTIVE=%02X TIMEDOUT=%02X",
+                     tmp, r0, r1);
+            read_result(2'd0, r0);
+            $display("      (mailbox+16 result cell = %02X; skill spawned? check ACTIVE)", r0);
+        end else $display("PASS C4 single CALL from idle ran (DONE[0]=1)");
+        read_result(2'd0, tmp);
+        if (tmp!==8'h05) begin errors=errors+1; $display("FAIL C4 result 4->5 got %02X",tmp); end
+        else $display("PASS C4 result 4->5");
+        collect(2'd0);
+
+        // --- C4.3 Two concurrent CALLs (cmpskill reentrancy + slot independence)
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h06);      // slot0 arg0=6 -> 7
+        stage_mbox(2'd1, 8'h00, 8'h00, 8'h0A);      // slot1 arg0=10 -> 11
+        ring(2'd0); ring(2'd1);
+        wait_done(4'b0011, 300000, c4ok);
+        if (!c4ok) begin
+            errors=errors+1; rd_reg(4'h1,r0);
+            $display("FAIL C4 two concurrent never both done: DONE=%02X ACTIVE=%02X",tmp,r0);
+        end
+        read_result(2'd0, r0); read_result(2'd1, r1);
+        if (r0!==8'h07 || r1!==8'h0B) begin
+            errors=errors+1;
+            $display("FAIL C4 concurrent results r0=%02X (want 07) r1=%02X (want 0B)",r0,r1);
+        end else $display("PASS C4 two concurrent calls, distinct results 07/0B");
+        collect(2'd0); collect(2'd1);
+
+        // --- C4.4 Mid-race CALL (dispatch-in-ISR: spawn slot1 WHILE slot0 runs)
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h18);      // slot0 long: arg0=24 -> 25=$19
+        ring(2'd0);
+        repeat (8000) @(posedge clk100);            // slot0 dispatched + grinding its spin
+        rd_reg(4'h1, tmp);                          // slot0 must already be busy here
+        if (!tmp[0]) $display("WARN C4 mid-race: slot0 not yet ACTIVE before slot1 ring (ACTIVE=%02X)",tmp);
+        stage_mbox(2'd1, 8'h00, 8'h00, 8'h02);      // slot1 short: arg0=2 -> 3
+        ring(2'd1);                                 // serviced mid-execution of slot0
+        wait_done(4'b0011, 1500000, c4ok);
+        if (!c4ok) begin
+            errors=errors+1; rd_reg(4'h1,r0);
+            $display("FAIL C4 mid-race: both never done DONE=%02X ACTIVE=%02X (slot1 not dispatched mid-run?)",tmp,r0);
+        end
+        read_result(2'd0, r0); read_result(2'd1, r1);
+        if (r0!==8'h19 || r1!==8'h03) begin
+            errors=errors+1;
+            $display("FAIL C4 mid-race results r0=%02X (want 19) r1=%02X (want 03)",r0,r1);
+        end else $display("PASS C4 mid-race CALL serviced (r0=19 r1=03)");
+        collect(2'd0); collect(2'd1);
+
+        // --- C4.5 RUNNING visibility (ACTIVE register): slot shows busy before DONE
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h10);      // arg0=16, runs a while
+        ring(2'd0);
+        repeat (6000) @(posedge clk100);            // dispatched + running (call_req cleared, running set)
+        rd_reg(4'h0, r1);                           // DONE snapshot (must NOT be set yet)
+        rd_reg(4'h1, tmp);                          // ACTIVE
+        if (!tmp[0] || r1[0]) begin
+            errors=errors+1;
+            $display("FAIL C4 RUNNING-vis: ACTIVE=%02X DONE=%02X (want ACTIVE[0]=1, DONE[0]=0)",tmp,r1);
+        end else $display("PASS C4 RUNNING visible in ACTIVE");
+        wait_done(4'b0001, 800000, c4ok);
+        if (!c4ok) begin errors=errors+1; $display("FAIL C4 RUNNING-vis slot never finished"); end
+        collect(2'd0);
+
+        // --- C4.6 Run-budget timeout (BUG-FIX #1: force-complete sole running slot, NO runaway)
+        stage_mbox(2'd0, 8'h00, 8'h02, 8'hFF);      // arg0=255 (huge spin), budget=2 ticks
+        ring(2'd0);
+        wait_done(4'b0001, 300000, c4ok);           // must complete via WATCHDOG, not natural finish
+        if (!c4ok) begin
+            errors=errors+1; rd_reg(4'h1,r0); rd_reg(4'h2,r1);
+            $display("FAIL C4 budget-timeout: DONE[0] never set DONE=%02X ACTIVE=%02X TIMEDOUT=%02X (runaway?)",tmp,r0,r1);
+        end
+        rd_reg(4'h2, tmp);                          // TIMEDOUT
+        if (!tmp[0]) begin errors=errors+1; $display("FAIL C4 budget-timeout: TIMEDOUT[0]=0 (force-complete didn't flag) TMO=%02X",tmp); end
+        else $display("PASS C4 budget force-complete (DONE[0]=1, TIMEDOUT[0]=1)");
+        collect(2'd0);                              // free slot 0 (clears done+timedout)
+        // Let the kernel settle to stable KISPIN idle after the force-complete -> JMP
+        // KIDLE abandonment (host-side latency between poll/collect and a new CALL is
+        // realistic). The AB trace confirmed the CPU idles in $10xx/$1Fxx here -- the
+        // timed-out skill STOPPED (no runaway in the $03xx task region).
+        repeat (5000) @(posedge clk100);
+        // NO-RUNAWAY proof: the timed-out skill must have STOPPED and the slot be
+        // reusable -> a fresh normal call into slot 0 completes with result $04.
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h03);      // arg0=3 -> 4, no budget
+        ring(2'd0);
+        wait_done(4'b0001, 300000, c4ok);
+        read_result(2'd0, tmp);
+        if (!c4ok || tmp!==8'h04) begin
+            errors=errors+1;
+            $display("FAIL C4 slot NOT reusable after timeout: ok=%0d result=%02X (want 04; runaway corrupted slot?)",c4ok,tmp);
+        end else $display("PASS C4 run-budget force-complete + slot reusable (3->4)");
+        collect(2'd0);
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
-    initial begin #45_000_000; $display("TIMEOUT"); $finish; end
+    initial begin #120_000_000; $display("TIMEOUT"); $finish; end
 endmodule
