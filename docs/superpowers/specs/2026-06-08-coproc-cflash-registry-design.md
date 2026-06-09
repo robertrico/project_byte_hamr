@@ -52,11 +52,18 @@ parametrizes per run.
   RESTORE writes (during boot restore). They are **mutually exclusive in time** (the host
   waits during save; restore runs at boot before any host load), muxed by `save_busy` /
   `restore_busy`. The write-protect (`laddr[12]` → no `$1000+`) stays in force for restore.
-- **Host interface** (`$C0Cx` / `$E0xx`):
-  - `CP_SAVE` (`$C0CF`, host write magic `$5A`) → pulse `save_start`. Host polls `busy`.
-  - `$E015` (coproc/host read) → bit0 `restore_valid`, bit1 `restore_done`, bit7 `save_busy`.
-  - `$E016` (read) → restored `svc_count` (so a generic host "run services" program knows how
-    many were registered).
+- **Host interface — all `$C0Cx`** (the host bus). Arlet's `$E0xx` is a SEPARATE address
+  space the host CANNOT read, so the status/handshake regs MUST be host-side:
+  - `CP_SAVE` (`$C0CF` **WRITE** magic `$5A`) → pulse `save_start`.
+  - `CP_FSTAT` (`$C0CF` **READ**) → status byte `{b7 save_busy, b1 restore_done,
+    b0 restore_valid}`. Host polls `b7` after a save (busy→clear) and `b0/b1` at boot before
+    `GO`.
+  - `CP_SVCNT` (`$C0CE` **READ**) → restored `svc_count` (a generic host "run services"
+    program reads how many were registered).
+  The top decodes these (the read mux gains `4'hE`→svc_count, `4'hF`→fstat; the `$C0CF`
+  write commit pulses `save_start`). **No `$E0xx` status reg** — the coproc kernel doesn't
+  need restore status; the host orchestrates the save/restore/GO handshake entirely from
+  `$C0Cx`. (`$C0CE/$C0CF` are the former scratch slots — carve them from the scratch range.)
 - **SPI mux + `USRMCLK`** (port block_hamr's top pattern): after `boot_done`, user logic
   drives the config-flash SPI; on the ECP5 the config-SCK is reached through the `USRMCLK`
   primitive (not a normal IO). The top muxes `flash_writer`/`flash_reader` onto
@@ -87,8 +94,9 @@ SAVE:  host: load+register services ; STA CP_SAVE=$5A
                  -> program header(magic,count) + 14 data pages ; busy clears
 BOOT:  FPGA config -> boot_done -> cflash_restore: read flash header
                  magic=="CR"? -> read 14 data pages -> port-B write BRAM[$0200-$0FFF]
-                 -> restore_done=1, restore_valid=1, $E016=svc_count
-       coproc kernel boots -> KWAITGO (idle).  host: poll $E015 valid -> set NPARAM/COUNT -> GO
+                 -> restore_done=1, restore_valid=1, svc_count latched
+       coproc kernel boots -> KWAITGO (idle).  host: poll $C0CF (b1 done / b0 valid),
+                 read $C0CE (svc_count) -> set NPARAM/COUNT -> GO
        -> kernel dispatches the FLASH-RESTORED services (no re-load)
 ```
 
@@ -99,20 +107,32 @@ BOOT:  FPGA config -> boot_done -> cflash_restore: read flash header
 - `coproc.v` — expose a port-B mux input (so SAVE/RESTORE can drive `laddr`/data/we and read
   `ldata_out`) + the `$E015`/`$E016` reads + the restore-write path; pass `boot_done`.
 - `project_obscurus_top.v` — instantiate `flash_writer`/`flash_reader`/`cflash_save`/
-  `cflash_restore`; the SPI pin mux + `USRMCLK` + `boot_done` (GSR/`SEDGA` or a POR-derived
-  boot_done); decode `CP_SAVE` ($C0CF) → `save_start`; route the FSMs' port-B access into the
-  coproc; add `FLASH_*` ports + the `byte_hamr.lpf` already has the pins.
-- `software/SDM/CPSAVE.S` — host: ensure services registered, `STA CP_SAVE`, poll `$E015`
-  busy→done. `CPBOOT.S` (or extend a loader) — poll `$E015` valid, set NPARAM/COUNT, GO.
-- `project_obscurus_tb.v` + a flash sim model (`sim/spi_flash_model.v`, port from block_hamr
-  if present, else a minimal IS25LP128F model: WREN/erase/program/read + a backing array that
-  PERSISTS across the coproc reset).
+  `cflash_restore`; the SPI pin mux + `USRMCLK` + `boot_done` (POR-derived: config completes
+  before the POR counter starts, so `por_n` is a safe post-config boot_done); decode the
+  `$C0CF` write commit → `save_start`; **add to the register read mux: `4'hE`→`svc_count`,
+  `4'hF`→`{save_busy, restore_done, restore_valid}`** (carve `$C0CE/$C0CF` out of the scratch
+  range); route the FSMs' port-B access (laddr/data/we/read-back) into the coproc via a mux
+  (`save_busy`/`restore_busy` select FSM vs host); add `FLASH_*` ports (pins already in
+  `byte_hamr.lpf`).
+- `software/SDM/CPSAVE.S` — host: ensure services registered, `STA $C0CF` (`$5A`), poll
+  `LDA $C0CF` bit7 (`save_busy`) until clear. `CPBOOT.S` (or extend a loader) — poll
+  `LDA $C0CF` bit0 (`restore_valid`)/bit1 (done), `LDA $C0CE` (svc_count), set NPARAM/COUNT, GO.
+- `project_obscurus_tb.v` + a flash sim model. block_hamr HAS models (`spi_flash_write_model`
+  in `flash_writer_tb.v`, `spi_flash_model` in `flash_reader_tb.v`) but they're `MEM_SIZE=65536`
+  — **can't address `0x400000` (4 MB)**. Use an **offset-indexed sparse model**: a 4 KB backing
+  array indexed by `(flash_addr - 24'h400000)`, that asserts/ignores any `flash_addr <
+  0x400000` (which also gives the brick-bound check for free) and **persists across the coproc
+  reset** (separate from `rst_n`). Combine write+read into one model so SAVE then RESTORE see
+  the same backing store.
 
 ## Error handling / edge cases
 - **Brick prevention** (the big one): write-bound `>= 0x400000`, structural. Covered above.
-- **Power loss mid-SAVE**: the sector may be partially programmed → magic may be written last
-  (program the DATA pages first, the HEADER/magic page LAST) so a half-save leaves an invalid
-  magic → restore skips it (fail-safe: a torn save = "no registry", not corrupt-load).
+- **Power loss mid-SAVE** (torn write): the SAVE FSM program order is **erase sector →
+  program the 14 DATA pages (`$400100`+) → program the HEADER page (`$400000`, with the magic)
+  LAST**. NOTE: address order ≠ program order — the header is the *lowest* address but is
+  programmed *last* (don't program header-first out of address habit). Erase leaves the header
+  `$FFFF` (≠ "CR"); a save interrupted before the final header page therefore reads as invalid
+  magic → restore skips it. Fail-safe: a torn save = "no registry", never a corrupt load.
 - **Restore vs kernel boot race**: restore writes `$0200–$0FFF` while the kernel is in
   `KWAITGO` (reads nothing there until GO). The host must not `GO` before `$E015` done — the
   host polls. (Restore is ~ms; done well before a human-driven GO.)
