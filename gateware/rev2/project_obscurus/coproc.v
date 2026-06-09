@@ -25,7 +25,16 @@ module coproc #(
     input  wire        lwr,
     output reg  [7:0]  ldata_out,
     input  wire [7:0]  count_in,
-    input  wire        count_wr
+    input  wire        count_wr,
+    // ---- C4 async-dispatch control plane ----
+    input  wire        c4_ring_wr,      // host CP_RING strobe (top: reg_wr & $C0C5 W)
+    input  wire        c4_collect_wr,   // host CP_COLLECT strobe (top: reg_wr & $C0CC W)
+    input  wire [1:0]  c4_host_slot,    // slot # the host wrote as data (wr_data_latch[1:0])
+    input  wire        snapshot_busy,   // top: restore_busy | save_busy
+    output wire [3:0]  c4_done,         // host reads $C0C0
+    output wire [3:0]  c4_active,       // host reads $C0C1
+    output wire [3:0]  c4_timedout,     // host reads $C0C2
+    output wire [3:0]  c4_callreq       // (test/visibility)
 );
     wire [15:0] AB;
     wire [7:0]  DO;
@@ -80,6 +89,29 @@ module coproc #(
         else if (is_e014 & WE & rdy)            go_pending <= 1'b0;    // kernel ack
     end
 
+    // ---- C4 control-plane registers (per-bit set/clear flops; index strobes) ----
+    reg [3:0] call_req, running, done_r, timedout;
+    wire is_callack = (AB==16'hE016) & WE & rdy;
+    wire is_runset  = (AB==16'hE017) & WE & rdy;
+    wire is_runclr  = (AB==16'hE018) & WE & rdy;
+    wire is_doneset = (AB==16'hE019) & WE & rdy;
+    wire is_tmoset  = (AB==16'hE01A) & WE & rdy;
+    wire [3:0] kbit = (4'b0001 << DO[1:0]);        // kernel slot# (data) -> bit
+    wire [3:0] hbit = (4'b0001 << c4_host_slot);   // host slot# -> bit
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin call_req<=0; running<=0; done_r<=0; timedout<=0; end
+        else begin
+            call_req <= (call_req | (c4_ring_wr  ? hbit : 4'd0)) & ~(is_callack    ? kbit : 4'd0);
+            running  <= (running  | (is_runset   ? kbit : 4'd0)) & ~(is_runclr     ? kbit : 4'd0);
+            done_r   <= (done_r   | (is_doneset  ? kbit : 4'd0)) & ~(c4_collect_wr ? hbit : 4'd0);
+            timedout <= (timedout | (is_tmoset   ? kbit : 4'd0)) & ~(c4_collect_wr ? hbit : 4'd0);
+        end
+    end
+    assign c4_callreq  = call_req;
+    assign c4_done     = done_r;
+    assign c4_timedout = timedout;
+    assign c4_active   = call_req | running | done_r;
+
     // 8KB resident-kernel BRAM. ECP5 DP16KD has exactly TWO ports, but this
     // yosys (oss-cad-suite) will NOT infer DP16KD for a memory with TWO write
     // ports (each combined with a read) -- it always falls back to FF mapping
@@ -108,8 +140,11 @@ module coproc #(
     wire is_nmilo=(AB==16'hFFFA), is_nmihi=(AB==16'hFFFB);
     wire is_count=(AB==16'hE010);
     wire is_coreid=(AB==16'hE011);
+    wire is_callreq=(AB==16'hE015);   // C4: kernel reads call_req
+    wire is_snapbusy=(AB==16'hE01B);  // C4: kernel reads snapshot_busy (bit0)
     reg [7:0] bram_qa;
     reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q,is_e014_q;
+    reg is_callreq_q, is_snapbusy_q;
     always @(posedge clk) begin
         bram_qa    <= bram[AB[12:0]];   // port A read
         in_bram_q  <= in_bram;
@@ -119,6 +154,7 @@ module coproc #(
         is_count_q <= is_count;
         is_coreid_q <= is_coreid;
         is_e014_q <= is_e014;
+        is_callreq_q <= is_callreq; is_snapbusy_q <= is_snapbusy;
     end
     assign DI = is_rstlo_q ? 8'h00 : is_rsthi_q ? 8'h10
               : is_irqlo_q ? 8'h00 : is_irqhi_q ? 8'h1F
@@ -126,6 +162,8 @@ module coproc #(
               : is_count_q  ? task_count
               : is_coreid_q ? CORE_ID
               : is_e014_q   ? {7'b0, go_pending}
+              : is_callreq_q  ? {4'b0, call_req}
+              : is_snapbusy_q ? {7'b0, snapshot_busy}
               : in_bram_q  ? bram_qa
               :              8'h00;
 
