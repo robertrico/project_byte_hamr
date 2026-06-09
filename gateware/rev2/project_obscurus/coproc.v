@@ -101,10 +101,10 @@ module coproc #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin call_req<=0; running<=0; done_r<=0; timedout<=0; end
         else begin
-            call_req <= (call_req | (c4_ring_wr  ? hbit : 4'd0)) & ~(is_callack    ? kbit : 4'd0);
-            running  <= (running  | (is_runset   ? kbit : 4'd0)) & ~(is_runclr     ? kbit : 4'd0);
-            done_r   <= (done_r   | (is_doneset  ? kbit : 4'd0)) & ~(c4_collect_wr ? hbit : 4'd0);
-            timedout <= (timedout | (is_tmoset   ? kbit : 4'd0)) & ~(c4_collect_wr ? hbit : 4'd0);
+            call_req <= (call_req & ~(is_callack    ? kbit : 4'd0)) | (c4_ring_wr  ? hbit : 4'd0);
+            running  <= (running  & ~(is_runclr     ? kbit : 4'd0)) | (is_runset   ? kbit : 4'd0);
+            done_r   <= (done_r   & ~(c4_collect_wr ? hbit : 4'd0)) | (is_doneset  ? kbit : 4'd0);
+            timedout <= (timedout & ~(c4_collect_wr ? hbit : 4'd0)) | (is_tmoset   ? kbit : 4'd0);
         end
     end
     assign c4_callreq  = call_req;

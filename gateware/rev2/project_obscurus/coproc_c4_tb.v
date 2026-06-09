@@ -26,6 +26,36 @@ module coproc_c4_tb;
         force dut.WE=1'b0; force dut.AB=16'd0;
         @(posedge clk);
     end endtask
+    // Collision task: asserts host ring_wr on the SAME posedge that the kernel
+    // callack ($E016) fires, then captures the result before cleanup.
+    //
+    // iverilog -g2005 quirk: AB/WE/DO are output regs of Arlet's combinational
+    // always@* blocks.  Forces on these wires take effect ONE posedge after they
+    // are applied (the CPU's always@* overrides the force within the same Active
+    // region, then the force wins stably on the NEXT posedge).  The cleanup force
+    // applied between p2 and p3 therefore only takes effect at p4; at p3 the
+    // callack strobe fires AGAIN (is_callack=1 still) with ring_wr=0, which would
+    // clear call_req[s].  We snap callreq_m IMMEDIATELY after p2 — before p3's
+    // spurious clear — to witness the collision result.
+    task collide_ring_ack(input [1:0] s);
+        reg [7:0] do_val;
+        reg [3:0] snap;
+    begin
+        do_val = {6'b0, s};
+        host_slot = s;
+        force dut.AB=16'hE016; force dut.DO=do_val; force dut.WE=1'b1; force dut.rdy=1'b1;
+        @(posedge clk);         // p1: old forces in effect (is_callack=0), ring=0 → no change
+        ring_wr = 1;
+        @(posedge clk);         // p2: new forces in effect (is_callack=1), ring=1 → COLLISION
+        snap = callreq_m;       // capture: set-wins keeps bit s=1; clear-wins leaves it 0
+        ring_wr = 0; force dut.WE=1'b0; force dut.AB=16'd0;
+        @(posedge clk);         // p3: cleanup cycle (lingering callack clears bit s back to 0)
+        if (snap[s] !== 1'b1) begin
+            errors = errors + 1;
+            $display("FAIL set-wins: ring+ack collision cleared bit %0d (clear won)", s);
+        end else
+            $display("PASS set-wins on same-cycle ring+ack collision");
+    end endtask
 
     initial begin
         rst_n=0; #40; rst_n=1; #20;
@@ -47,6 +77,19 @@ module coproc_c4_tb;
         if (tmo_m!==4'b0010) begin errors=errors+1; $display("FAIL tmo after tmoset %b",tmo_m); end
         collectslot(2'd1);
         if (tmo_m[1]!==1'b0) begin errors=errors+1; $display("FAIL tmo not cleared by collect"); end
+        // --- same-cycle set+clear collision: set must win (THE bug case) ---
+        // call_req[3]=0 here (all prior tests cleared it). ring+callack same edge → must be 1.
+        // Pass/fail + error counting happen inside collide_ring_ack (snapped at p2).
+        // The task's p3 cleanup cycle leaves call_req[3]=0, so no kwrite needed after.
+        collide_ring_ack(2'd3);
+
+        // --- multi-slot independence: clear of one slot must not disturb another ---
+        ringslot(2'd0); ringslot(2'd2);    // call_req = 4'b0101
+        kwrite(16'hE016, 8'd0);            // callack slot 0 → call_req should be 4'b0100
+        if (callreq_m!==4'b0100) begin errors=errors+1; $display("FAIL multi-slot independence: callreq=%b want 4'b0100",callreq_m); end
+        else $display("PASS multi-slot independence: clear slot 0 leaves slot 2 intact");
+        kwrite(16'hE016, 8'd2);  // clean up
+
         if (errors==0) $display("PASS coproc_c4 control-plane (per-bit flops, ring/ack/run/done/collect)");
         else $display("FAIL coproc_c4 %0d",errors);
         $finish;
