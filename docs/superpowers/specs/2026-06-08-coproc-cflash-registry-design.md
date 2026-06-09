@@ -84,8 +84,8 @@ regardless.)
 - **Erase-before-program**: the SAVE FSM erases the sector before programming (flash bits
   only 1→0 on program; erase sets 1s).
 - **Restore-before-GO**: restore runs at boot while the kernel idles in `KWAITGO`; the host
-  polls `$E015` `restore_done` before issuing `GO`. The host load port stays inert until
-  restore completes (restore owns port B).
+  polls `$C0CF` `restore_done` (bit1) before issuing `GO`. The host load port stays inert
+  until restore completes (restore owns port B).
 
 ## Data flow
 ```
@@ -105,7 +105,8 @@ BOOT:  FPGA config -> boot_done -> cflash_restore: read flash header
   `block_hamr`, adjust only the module header comment; keep the proven logic).
 - Create: `cflash_save.v`, `cflash_restore.v` (+ `_tb.v` each).
 - `coproc.v` — expose a port-B mux input (so SAVE/RESTORE can drive `laddr`/data/we and read
-  `ldata_out`) + the `$E015`/`$E016` reads + the restore-write path; pass `boot_done`.
+  `ldata_out`) for the FSMs; pass `boot_done`. (Status regs are host-side in the top, not
+  coproc Arlet reads.)
 - `project_obscurus_top.v` — instantiate `flash_writer`/`flash_reader`/`cflash_save`/
   `cflash_restore`; the SPI pin mux + `USRMCLK` + `boot_done` (POR-derived: config completes
   before the POR counter starts, so `por_n` is a safe post-config boot_done); decode the
@@ -134,7 +135,7 @@ BOOT:  FPGA config -> boot_done -> cflash_restore: read flash header
   `$FFFF` (≠ "CR"); a save interrupted before the final header page therefore reads as invalid
   magic → restore skips it. Fail-safe: a torn save = "no registry", never a corrupt load.
 - **Restore vs kernel boot race**: restore writes `$0200–$0FFF` while the kernel is in
-  `KWAITGO` (reads nothing there until GO). The host must not `GO` before `$E015` done — the
+  `KWAITGO` (reads nothing there until GO). The host must not `GO` before `$C0CF` done — the
   host polls. (Restore is ~ms; done well before a human-driven GO.)
 - **Magic invalid / first boot**: no restore; clean empty registry.
 - **SPI mux before boot_done**: user logic must NOT drive the flash until `boot_done` (the
