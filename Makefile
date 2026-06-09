@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -490,6 +490,9 @@ cprace:
 cprace3:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) racetask3.S
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPRACE3.S
+
+cmpskill:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) cmpskill.S
 
 cpsave:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPSAVE.S
