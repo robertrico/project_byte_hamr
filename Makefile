@@ -497,6 +497,12 @@ cmpskill:
 cpdemo: cmpskill
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPDEMO.S
 
+cmpdelay:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) cmpdelay.S
+
+cpwatch: cmpdelay
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPWATCH.S
+
 cpsave:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPSAVE.S
 
@@ -514,7 +520,7 @@ cpboot:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsave cpboot
+sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cmpdelay cpwatch cpsave cpboot
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -527,6 +533,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsave cpboot
 	$(AC_CLASSIC) -p $(SDM_PO) CPRACE BIN 0x6000 < $(SDM_DIR)/CPRACE
 	$(AC_CLASSIC) -p $(SDM_PO) CPRACE3 BIN 0x6000 < $(SDM_DIR)/CPRACE3
 	$(AC_CLASSIC) -p $(SDM_PO) CPDEMO BIN 0x6000 < $(SDM_DIR)/CPDEMO
+	$(AC_CLASSIC) -p $(SDM_PO) CPWATCH BIN 0x6000 < $(SDM_DIR)/CPWATCH
 	$(AC_CLASSIC) -p $(SDM_PO) CPSAVE BIN 0x6000 < $(SDM_DIR)/CPSAVE
 	$(AC_CLASSIC) -p $(SDM_PO) CPBOOT BIN 0x6000 < $(SDM_DIR)/CPBOOT
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
