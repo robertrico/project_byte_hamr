@@ -20,6 +20,8 @@ module cflash_save_tb;
     reg fw_req=0, fw_busy=0, fw_done=0;
     wire save_busy;
     integer errors=0; reg [23:0] min_addr=24'hFFFFFF; reg saw_erase=0; reg [7:0] hdr0,hdr1;
+    // page-count + magic-last ordering coverage
+    integer n_data=0, n_hdr=0; reg bad_order=0;
 
     cflash_save dut(.clk(clk), .rst_n(rst_n), .save_start(save_start), .svc_count(svc_count),
         .laddr(laddr), .ldata(ldata),
@@ -73,7 +75,12 @@ module cflash_save_tb;
                         end
                         mbyte <= mbyte + 9'd1;
                     end
-                    if (mbyte==9'd256) begin fw_done<=1; fw_busy<=0; mstate<=0; end
+                    if (mbyte==9'd256) begin
+                        fw_done<=1; fw_busy<=0; mstate<=0;
+                        // tally completed page-program; flag a header that lands before 14 data pages
+                        if (maddr==24'h400000) begin n_hdr<=n_hdr+1; if (n_data<14) bad_order<=1; end
+                        else n_data<=n_data+1;
+                    end
                 end
                 default: mstate<=0;
             endcase
@@ -95,7 +102,10 @@ module cflash_save_tb;
         if (!saw_erase) begin errors=errors+1; $display("FAIL no erase"); end
         if (min_addr < 24'h400000) begin errors=errors+1; $display("FAIL brick-bound: emitted %06X",min_addr); end
         if (hdr0!==8'h43 || hdr1!==8'h52) begin errors=errors+1; $display("FAIL magic %02X%02X want 4352 (CR)",hdr0,hdr1); end
-        if (errors==0) $display("PASS cflash_save (erase@>=400000, magic CR, no addr<400000)");
+        if (n_data!==14) begin errors=errors+1; $display("FAIL data pages %0d want 14",n_data); end
+        if (n_hdr!==1)   begin errors=errors+1; $display("FAIL header pages %0d want 1",n_hdr); end
+        if (bad_order)   begin errors=errors+1; $display("FAIL header programmed before 14 data pages (torn-save fail-safe broken)"); end
+        if (errors==0) $display("PASS cflash_save (erase, 14 data pages, magic CR header LAST, no addr<400000)");
         else $display("FAIL cflash_save %0d",errors);
         $finish;
     end
