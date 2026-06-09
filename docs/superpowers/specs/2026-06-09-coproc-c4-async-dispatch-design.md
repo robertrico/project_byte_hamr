@@ -71,6 +71,13 @@ ride those free half-nibbles — exact pins pinned here, near-zero margin (the p
 - **`TIMEDOUT[3:0]`** — per-slot watchdog-kill flag; host reads via **`$C0C2` READ** to
   distinguish a clean result from a run-budget kill.
 - **`irq_enable`** (host write, 1 bit) — completion-IRQ master enable (v2; default 0 in v1).
+
+**`CALL_REQ` / `DONE` / `RUNNING` MUST be true per-bit set/clear flip-flops with index-based
+single-bit strobes** — a writer writes a slot # (0-3) and the gateware sets/clears exactly THAT
+bit (the `go_pending` pattern, coproc.v:77-81: independent set vs clear strobes, set-wins on
+same-cycle). They must NOT be a shared byte that anyone read-modify-writes: if the kernel did
+`read mask → modify → write-back`, a host `CP_RING` landing in that RMW window is lost. Every
+race-safety claim below rests on this — strobed single-bit flops, no RMW mask, on both faces.
 The HOST side is the tight constraint (free write half-nibbles `$C0C5`/`$C0CC`/`$C0CE`, free read
 half-nibbles `$C0C0-C4` etc.). Kernel-side `$E0xx` has ample room (`$E004-E00F`, `$E015`+) for the
 kernel's `CALL_REQ` read + its `DONE`/`RUNNING`/`TIMEDOUT`/ack writes.
@@ -121,8 +128,19 @@ breaking "call mid-execution, run concurrently." So C4:
   coproc gets noticed.
 - **Moves the `CALL_REQ` scan + spawn + budget-decrement INTO the tick ISR**, ahead of the
   `SWITCH`. New calls are picked up every tick regardless of what else is running.
-- **Idle state = ticking with an empty ready set**: the ISR scans, finds nothing READY, returns
-  (RTI) to a low-power idle spin until the next tick. (Replaces C3's disarm-and-`KWAITGO`-park.)
+- **Idle state = an I-CLEAR (`CLI`) ticking spin** with an empty ready set: the ISR scans, finds
+  nothing READY, RTIs back to the spin until the next tick. CRITICAL: the boot/idle path must end
+  **`CLI`** (today RESET/`KWAITGO`/`KIDLE` run `SEI` and never `CLI` — kernel.S:39). If the idle
+  spin holds I set, the free-running tick ISR never fires and a first CALL from a fully-idle
+  coproc is never noticed. So: idle = a `CLI`'d spin in its own frame the ISR can RTI back into.
+  (Replaces C3's disarm-and-`KWAITGO`-park.)
+- **Dispatch MUST be masked during C-flash snapshot ops** (`restore_busy | save_busy`). C-flash's
+  correctness rests on "the kernel does NO BRAM write/read of `$0200-$0FFF` while restore owns
+  port B." A free-running ISR that scans `CALL_REQ` and reads `TABLE[$0200]` *mid-restore* would
+  seed a stack from half-restored vectors. So the ISR **early-RTIs without scanning/spawning when
+  `restore_busy | save_busy`** (the gateware exposes a snapshot-busy bit the ISR tests first).
+  C4 + C-flash compose ONLY with this mask. (A CALL rung during a snapshot stays pending in
+  `CALL_REQ` and is serviced on the first tick after the snapshot completes — benign.)
 The batch `go_pending` path (C3.1) is preserved as a second front-end that also feeds the slot
 spawn machinery (for the regression demos).
 
@@ -145,12 +163,17 @@ ProDOS-IRQ work off the critical path).
   slot*block`. Read args from `SLOTBASE`, write result to `SLOTBASE+result_off`.
 - End with `JMP DONE` (kernel marks `DONE[slot]`). Never `RTS` (the C2 lesson).
 - **Per-slot isolation today is stacks only** (`$2F/$5F/$8F/$BF`); **ZP `$00-$CF` is SHARED
-  across all slots**, and the kernel owns `$D0-$F2` (TCBs/scratch). A bare "no globals" rule
+  across all slots**, and the kernel owns `$D0-$F3` (TCBs/scratch — note `TMPP=$F3`, kernel.S:25,
+  so the kernel range is `$D0-$F3`, NOT `$D0-$F2`; SLOTZP must avoid it). A bare "no globals" rule
   effectively bans ZP — near-impossible for real 6502. So C4 **carves a per-slot ZP scratch
-  window**: `SLOTZP = SLOTZP_BASE + slot*N` (N≈4-8 bytes × 4 slots, in low ZP; exact size/base
-  pinned in the plan). A skill addresses its private scratch through its slot (the kernel hands
-  it `CURSLOT`/a `SLOTZP` pointer). This is the *mechanism* that makes a skill reentrant — same
-  code in two slots, each with its own stack + ZP-scratch + mailbox.
+  window**: `SLOTZP = SLOTZP_BASE + slot*N`. **Size N from the demo skill's ACTUAL ZP footprint,
+  not a guess** — one 16-bit pointer + a counter already eats 4 B; a real skill (SDRAM walk,
+  indirect addressing, compute) needs ~16-24 B. 4 slots × 24 B = 96 B is a big ZP bite, so the
+  plan must either (a) pin N to the genuine need and find the room, or (b) **honestly bound v1
+  reentrancy to skills within the chosen N** and document that ceiling — do NOT ship 8 B and call
+  arbitrary skills "reentrant." A skill addresses its private scratch through its slot (the kernel
+  hands it `CURSLOT`/a `SLOTZP` pointer). This per-slot {stack + ZP-scratch + mailbox} is the
+  *mechanism* that makes a skill reentrant — same code in two slots, no collision, up to N.
 - **Reentrancy contract:** a skill must use only its stack, its `SLOTZP` window, its mailbox, and
   slot-relative SDRAM — never fixed ZP/SDRAM globals. (Not silicon-enforced; a non-reentrant
   skill simply must not be called twice in flight.)
@@ -204,9 +227,12 @@ Three documented paradigms: **async-interleave** (`CALL` → work → `POLL`/`RE
 - **DONE set vs collect-clear race:** kernel sets `DONE[S]` (completion) while host clears a
   *different* `DONE[S']` (collect) — independent bits. Same-bit collision (collect while kernel
   re-... can't happen: a slot can't complete again until re-called, which needs collect first).
-- **Run-budget expiry mid-work:** tick ISR force-completes — must tear the slot down cleanly
-  (reset its stack/state) so the slot is reusable; result bytes flagged `TIMEDOUT` (host sees a
-  kill vs a real result).
+- **Run-budget expiry mid-work (CUR vs non-CUR — plan must detail):** the tick ISR force-completes
+  the expired slot. **Two cases:** if the killed slot is `CUR` (the task the ISR interrupted),
+  discard its live context + `SWITCH` away (mirror the skill-initiated DONE handler — kernel.S:166,
+  `TCB_ST=#$02` + `PICKANY`) and ensure the subsequent SWITCH does NOT `RESTORE` the dead slot; if
+  it's a non-CUR RUNNING slot, just mark it done/free (no context discard). Either way tear the
+  slot down cleanly (reset stack/state) so it's reusable, set `DONE` + `TIMEDOUT`.
 - **Reentrancy violation:** a skill using fixed globals breaks when called twice concurrently —
   documented contract, not silicon-enforced. (A non-reentrant skill simply shouldn't be called
   twice in flight.)
