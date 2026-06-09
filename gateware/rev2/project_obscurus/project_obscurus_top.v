@@ -293,6 +293,12 @@ module project_obscurus_top (
     wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
     wire [7:0]  cp_ldata_out;
 
+    // ---- C4 async skill dispatch control plane ----
+    wire        c4_ring_wr    = reg_wr & (wr_addr_latch == 4'h5);   // CP_RING    $C0C5 W
+    wire        c4_collect_wr = reg_wr & (wr_addr_latch == 4'hC);   // CP_COLLECT $C0CC W
+    wire [1:0]  c4_host_slot  = wr_data_latch[1:0];
+    wire [3:0]  c4_done, c4_active, c4_timedout;
+
     // =========================================================================
     // C-flash: persistent registry to SPI flash (0x400000).
     //   SAVE    : host writes $5A to $C0CF ($C0CF=4'hF) -> erase + program
@@ -404,7 +410,10 @@ module project_obscurus_top (
         .busy(cop_busy), .rdata(cop_rdata),
         .laddr(cp_laddr_mux), .ldata_in(cp_ldata_mux), .lwr(cp_lwr_mux),
         .ldata_out(cp_ldata_out),
-        .count_in(wr_data_latch), .count_wr(cp_count_wr)
+        .count_in(wr_data_latch), .count_wr(cp_count_wr),
+        .c4_ring_wr(c4_ring_wr), .c4_collect_wr(c4_collect_wr), .c4_host_slot(c4_host_slot),
+        .snapshot_busy(restore_busy | save_busy),
+        .c4_done(c4_done), .c4_active(c4_active), .c4_timedout(c4_timedout), .c4_callreq()
     );
 
     always @(posedge clk or negedge rst_n) begin
@@ -469,6 +478,9 @@ module project_obscurus_top (
     reg [7:0] reg_data_out;
     always @(*) begin
         case (apple_addr[3:0])
+            4'h0: reg_data_out = {4'b0, c4_done};      // DONE     $C0C0 R
+            4'h1: reg_data_out = {4'b0, c4_active};    // ACTIVE   $C0C1 R
+            4'h2: reg_data_out = {4'b0, c4_timedout};  // TIMEDOUT $C0C2 R
             4'h5: reg_data_out = status_byte;   // STATUS
             4'h6: reg_data_out = mon_rdata;     // DATA (monitor's latched read)
             4'hC: reg_data_out = cp_ldata_out;  // CP_RDATA (coproc BRAM read-back)
