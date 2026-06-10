@@ -533,7 +533,7 @@ cpboot:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot
+sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot mverse
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -550,6 +550,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cp
 	$(AC_CLASSIC) -p $(SDM_PO) CPWATCH BIN 0x6000 < $(SDM_DIR)/CPWATCH
 	$(AC_CLASSIC) -p $(SDM_PO) CPSAVE BIN 0x6000 < $(SDM_DIR)/CPSAVE
 	$(AC_CLASSIC) -p $(SDM_PO) CPBOOT BIN 0x6000 < $(SDM_DIR)/CPBOOT
+	$(AC_CLASSIC) -p $(SDM_PO) MVERSE BIN 0x6000 < $(SDM_DIR)/MVERSE.bin
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
