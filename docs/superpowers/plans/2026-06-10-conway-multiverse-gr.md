@@ -10,6 +10,8 @@
 
 **Reuse:** `software/SDM/LIFE8.S` + `MVERSE.S` (copy + alter), `SDRAMLIB.S`. Coproc read window `$E004-08` / write `$E000-03` (unchanged).
 
+**Commit trailers (P5):** the example commits below show a `Co-Authored-By:` line — the executor should use the SESSION'S live trailer convention (it may differ from the literal text shown), not transcribe a stale model name.
+
 ---
 
 ## Fixed layout
@@ -26,7 +28,7 @@
 - `software/SDM/LIFEMAPGR.S` — GR equates (ROWBYTES=5, GROWS=48, GWIDTH=40, banks).
 - `software/SDM/LIFE8GR.S` — copy LIFE8.S + the FOUR alters. The coproc Life skill.
 - `software/SDM/GRVERSE.S` — copy MVERSE.S, GR-retargeted. The //e app.
-- `software/SDM/LIFE8GR.DFB.S` — AUTO-GENERATED (Makefile) DFB include of the LIFE8GR LSIM=0 bytes; GRVERSE PUTs it (G3 — no hand-pasted blob).
+- `software/SDM/LIFE8GRB.S` — AUTO-GENERATED (Makefile) DFB include of the LIFE8GR LSIM=0 bytes (`CSKILL`..`CSKEND`); GRVERSE does `PUT LIFE8GRB` (G3 — no hand-pasted blob; no internal dot in the name).
 - `gateware/rev2/project_obscurus/project_obscurus_tb.v` — add the GR-dim TICK1 oracle (keep the DHGR one — both regressions).
 - `Makefile` — `life8gr`/`grverse` targets, the DFB-gen rule, sdmdisk pack.
 
@@ -83,7 +85,7 @@ Add a SECOND multiverse oracle block (keep the DHGR one — both regressions). S
 - **Glider** crossing an **8-cell byte boundary** (place it spanning byte 0/1, cols 6-9) → after 4 ticks +1/+1; assert its new cells (catches the 8/byte math).
 - **Torus seam**: a pattern straddling col 39↔0 → assert the GWIDTH-1 wrap.
 Hand-compute the expected generations, hardcode asserts. Print `PASS multiverse-GR TICK1 (...)`.
-Register LIFE8GR as a NEW skill id in the tb (don't clobber the DHGR LIFE8 skill-0 registration — use skill id 2 or a separate tb block + its own load).
+Register LIFE8GR as a NEW skill id in the tb. **P3 — both `LIFE8` and `LIFE8GR` ORG $0300, so they CANNOT co-reside in coproc BRAM.** Run the oracles SEQUENTIALLY: let the DHGR oracle finish, then **reload $0300 with the LIFE8GR bytes** (`$readmemh life8gr.mem` happens at t=0, but if the DHGR test ran a skill at $0300 first, re-`load_byte` LIFE8GR to $0300 + re-point TABLE before the GR oracle), then run the GR oracle. Simplest: a fresh coproc reset + load between the two oracle blocks.
 Run (expect FAIL — no LIFE8GR): `cd /Users/hambook/Development/project_byte_hamr && make sim DESIGN=project_obscurus REV=rev2 2>&1 | grep -iE "multiverse-GR|FAIL"`.
 
 ### Step 2: Implement LIFE8GR.S (copy LIFE8.S, apply the FOUR alters)
@@ -93,6 +95,9 @@ cp software/SDM/LIFE8.S software/SDM/LIFE8GR.S
 #            COLSUM+559 -> COLSUM+GWIDTH-1, MUL80 -> MUL5.
 ```
 Keep the LSIM toggle + the LIFE1 ($0303) single-universe oracle entry (for the sim) + the LIFE8 ($0300) forever-loop entry. Merlin-//e format throughout.
+
+### Step 2b: add the `life8gr` Makefile target → `life8gr.mem` (P2 — the tb needs it)
+The DHGR tb `$readmemh`s `life8.mem` (built by the `life8` target, Makefile ~L503-505: bin→mem). The GR oracle needs the same: a `life8gr` target that assembles `LIFE8GR.S` (the committed **LSIM=1** sim build) and dumps its bin → `gateware/rev2/project_obscurus/life8gr.mem`. Mirror the `life8` target exactly. The tb (Step 1) `$readmemh`s `life8gr.mem` into the coproc BRAM for the GR oracle (alongside `life8.mem` for the DHGR one — both committed, both regressions). Run `make life8gr` before `make sim`.
 
 ### Step 3: Run — expect PASS
 ```bash
@@ -171,16 +176,25 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:** Modify `software/SDM/GRVERSE.S`; add the DFB-gen Makefile rule.
 
-### Step 1: auto-generate the LIFE8GR blob (G3 — no hand-paste)
-Add a Makefile rule: build `LIFE8GR` at **LSIM=0** (192... no, GR NROWS=48 — the HW build), `xxd`/awk the `.bin` into `software/SDM/LIFE8GR.DFB.S` as `CSKILL DFB $..,$..` lines + a `CSKEND` label. GRVERSE `PUT`s `LIFE8GR.DFB` in its REGSKILL. (Verify the rule emits the LSIM=0 bytes, not the sim LSIM build — set LSIM=0 for the embed build, then restore for sim, OR build a separate LSIM=0 artifact.)
+### Step 1: auto-generate the LIFE8GR blob (G3 — no hand-paste) — P1 concrete mechanism
+Merlin32 has NO command-line define, and `LSIM = 1` is a committed source literal (for the sim). So build the HW (LSIM=0) blob via a **sed-substituted copy** — the committed `LIFE8GR.S` stays LSIM=1; the embed build is always LSIM=0, deterministic, no hand-flip. And name the include **`LIFE8GRB.S`** (NOT `LIFE8GR.DFB.S` — an internal dot breaks Merlin32 `PUT` resolution, which appends `.S`; project convention is `PUT SDRAMLIB`→`SDRAMLIB.S`). GRVERSE does `PUT LIFE8GRB`.
 ```make
-software/SDM/LIFE8GR.DFB.S: software/SDM/LIFE8GR.bin
-	xxd -i < $< | awk '...emit " DFB $hh,$hh,..." lines, label CSKILL/CSKEND...' > $@
+# HW (LSIM=0) bin from the committed LSIM=1 source, via sed:
+software/SDM/LIFE8GR.bin: software/SDM/LIFE8GR.S
+	sed 's/^LSIM = 1/LSIM = 0/' $< > $(SDM_DIR)/LIFE8GRHW.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) LIFE8GRHW.S
+	mv $(SDM_DIR)/LIFE8GRHW $@        # the assembled LSIM=0 binary
+
+# bin -> DFB include (CSKILL..CSKEND), <=50 char lines, ASCII:
+software/SDM/LIFE8GRB.S: software/SDM/LIFE8GR.bin
+	{ echo 'CSKILL'; \
+	  od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++){b=b sprintf(" DFB $%s\n",toupper($i))}} END{printf "%s",b}'; \
+	  echo 'CSKEND'; } > $@
 ```
-(Exact awk: emit lines like ` DFB $A9,$2F,...` ≤ ~50 chars, ASCII. Lead with `CSKILL` label, end `CSKEND`.)
+(One `DFB` per byte keeps lines trivially ≤50 char + ASCII. Adjust the od/awk to the project's tooling if cleaner; the REQUIREMENT: a Makefile rule regenerates `LIFE8GRB.S` from `LIFE8GR.bin` (the LSIM=0 build) — never hand-transcribed. `make grverse` depends on `LIFE8GRB.S`.)
 
 ### Step 2: REGSKILL — load LIFE8GR to coproc $0300 + TABLE[0]
-Mirror MVERSE/CPDEMO LOADBLK: CP_LADDR=$0300, stream `CSKILL..CSKEND` bytes (from the PUT'd DFB) via CP_WDATA; TABLE[0]=$0300.
+`PUT LIFE8GRB` (the auto-generated DFB include). Mirror MVERSE/CPDEMO LOADBLK: CP_LADDR=$0300, stream the `CSKILL`..`CSKEND` bytes via CP_WDATA; TABLE[0]=$0300.
 
 ### Step 3: SEED — 8 GR-recomputed patterns (G6)
 Recompute ALL seed offsets for **5-byte rows + 8-bit packing**; fill counts **$3C00 → 240**. Patterns scaled to 40×48: gliders (u0-u1), blinkers/oscillators (u2), r-pentomino centered (u3), LFSR soup (u4-u7). Per universe: SDM_SETBANK UBASE+u, SDM_SETADDR BUFA, write the pattern (POKE table or SOUPF LFSR, count 240). Zero FRONT[u]/GEN[u]. (No Gosper gun — dies on the 40×48 torus.)
@@ -189,7 +203,7 @@ Recompute ALL seed offsets for **5-byte rows + 8-bit packing**; fill counts **$3
 Stage slot-0 mailbox (coproc $0F80: skill_id $00, **budget $00**, arg0 $00); ring slot 0 (`LDA #0 / STA $C0C5`).
 
 ### Step 5: SURF — keys + gen-skip (copy MVERSE's SURF)
-Poll `$C000`; on key clear `$C010`; `0`-`7`→CHAN, arrows ±1 wrap; render on gen-change or channel-change (the snapshot-retry handles coherence). At GR speed GEN changes ~every render → near-continuous; keyboard polled between (fine).
+Poll `$C000`; on key clear `$C010`; `0`-`7`→CHAN, arrows ±1 wrap; render on gen-change or channel-change (the snapshot-retry handles coherence). **P4: set `LASTGEN` from the snapshot's post-read `GENA` (the gen actually rendered), not the pre-read** — else the next SURF pass sees a newer GEN and re-renders the same frame. At GR speed GEN changes ~every render → near-continuous; keyboard polled between (fine).
 
 ### Step 6: MAIN — wire it
 `MAIN`: SDM_READY (BCC) → GRON → GRCLR → REGSKILL → SEED → GOLIFE → CHAN=0 → JMP SURF.
@@ -205,7 +219,7 @@ Confirm GRVERSE + MVERSE both in the catalog.
 
 ### Step 8: Commit
 ```bash
-git add software/SDM/GRVERSE.S software/SDM/LIFE8GR.DFB.S Makefile
+git add software/SDM/GRVERSE.S software/SDM/LIFE8GRB.S Makefile
 git commit -m "feat(multiverse-gr): GRVERSE orchestration - auto-gen blob, GR seeds, GO budget=0, surf
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
