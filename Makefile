@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -500,6 +500,9 @@ sdrtest:
 cpdemo: cmpskill
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPDEMO.S
 
+cpsdrd: sdrtest
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPSDRD.S
+
 cmpdelay:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) cmpdelay.S
 
@@ -523,7 +526,7 @@ cpboot:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cmpdelay cpwatch cpsave cpboot
+sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -536,6 +539,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cmpdelay cpwatch cpsave cp
 	$(AC_CLASSIC) -p $(SDM_PO) CPRACE BIN 0x6000 < $(SDM_DIR)/CPRACE
 	$(AC_CLASSIC) -p $(SDM_PO) CPRACE3 BIN 0x6000 < $(SDM_DIR)/CPRACE3
 	$(AC_CLASSIC) -p $(SDM_PO) CPDEMO BIN 0x6000 < $(SDM_DIR)/CPDEMO
+	$(AC_CLASSIC) -p $(SDM_PO) CPSDRD BIN 0x6000 < $(SDM_DIR)/CPSDRD
 	$(AC_CLASSIC) -p $(SDM_PO) CPWATCH BIN 0x6000 < $(SDM_DIR)/CPWATCH
 	$(AC_CLASSIC) -p $(SDM_PO) CPSAVE BIN 0x6000 < $(SDM_DIR)/CPSAVE
 	$(AC_CLASSIC) -p $(SDM_PO) CPBOOT BIN 0x6000 < $(SDM_DIR)/CPBOOT
