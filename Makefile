@@ -494,6 +494,9 @@ cprace3:
 cmpskill:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) cmpskill.S
 
+sdrtest:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) sdrtest.S
+
 cpdemo: cmpskill
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPDEMO.S
 
