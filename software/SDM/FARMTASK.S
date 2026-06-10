@@ -130,8 +130,7 @@ DOMBOX
  BNE MBGO
  RTS
 MBGO
-* read OP A0 A1 A2 (auto-inc after FLAG read?
-* no: separate reads, addresses explicit)
+* read OP A0 A1 A2 (RDB sets addr per byte)
  LDA #<FMOP
  LDY #>FMOP
  JSR RDB
@@ -566,4 +565,5 @@ MKDECAY
 MKDONE
  RTS
 
+* CODE MUST END BELOW $0B00 (EVLIB SCRATCH)
  PUT EVLIB
