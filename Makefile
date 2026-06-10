@@ -497,6 +497,9 @@ cmpskill:
 sdrtest:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) sdrtest.S
 
+mverse:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) MVERSE.S
+
 life8:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) LIFE8.S
 	python3 -c "b=open('$(SDM_DIR)/LIFE8.bin','rb').read(); open('gateware/rev2/project_obscurus/life8.mem','w').write('\n'.join('%02x'%x for x in b)+'\n')"
