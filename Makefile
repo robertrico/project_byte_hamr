@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill life8 cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -496,6 +496,10 @@ cmpskill:
 
 sdrtest:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) sdrtest.S
+
+life8:
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) LIFE8.S
+	python3 -c "b=open('$(SDM_DIR)/LIFE8.bin','rb').read(); open('gateware/rev2/project_obscurus/life8.mem','w').write('\n'.join('%02x'%x for x in b)+'\n')"
 
 cpdemo: cmpskill
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPDEMO.S

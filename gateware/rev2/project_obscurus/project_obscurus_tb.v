@@ -86,6 +86,15 @@ module project_obscurus_tb;
     reg       c4ok;
     reg [7:0] r0, r1;
 
+    // ---- Conway's Multiverse TICK1 oracle state ----
+    // LIFE8 skill image (built from software/SDM/LIFE8.S -> life8.mem, copied to
+    // the sim build dir by the Makefile). LSIM=1 sim build => GROWS=8 rows.
+    localparam integer LIFE8LEN = 638;
+    reg [7:0] life8img [0:1023];
+    initial $readmemh("life8.mem", life8img);
+    reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
+    integer   bufsum, mvi;
+
     task wr_reg(input [3:0] r, input [7:0] d);
         begin
             apple_addr = {8'hC0, 4'hC, r}; R_nW=1'b0;
@@ -168,6 +177,67 @@ module project_obscurus_tb;
                 if (g > maxcyc) disable wd;
             end
             ok = 1'b1;
+        end
+    endtask
+
+    // ---- Conway's Multiverse TICK1 helpers ----
+    // A universe lives in SDRAM bank UBASE(=16); buffer A @ $0000, B @ $4000.
+    // Rows are contiguous: row r byte b is at base + r*80 + b => idx r*80+b spans
+    // 0..639 across the 8x80 (sim) grid, so the buffer is 640 sequential bytes.
+    // Both host read- AND write-ports auto-increment m_addr on op completion
+    // (top.v line 467), so we walk the whole buffer with one set_addr + a loop.
+    task mv_seed;     // zero buffer A, then stamp the seed pattern bytes
+        begin
+            for (mvi=0; mvi<640; mvi=mvi+1) begin
+                case (mvi)
+                    95:  sdram_write(10'd16, 16'h0000+95,  8'h01); // glider  r1 b15
+                    175: sdram_write(10'd16, 16'h0000+175, 8'h02); // glider  r2 b15
+                    240: sdram_write(10'd16, 16'h0000+240, 8'h40); // blinkerB r3 b0
+                    241: sdram_write(10'd16, 16'h0000+241, 8'h03); // blinkerB r3 b1
+                    242: sdram_write(10'd16, 16'h0000+242, 8'h40); // blinkerA r3 b2
+                    243: sdram_write(10'd16, 16'h0000+243, 8'h03); // blinkerA r3 b3
+                    254: sdram_write(10'd16, 16'h0000+254, 8'h40); // glider  r3 b14
+                    255: sdram_write(10'd16, 16'h0000+255, 8'h03); // glider  r3 b15
+                    480: sdram_write(10'd16, 16'h0000+480, 8'h03); // torus   r6 b0
+                    559: sdram_write(10'd16, 16'h0000+559, 8'h40); // torus   r6 b79
+                    default: sdram_write(10'd16, 16'h0000+mvi, 8'h00);
+                endcase
+            end
+        end
+    endtask
+    task mv_readback(input [15:0] base);  // slurp 640 bytes -> rb[], sum16 -> bufsum
+        begin
+            set_bank(10'd16); set_addr(base);
+            bufsum = 0;
+            for (mvi=0; mvi<640; mvi=mvi+1) begin
+                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
+                rb[mvi] = tmp; bufsum = bufsum + tmp;
+            end
+        end
+    endtask
+    task mv_chk(input integer i, input [7:0] v);  // assert one packed byte
+        begin
+            if (rb[i] !== v) begin errors=errors+1;
+                $display("FAIL multiverse TICK1 byte[%0d]=%02X want %02X",i,rb[i],v);
+            end
+        end
+    endtask
+    task mv_sum(input integer want);  // assert full-buffer sum16 (catches strays)
+        begin
+            if ((bufsum & 32'hFFFF) !== want) begin errors=errors+1;
+                $display("FAIL multiverse TICK1 sum16=%04X want %04X",bufsum & 32'hFFFF, want);
+            end
+        end
+    endtask
+    task mv_tick;    // ring slot0 (one TICK1 gen), wait for JMP DONE, free slot
+        begin
+            stage_mbox(2'd0, 8'h00, 8'h00, 8'h00);
+            ring(2'd0);
+            wait_done(4'b0001, 40000000, c4ok);
+            if (!c4ok) begin errors=errors+1;
+                $display("FAIL multiverse TICK1 skill never reached DONE");
+            end
+            collect(2'd0);
         end
     endtask
 
@@ -804,8 +874,65 @@ module project_obscurus_tb;
             $display("PASS sdram-read: coproc summed host-seeded region (got %02X want 64)",tmp);
         collect(2'd0);
 
+        // ===== CONWAY'S MULTIVERSE: TICK1 (bit-packed Life, sliding window) =====
+        // Oracle: seed universe 0 (bank 16, buffer A) with a blinker (interior),
+        // a second blinker straddling an interior 7-cell BYTE BOUNDARY, a glider
+        // positioned to MOVE across a byte boundary, and a blinker straddling the
+        // col-0 / col-559 TORUS seam. LIFE8 (LSIM=1 => 8 rows) ticks universe 0
+        // once per CALL: read front buf, compute back buf, flip FRONT[0], bump
+        // GEN[0], JMP DONE. We CALL it 4x (gens alternate buffers B,A,B,A via the
+        // FRONT flip) and assert every generation against values computed by an
+        // independent Python reference simulator (same toroidal bit-packed rules).
+        // Per gen: explicit packed-byte asserts (diagnosable) + a full-buffer
+        // sum16 (catches spurious/missing cells anywhere). Blinkers are period-2;
+        // the glider returns to its phase shifted +1 row/+1 col by gen 4 -- the
+        // strongest proof the cross-byte neighbor math is correct.
+        sdram_write(10'd24, 16'h0010, 8'h00);   // FRONT[0] = 0 (buffer A is live)
+        sdram_write(10'd24, 16'h0020, 8'h00);   // GEN[0]   = 0
+        mv_seed;                                 // buffer A (bank 16) := patterns
+
+        // register LIFE8 as skill 0 @ coproc $0300, TABLE[0] = $0300
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);            // CP_LADDR = $0300
+        for (mvi=0; mvi<LIFE8LEN; mvi=mvi+1) load_byte(life8img[mvi]);
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);            // CP_LADDR = $0200
+        load_byte(8'h00); load_byte(8'h03);                  // TABLE[0] = $0300
+        cp_read(13'h0300, tmp);
+        if (tmp!==8'hA9) begin errors=errors+1;
+            $display("FAIL multiverse TICK1 not loaded @ $0300 = %02X",tmp); end
+
+        // --- GEN 1 (front A -> back B, sum16 = $004F) ---
+        mv_tick; mv_readback(16'h4000); mv_sum(16'h004F);
+        mv_chk(161,8'h01); mv_chk(163,8'h01); mv_chk(174,8'h40); mv_chk(175,8'h02);
+        mv_chk(241,8'h01); mv_chk(243,8'h01); mv_chk(255,8'h03);
+        mv_chk(321,8'h01); mv_chk(323,8'h01); mv_chk(335,8'h01);
+        mv_chk(400,8'h01); mv_chk(480,8'h01); mv_chk(560,8'h01);
+
+        // --- GEN 2 (front B -> back A, blinkers+torus back to seed, sum16 = $0110) ---
+        mv_tick; mv_readback(16'h0000); mv_sum(16'h0110);
+        mv_chk(175,8'h02); mv_chk(240,8'h40); mv_chk(241,8'h03); mv_chk(242,8'h40);
+        mv_chk(243,8'h03); mv_chk(254,8'h40); mv_chk(255,8'h02);
+        mv_chk(335,8'h03); mv_chk(480,8'h03); mv_chk(559,8'h40);
+
+        // --- GEN 3 (front A -> back B, sum16 = $0013) ---
+        mv_tick; mv_readback(16'h4000); mv_sum(16'h0013);
+        mv_chk(161,8'h01); mv_chk(163,8'h01); mv_chk(175,8'h01);
+        mv_chk(241,8'h01); mv_chk(243,8'h01); mv_chk(255,8'h06);
+        mv_chk(321,8'h01); mv_chk(323,8'h01); mv_chk(335,8'h03);
+        mv_chk(400,8'h01); mv_chk(480,8'h01); mv_chk(560,8'h01);
+
+        // --- GEN 4 (front B -> back A; glider = seed shifted +1,+1, sum16 = $00D6) ---
+        mv_tick; mv_readback(16'h0000); mv_sum(16'h00D6);
+        mv_chk(175,8'h02); mv_chk(240,8'h40); mv_chk(241,8'h03); mv_chk(242,8'h40);
+        mv_chk(243,8'h03); mv_chk(255,8'h04); mv_chk(335,8'h07);
+        mv_chk(480,8'h03); mv_chk(559,8'h40);
+
+        if (errors==0)
+            $display("PASS multiverse TICK1 (blinker/byte-boundary/glider/torus, 4 gens)");
+        else
+            $display("FAIL multiverse TICK1 %0d errors", errors);
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
-    initial begin #120_000_000; $display("TIMEOUT"); $finish; end
+    initial begin #600_000_000; $display("TIMEOUT"); $finish; end
 endmodule
