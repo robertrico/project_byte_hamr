@@ -14,7 +14,7 @@
 
 ## Plan-time facts (verified against source, 2026-06-10)
 
-- Skill table = coproc BRAM `$0200 + id*2` (lo,hi). Conway uses id 0 (LIFE8 @$0300) and id 1 (LIFE1 @$0303). **GAMETASK = skill id 2 → table bytes at $0204/$0205.** LIFE8GR blob is 680 bytes from $0300 (ends $05A8), so ORG $0600 is clear; mailboxes start $0F80.
+- Skill table = coproc BRAM `$0200 + id*2` (lo,hi). Conway uses id 0 (LIFE8 @$0300) and id 1 (LIFE1 @$0303). **GAMETASK = skill id 2 → table bytes at $0204/$0205.** LIFE8GR blob is 680 bytes from $0300 (last byte $05A7), so ORG $0600 is clear; mailboxes start $0F80.
 - `CP_CALL` (CPLIB.S) picks the lowest **clear** bit of `CP_ACTIVE` — it can never overwrite a running slot. Cold-start-over-slow-task worst case = duplicate task in a second slot (two writers). Mitigated by the 3 s STATUS probe; accepted residual risk per spec.
 - Coproc SDRAM ports: `SADDRLO/HI $E000/1, SBANKR $E002, SDATA $E003` (write: set address **per byte** — LIFE8GR WRITEROW precedent), `RADDRLO/HI $E004/5, RBANKR $E006, RTRIG $E007, RDATA $E008` (read: address **auto-increments** after each RTRIG — LIFE8GR READROW precedent).
 - Host side: `SDRAMLIB.S` (`SDM_BANK/ADDR/VAL` params; `SDM_READY/SETBANK/SETADDR/WRITE/READ/WRNEXT/RDNEXT`), `CPLIB.S` (`CP_CALL` A=skill X=arg0 Y=budget → handle; `CP_POLL/WAIT/RESULT`), CP load ports `$C0C9/A/B`.
@@ -50,28 +50,30 @@ Makefile                   MODIFY: farmtask/farmtaskb/farm/farmsim targets + sdm
 * PUT-INCLUDE. EQUATES ONLY. NO CODE.
 * GBANK LAYOUT (SDRAM BANK 32):
 *  $0000 SIG(2) $0002 SEQCTR $0003 HEAD
-*  $0010 RING 64x4  $0110 MAILBOX(6)
-*  $0120 MARKET(7)  $0200 GRID 20x20
+*  $0100 RING 64x4 (PAGE-ALIGNED: REC ADDR
+*   HI CONST $01, LO = IDX*4 - NO CARRY)
+*  $0200 MAILBOX(6) $0210 MARKET(7)
+*  $0300 GRID 20x20
 GBANK = 32
 FSIG0 = $0000
 FSIG1 = $0001
 FSEQC = $0002
 FHEAD = $0003
-FRING = $0010
-FMFLAG = $0110
-FMOP = $0111
-FMA0 = $0112
-FMA1 = $0113
-FMA2 = $0114
-FMRES = $0115
-FPRICEL = $0120
-FPRICEH = $0121
-FSUPPLY = $0122
-FCASHL = $0123
-FCASHH = $0124
-FSEEDS = $0125
-FCROPS = $0126
-FGRID = $0200
+FRING = $0100
+FMFLAG = $0200
+FMOP = $0201
+FMA0 = $0202
+FMA1 = $0203
+FMA2 = $0204
+FMRES = $0205
+FPRICEL = $0210
+FPRICEH = $0211
+FSUPPLY = $0212
+FCASHL = $0213
+FCASHH = $0214
+FSEEDS = $0215
+FCROPS = $0216
+FGRID = $0300
 * GRID GEOMETRY
 GCOLS = 20
 GROWSN = 20
@@ -110,10 +112,14 @@ SEEDS0 = 5
 * FSIM=1 -> TINY (SIM BUILD SED-TOGGLES FSIM)
 FSIM = 0
  DO FSIM
-GROWD0 = $20
+* sim: one grow tick = 128 passes. NOT smaller:
+* a tb mailbox round-trip is ~10+ passes, and
+* the error-path tests (occupied/unripe) must
+* run before plot (3,3) ripens (5 ticks).
+GROWD0 = $80
 GROWD1 = $00
 GROWD2 = $00
-MKTD0 = $10
+MKTD0 = $40
 MKTD1 = $00
 MKTD2 = $00
  FIN
@@ -167,7 +173,7 @@ git commit -m "feat(farm): FARMEQU shared equates - GBANK map, ops, events, divi
 **Files:**
 - Create: `software/SDM/EVLIB.S`
 
-PUTEV contract (spec-normative order): write 4 record bytes (SEQ=SEQCTR), then SEQCTR++, then HEAD++ last. Caller sets `EVTYPE/EVP0/EVP1`. Uses absolute scratch only (no ZP — kernel owns it). Each port burst SEI/CLI-bracketed. Write port needs the address re-set per byte; record bytes are consecutive so we keep a 16-bit-free running lo byte (`$10+HEAD*4` max $FE, hi always 0 — ring fits in GBANK page 0).
+PUTEV contract (spec-normative order): write 4 record bytes (SEQ=SEQCTR), then SEQCTR++, then HEAD++ last. Caller sets `EVTYPE/EVP0/EVP1`. Uses absolute scratch only (no ZP — kernel owns it). Each port burst SEI/CLI-bracketed. Write port needs the address re-set per byte; the ring is page-aligned at $0100, so the record burst keeps SADDRHI constant at >FRING and runs an 8-bit lo byte (`HEAD*4` max 252 + 3 = 255 — no carry possible by construction).
 
 - [ ] **Step 1: Write the file**
 
@@ -200,18 +206,17 @@ PUTEV
  LDA RDATA
  STA EVHEAD
  CLI
-* record lo = $10 + HEAD*4
+* record lo = HEAD*4 (ring page-aligned at
+* $0100: hi const, max lo 63*4=252, no carry)
  LDA EVHEAD
  ASL
  ASL
- CLC
- ADC #FRING
  STA EVRLO
-* write record: SEQ TYPE P0 P1
+* write record: SEQ TYPE P0 P1 (hi = >FRING)
  SEI
  LDA #GBANK
  STA SBANKR
- LDA #$00
+ LDA #>FRING
  STA SADDRHI
  LDA EVRLO
  STA SADDRLO
@@ -232,7 +237,9 @@ PUTEV
  STA SADDRLO
  LDA EVP1
  STA SDATA
-* SEQCTR++ THEN HEAD++ (LAST)
+* SEQCTR++ THEN HEAD++ (LAST) - PAGE 0 AGAIN
+ LDA #$00
+ STA SADDRHI
  LDA #FSEQC
  STA SADDRLO
  LDA EVSEQ
@@ -250,7 +257,7 @@ PUTEV
  RTS
 ```
 
-Note: SADDRHI stays 0 for the whole burst (all targets < $0100), so only SADDRLO is re-set per byte. The whole record+SEQCTR+HEAD burst sits in ONE SEI/CLI bracket deliberately: it is 6 port writes (~30 µs), and publishing atomically means a preempting task can never observe HEAD published without SEQCTR (keeps the resync pair-read hole to the documented benign case).
+Note: the record burst runs with SADDRHI = >FRING ($01) and only SADDRLO re-set per byte (page-aligned ring, no carry possible); the SEQCTR/HEAD writes switch SADDRHI back to 0. The whole record+SEQCTR+HEAD burst sits in ONE SEI/CLI bracket deliberately: it is 6 port writes (~30 µs), and publishing atomically means a preempting task can never observe HEAD published without SEQCTR (keeps the resync pair-read hole to the documented benign case).
 
 - [ ] **Step 2: Commit**
 
@@ -316,6 +323,8 @@ M20H = $0B2A
 GAME
  JSR RELOADG
  JSR RELOADM
+ LDA #0
+ STA DECAYC
 GLOOP
  JSR DOMBOX
 * growth 24-bit down-counter
@@ -496,8 +505,14 @@ HVROOM
  LDA #ROK
  JMP MBFIN
 
-* --- SELL TA0=qty ---
+* --- SELL TA0=qty (qty=0 -> ERR_BAD:
+* DEC-first loops would run 256x) ---
 CSELL
+ LDA TA0
+ BNE CSELQ
+ LDA #RERRBAD
+ JMP MBFIN
+CSELQ
  LDA #<FCROPS
  LDY #>FCROPS
  JSR RDB
@@ -566,8 +581,13 @@ SPNC
  LDA #ROK
  JMP MBFIN
 
-* --- BUYSEED TA0=qty ---
+* --- BUYSEED TA0=qty (qty=0 -> ERR_BAD) ---
 CBUY
+ LDA TA0
+ BNE CBUYQ
+ LDA #RERRBAD
+ JMP MBFIN
+CBUYQ
 * room: SEEDS+qty must not exceed 255
  LDA #<FSEEDS
  LDY #>FSEEDS
@@ -611,16 +631,20 @@ BYCST
  CMP M20L
  BCC BYPOOR
 BYRICH
+* full 16-bit subtract into scratch FIRST -
+* never carry a borrow across a JSR
  LDA CSHL
  SEC
  SBC M20L
- TAX
+ STA CSHL
+ LDA CSHH
+ SBC M20H
+ STA CSHH
+ LDX CSHL
  LDA #<FCASHL
  LDY #>FCASHL
  JSR WRB
- LDA CSHH
- SBC M20H
- TAX
+ LDX CSHH
  LDA #<FCASHH
  LDY #>FCASHH
  JSR WRB
@@ -828,7 +852,7 @@ MKDONE
 ```
 
 **Implementer notes:**
-- PLOTADR is 16-bit on purpose (19*16=304 overflows 8 bits). The sim test in Task 5 asserts plot (3,3) → GBANK $0200+63 = $023F and plot (19,19) → $0200+399 = $038F; both must hold.
+- PLOTADR is 16-bit on purpose (19*16=304 overflows 8 bits). The sim test in Task 5 asserts plot (3,3) → GBANK $0300+63 = $033F and plot (19,19) → $0300+399 = $048F; both must hold.
 - Branch-range check: the dispatch `BEQ/CMP` chain reaches across the PLANT/HARVEST bodies — `JSELL/JBUY` trampolines are there because CSELL/CBUY are >127 bytes away. If Merlin32 reports branch out of range anywhere else, insert the same `Jxxx JMP target` trampoline pattern.
 - Blob size estimate ~900 bytes → $0600-$09xx, well under the $0F80 mailboxes and clear of $0B00 scratch.
 
@@ -867,8 +891,16 @@ $(FARMTASKSIM_BIN): $(SDM_DIR)/FARMTASK.S $(SDM_DIR)/FARMEQU.S $(SDM_DIR)/EVLIB.
 	sed -e 's/^FSIM = 0/FSIM = 1/' $(SDM_DIR)/FARMEQU.S > $(SDM_DIR)/FARMEQUS.S
 	cd $(SDM_DIR) && sed -e 's/ PUT FARMEQU$$/ PUT FARMEQUS/' FARMTASKSIM.S > FARMTASKSIM.tmp && mv FARMTASKSIM.tmp FARMTASKSIM.S && $(MERLIN32) $(MERLIN_LIB) FARMTASKSIM.S
 
-farmtasksim: $(FARMTASKSIM_BIN)
+$(FARMTASK_MEM): $(FARMTASKSIM_BIN)
 	python3 -c "b=open('$(FARMTASKSIM_BIN)','rb').read(); open('$(FARMTASK_MEM)','w').write('\n'.join('%02x'%x for x in b)+'\n')"
+
+farmtasksim: $(FARMTASK_MEM)
+
+# stale-artifact guard (the hamr_rom.mem lesson): editing FARMTASK.S must
+# rebuild farmtask.mem before any project_obscurus sim run.
+ifeq ($(DESIGN),project_obscurus)
+$(SIM_OUT): $(FARMTASK_MEM)
+endif
 
 # FARMTASK HW blob (FSIM=0) -> DFB include for FARM.S
 FARMTASK_BIN := $(SDM_DIR)/FARMTASK.bin
@@ -936,21 +968,26 @@ Near the other tasks (~line 300):
         load_byte(8'h00); load_byte(8'h06);            // vector = $0600
     end endtask
 
-    // init GBANK cold-start state (mirrors FARM.S cold start, SIG last elsewhere)
+    // init GBANK cold-start state. SIG written here too (tb rig writes it
+    // up front; FARM.S cold start writes SIG last - the liveness ordering
+    // matters on hardware, not in this single-threaded rig). SIG also serves
+    // as the lap-test regression net: ring page-wrap bugs land on $0000-$0003.
     task farm_init;
         integer i;
     begin
+        sdram_write(10'd32, 16'h0000, 8'h46);          // SIG 'F'
+        sdram_write(10'd32, 16'h0001, 8'h4D);          // SIG 'M'
         sdram_write(10'd32, 16'h0002, 8'h00);          // SEQCTR
         sdram_write(10'd32, 16'h0003, 8'h00);          // HEAD
-        sdram_write(10'd32, 16'h0110, 8'h00);          // MFLAG
-        sdram_write(10'd32, 16'h0120, 8'd10);          // PRICEL=BASE
-        sdram_write(10'd32, 16'h0121, 8'h00);
-        sdram_write(10'd32, 16'h0122, 8'h00);          // SUPPLY
-        sdram_write(10'd32, 16'h0123, 8'd100);         // CASHL
-        sdram_write(10'd32, 16'h0124, 8'h00);
-        sdram_write(10'd32, 16'h0125, 8'd5);           // SEEDS
-        sdram_write(10'd32, 16'h0126, 8'h00);          // CROPS
-        for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0200+i, 8'h00);
+        sdram_write(10'd32, 16'h0200, 8'h00);          // MFLAG
+        sdram_write(10'd32, 16'h0210, 8'd10);          // PRICEL=BASE
+        sdram_write(10'd32, 16'h0211, 8'h00);
+        sdram_write(10'd32, 16'h0212, 8'h00);          // SUPPLY
+        sdram_write(10'd32, 16'h0213, 8'd100);         // CASHL
+        sdram_write(10'd32, 16'h0214, 8'h00);
+        sdram_write(10'd32, 16'h0215, 8'd5);           // SEEDS
+        sdram_write(10'd32, 16'h0216, 8'h00);          // CROPS
+        for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0300+i, 8'h00);
     end endtask
 
     // send one command, poll FLAG clear, return RESULT. ok=0 on timeout.
@@ -958,17 +995,17 @@ Near the other tasks (~line 300):
                   input [7:0] a2, output [7:0] res, output ok);
         integer t; reg [7:0] f;
     begin
-        sdram_write(10'd32, 16'h0111, op);
-        sdram_write(10'd32, 16'h0112, a0);
-        sdram_write(10'd32, 16'h0113, a1);
-        sdram_write(10'd32, 16'h0114, a2);
-        sdram_write(10'd32, 16'h0110, 8'h01);          // FLAG last
+        sdram_write(10'd32, 16'h0201, op);
+        sdram_write(10'd32, 16'h0202, a0);
+        sdram_write(10'd32, 16'h0203, a1);
+        sdram_write(10'd32, 16'h0204, a2);
+        sdram_write(10'd32, 16'h0200, 8'h01);          // FLAG last
         ok = 0; res = 8'hFF;
         for (t=0; t<200000 && !ok; t=t+1) begin
-            sdram_read(10'd32, 16'h0110, f);
+            sdram_read(10'd32, 16'h0200, f);
             if (f == 8'h00) ok = 1;
         end
-        if (ok) sdram_read(10'd32, 16'h0115, res);
+        if (ok) sdram_read(10'd32, 16'h0205, res);
     end endtask
 
     // reader-rule drain: from farm_tail/farm_seq, dispatch into ev arrays
@@ -982,10 +1019,10 @@ Near the other tasks (~line 300):
         sdram_read(10'd32, 16'h0003, h);
         guard = 0;
         while (farm_tail !== h && guard < 128) begin
-            sdram_read(10'd32, 16'h0010 + farm_tail*4 + 0, rs);
-            sdram_read(10'd32, 16'h0010 + farm_tail*4 + 1, rt);
-            sdram_read(10'd32, 16'h0010 + farm_tail*4 + 2, rp0);
-            sdram_read(10'd32, 16'h0010 + farm_tail*4 + 3, rp1);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 0, rs);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 1, rt);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 2, rp0);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 3, rp1);
             if (rs !== farm_seq) begin
                 // overrun -> resync: stable (SEQCTR,HEAD) pair
                 farm_resyncs = farm_resyncs + 1;
@@ -1016,33 +1053,43 @@ Near the other tasks (~line 300):
         farm_load;
         stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);   // skill 2, budget 0 forever
         ring(2'd0);
+        // (a)-(e): named block - V2005 needs names for local declarations
+        begin : farm_m1
+        reg [7:0] r; reg ok;
         // (a) STATUS probe
-        begin reg [7:0] r; reg ok;
         farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm STATUS r=%h ok=%b", r, ok); end
         else $display("PASS farm STATUS");
-        // (b) PLANT 3,3 -> plot $023F = 1, SEEDS 4
+        // (b) PLANT 3,3 -> plot $033F = 1, SEEDS 4
         farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm PLANT r=%h", r); end
-        sdram_read(10'd32, 16'h023F, r);
+        sdram_read(10'd32, 16'h033F, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(3,3)=%h want 01", r); end
-        sdram_read(10'd32, 16'h0125, r);
+        sdram_read(10'd32, 16'h0215, r);
         if (r!==8'h04) begin errors=errors+1; $display("FAIL SEEDS=%h want 04", r); end
-        // PLANT corner 19,19 -> $038F (PLOTADR 16-bit math)
+        // PLANT corner 19,19 -> $048F (PLOTADR 16-bit math)
         farm_cmd(8'h01, 8'd19, 8'd19, 8'h00, r, ok);
-        sdram_read(10'd32, 16'h038F, r);
+        sdram_read(10'd32, 16'h048F, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(19,19)=%h", r); end
         // (d) errors: PLANT occupied, HARVEST unripe
+        // (must run before 5 grow ticks elapse - see FSIM divider note)
         farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'hE1) begin errors=errors+1; $display("FAIL occupied r=%h want E1", r); end
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'hE2) begin errors=errors+1; $display("FAIL unripe r=%h want E2", r); end
-        // (b cont.) run until both plots ripe (5 grow ticks @ FSIM dividers)
-        begin integer t; reg [7:0] pv;
+        // (d cont.) SELL qty=0 / BUYSEED qty=0 -> ERR_BAD
+        farm_cmd(8'h03, 8'd0, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL sell-0 r=%h want E6", r); end
+        farm_cmd(8'h04, 8'd0, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL buy-0 r=%h want E6", r); end
+        // (b cont.) wait on (19,19) - the LAST plot planted; watching (3,3)
+        // races a grow tick landing between the two PLANT commands
+        begin : farm_ripen
+        integer t; reg [7:0] pv;
         pv = 0; t = 0;
         while (pv !== 8'h06 && t < 400) begin
             repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h023F, pv); t = t + 1;
+            sdram_read(10'd32, 16'h048F, pv); t = t + 1;
         end
         if (pv!==8'h06) begin errors=errors+1; $display("FAIL plot never ripened"); end
         end
@@ -1056,12 +1103,12 @@ Near the other tasks (~line 300):
         // (c) HARVEST -> CROPS=1, plot 0
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
-        sdram_read(10'd32, 16'h0126, r);
+        sdram_read(10'd32, 16'h0216, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL CROPS=%h want 01", r); end
         end
 ```
 
-Notes: `clk100` is the tb's existing clock net name — verify (`grep "posedge clk" project_obscurus_tb.v | head -3`) and match. The ripen wait loop bounds total sim time; with FSIM dividers (GROWD=$20 passes) 5 stages arrive in well under the 400 × 10k-cycle budget. If sim wall time is excessive, shrink FSIM dividers further (FARMEQU FSIM block), not the loop.
+Notes: `clk100` is the tb's existing clock net name — verify (`grep "posedge clk" project_obscurus_tb.v | head -3`) and match. The ripen wait loop bounds total sim time; with FSIM dividers (GROWD=$80 = 128 passes/tick) 5 stages arrive well inside the 400 × 10k-cycle budget. Do not shrink GROWD below ~$80: the occupied/unripe error tests must complete before (3,3) ripens. Two tb hygiene points: (1) all local declarations need **named** begin blocks (`begin : farm_m1` — V2005 rule, existing tb style); (2) tb `sdram_write` pokes to live game state deliberately violate the single-writer invariant — fine in the rig, never copy the pattern into //e code. Before `stage_mbox(0, ...)`, verify slot 0 is actually free: `rd_reg(4'h1, r)` and assert `r[0]==0` (the prior multiverse tests end with their task halted, but make it explicit).
 
 - [ ] **Step 3: Set FARMLEN to the real blob size**
 
@@ -1094,13 +1141,14 @@ git commit -m "test(farm): M1 a-e - spawn, STATUS, PLANT/HARVEST, growth walk, E
 - [ ] **Step 1: Append economy assertions**
 
 ```verilog
+        begin : farm_econ
+        reg [7:0] r, r2; reg ok;
         // SELL 1 @ price 10 -> CASH 110, SUPPLY 1, CROPS 0
-        begin reg [7:0] r, r2; reg ok;
         farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
-        sdram_read(10'd32, 16'h0123, r); sdram_read(10'd32, 16'h0124, r2);
+        sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
         if ({r2,r}!==16'd110) begin errors=errors+1; $display("FAIL CASH=%d want 110", {r2,r}); end
-        sdram_read(10'd32, 16'h0122, r);
+        sdram_read(10'd32, 16'h0212, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL SUPPLY=%h", r); end
         // SELL with no crops -> E5
         farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
@@ -1108,31 +1156,35 @@ git commit -m "test(farm): M1 a-e - spawn, STATUS, PLANT/HARVEST, growth walk, E
         // BUYSEED 2 @ cost 3 -> CASH 104, SEEDS 5
         farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
-        sdram_read(10'd32, 16'h0123, r);
+        sdram_read(10'd32, 16'h0213, r);
         if (r!==8'd104) begin errors=errors+1; $display("FAIL CASH=%d want 104", r); end
-        sdram_read(10'd32, 16'h0125, r);
+        sdram_read(10'd32, 16'h0215, r);
         if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
         // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged
-        sdram_write(10'd32, 16'h0125, 8'd254);
+        // (tb-only direct poke: rig deliberately bypasses single-writer rule)
+        sdram_write(10'd32, 16'h0215, 8'd254);
         farm_cmd(8'h04, 8'd5, 8'h00, 8'h00, r, ok);
         if (r!==8'hE7) begin errors=errors+1; $display("FAIL seed-full r=%h want E7", r); end
-        sdram_read(10'd32, 16'h0125, r);
+        sdram_read(10'd32, 16'h0215, r);
         if (r!==8'd254) begin errors=errors+1; $display("FAIL SEEDS clobbered=%d", r); end
-        sdram_write(10'd32, 16'h0125, 8'd5);   // restore
-        // EV_PRICE: SUPPLY=1 -> TGT=10-0=10? supply/2=0 -> price stays.
-        // Force SUPPLY=10 -> TGT=5, run mkt ticks, expect price walk + events
-        sdram_write(10'd32, 16'h0122, 8'd10);
-        begin integer t; reg [7:0] pv;
-        pv = 8'd10; t = 0;
-        while (pv > 8'd5 && t < 400) begin
+        sdram_write(10'd32, 16'h0215, 8'd5);   // restore
+        // EV_PRICE drift: force SUPPLY=10 -> TGT=5. Supply decays while the
+        // price walks (DECAYDIV=4), so the target RISES under it and the
+        // price recovers - assert the MINIMUM seen, not the endpoint.
+        sdram_write(10'd32, 16'h0212, 8'd10);
+        begin : farm_pwalk
+        integer t; reg [7:0] pv, pmin;
+        pmin = 8'd255;
+        for (t=0; t<200; t=t+1) begin
             repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h0120, pv); t = t + 1;
+            sdram_read(10'd32, 16'h0210, pv);
+            if (pv < pmin) pmin = pv;
         end
-        if (pv!==8'd5) begin errors=errors+1; $display("FAIL price=%d want 5", pv); end
+        if (pmin > 8'd7) begin errors=errors+1; $display("FAIL price min=%d want <=7", pmin); end
         end
         farm_drain;
-        // last drained events must include EV_PRICE type with descending P0
-        begin integer i; integer sawprice;
+        begin : farm_evcount
+        integer i; integer sawprice;
         sawprice = 0;
         for (i=0; i<farm_nev; i=i+1) if (ev_type[i]===8'h02) sawprice = sawprice + 1;
         if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE got %0d", sawprice); end
@@ -1141,7 +1193,7 @@ git commit -m "test(farm): M1 a-e - spawn, STATUS, PLANT/HARVEST, growth walk, E
         end
 ```
 
-Note on supply decay during the price-walk wait: DECAYDIV=4 means SUPPLY also decays while we wait; with SUPPLY=10 the target may rise from 5 toward 10 as supply drains. If the walk stalls above 5, assert `pv <= 8'd8 && pv < 8'd10` (price moved down at least 2) instead of exactly 5, and note it — the point is drift + events, not an exact endpoint. Prefer the looser assertion from the start.
+The min-tracking assertion is deliberate: with DECAYDIV=4 the live target rises as supply drains (price parks around 6-7 then climbs home to 10), so any endpoint assertion is wrong by construction. `pmin <= 7` proves downward drift; `sawprice >= 3` proves the events flowed.
 
 - [ ] **Step 2: Run sim**
 
@@ -1170,39 +1222,46 @@ The reader's cursor (`farm_tail/farm_seq`) is deliberately NOT updated while the
 
 ```verilog
         // ===== lap recovery: >64 events with stale reader cursor =====
-        begin reg [7:0] r; reg ok; integer i, baseresync; integer t; reg [7:0] hv;
+        begin : farm_lap
+        reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
         baseresync = farm_resyncs;
         // plant 70 plots (rows 5..8, cols 0..19 = 80 available; use 70)
-        sdram_write(10'd32, 16'h0125, 8'd255);          // plenty of seeds
+        sdram_write(10'd32, 16'h0215, 8'd255);          // plenty of seeds (tb poke)
         for (i=0; i<70; i=i+1)
             farm_cmd(8'h01, i%20, 8'd5 + i/20, 8'h00, r, ok);
-        // wait until all 70 ripen -> 70 EV_RIPE published, ring lapped
+        // wait until the LAST-planted plot (9,8) ripens -> 70 EV_RIPE, ring lapped
         t = 0; r = 0;
         while (r !== 8'h06 && t < 600) begin
             repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h0200 + 8*20 + 9, r);  // plot (9,8), last batch
+            sdram_read(10'd32, 16'h0300 + 8*20 + 9, r);  // plot (9,8) = $03A9
             t = t + 1;
         end
         if (r!==8'h06) begin errors=errors+1; $display("FAIL lap: plots never ripened"); end
         farm_drain;
-        if (farm_resyncs !== baseresync + 1)
-            begin errors=errors+1; $display("FAIL lap: resyncs=%0d want %0d", farm_resyncs, baseresync+1); end
+        if (farm_resyncs < baseresync + 1)
+            begin errors=errors+1; $display("FAIL lap: resyncs=%0d want >=%0d", farm_resyncs, baseresync+1); end
+        // SIG regression net: a ring page-wrap bug writes records over
+        // $0000-$0003 - SIG must survive 70+ publishes including indexes 60-63
+        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
+        if (r!==8'h46 || r2!==8'h4D)
+            begin errors=errors+1; $display("FAIL lap: SIG destroyed %h %h (ring wrapped into page 0)", r, r2); end
         // post-resync: cursor must be live -> one more event drains clean
-        sdram_write(10'd32, 16'h0122, 8'd20);            // kick price -> EV_PRICE soon
-        begin integer n0; n0 = farm_nev;
+        sdram_write(10'd32, 16'h0212, 8'd20);            // kick price -> EV_PRICE soon
+        begin : farm_postsync
+        integer n0; n0 = farm_nev;
         t = 0;
         while (farm_nev == n0 && t < 200) begin
             repeat (10000) @(posedge clk100);
             farm_drain; t = t + 1;
         end
-        if (farm_nev == n0 || farm_resyncs !== baseresync + 1)
+        if (farm_nev == n0)
             begin errors=errors+1; $display("FAIL lap: post-resync drain dirty"); end
-        else $display("PASS lap recovery: 1 resync, clean drain after");
+        else $display("PASS lap recovery: resync + SIG intact + clean drain");
         end
         end
 ```
 
-Caveat for the implementer: EV_PRICE events fire during the ripen wait too (market keeps ticking), which only adds to the >64 total — helps the lap, harmless. The `farm_resyncs == base+1` assertion holds because resync happens once per drain call at the moment of first mismatch; if the implementation legitimately resyncs twice (drain called while writer mid-burst), relax to `>= base+1` and note it.
+Caveat for the implementer: EV_PRICE events fire during the ripen wait too (market keeps ticking) — only adds to the >64 total, helps the lap. The resync assertion is `>=` from the start (a drain landing mid-publish can legitimately resync twice). The SIG check is the regression net for ring address-wrap bugs: tb arithmetic is full-width and would otherwise read correct addresses while 8-bit coproc/host math corrupts page 0.
 
 - [ ] **Step 2: Run sim — full suite**
 
@@ -1287,6 +1346,9 @@ EVA DS 1
 EVB DS 1
 PLOTC DS 1
 DECV DS 5
+DAX DS 1
+DAY DS 1
+SHADV DS 1
 
 * === GRON: UNDO ALL, LO-RES MIXED ===
 GRON
@@ -1745,13 +1807,15 @@ SCRES
  RTS
 ```
 
-(Timeout: 65536 polls × ~15 µs/SDM read ≈ 1 s. For the 3 s probe, the caller loops SENDCMD's poll phase 3× — see PROBE below.)
+(Timeout: 65536 polls, each poll = a full FRD (SETBANK+SETADDR+trigger+busy-poll) — realistically 1-3 s, calibrate in M5; the comment "~1 s" is an estimate, not a spec. The probe loops the whole SENDCMD 3× → up to ~10 s worst-case dead-world screen; acceptable for the rare path, note it on the message line by printing SDEAD only after the loop.)
 
 - [ ] **Step 3: Market re-read, event drain, resync**
 
 ```
 * === RDMKT: refresh CASH/SEEDS/CROPS/PRICE
-* (16-bit fields read-twice-compare) ===
+* (16-bit field: re-read and compare BOTH
+* bytes - L-only guard misses the coproc
+* writing L then H between host reads) ===
 RDMKT
 RMAGN
  LDA #<FCASHL
@@ -1769,6 +1833,12 @@ RMAGN
  JSR FRD
  LDA SDM_VAL
  CMP CASHL
+ BNE RMAGN
+ LDA #<FCASHH
+ LDY #>FCASHH
+ JSR FRD
+ LDA SDM_VAL
+ CMP CASHH
  BNE RMAGN
  LDA #<FPRICEL
  LDY #>FPRICEL
@@ -1797,14 +1867,13 @@ DRAIN
  LDA SDM_VAL
  CMP TAIL
  BEQ DRDONE
-* record base = $10 + TAIL*4
+* record lo = TAIL*4, hi = >FRING (ring is
+* page-aligned at $0100 - no carry ever)
  LDA TAIL
  ASL
  ASL
- CLC
- ADC #FRING
  STA RECLO
- LDY #0
+ LDY #>FRING
  LDA RECLO
  JSR FRD
  LDA SDM_VAL
@@ -1812,27 +1881,27 @@ DRAIN
  LDA RECLO
  CLC
  ADC #1
- LDY #0
+ LDY #>FRING
  JSR FRD
  LDA SDM_VAL
  STA EVT
  LDA RECLO
  CLC
  ADC #2
- LDY #0
+ LDY #>FRING
  JSR FRD
  LDA SDM_VAL
  STA EVA
  LDA RECLO
  CLC
  ADC #3
- LDY #0
+ LDY #>FRING
  JSR FRD
  LDA SDM_VAL
  STA EVB
 * seqlock tear guard: re-read SEQ byte
  LDA RECLO
- LDY #0
+ LDY #>FRING
  JSR FRD
  LDA SDM_VAL
  CMP RSEQ
@@ -1862,7 +1931,17 @@ EVDISP
  LDY EVB
  LDA #STRIPE
  JSR PLOTDRAW
+ LDA #STRIPE
  JSR SHADSET
+* ripe plot under cursor? re-apply XOR
+ LDA EVA
+ CMP CURX
+ BNE EVRMSG
+ LDA EVB
+ CMP CURY
+ BNE EVRMSG
+ JSR CURSDRAW
+EVRMSG
  LDA #<SRIPE
  STA MSGPTR
  LDA #>SRIPE
@@ -1883,9 +1962,10 @@ EVD2
 EVDONE
  RTS
 
-* === SHADSET: SHADOW[EVB*20+EVA] = STRIPE ===
+* === SHADSET: SHADOW[EVB*20+EVA] = A ===
 * same 16-bit y*16+y*4 shape as coproc PLOTADR
 SHADSET
+ STA SHADV
  LDA EVB
  STA T16
  LDA #0
@@ -1924,7 +2004,7 @@ SHADSET
  ADC #>SHADOW
  STA SHADP+1
  LDY #0
- LDA #STRIPE
+ LDA SHADV
  STA (SHADP),Y
  RTS
 
@@ -2156,7 +2236,7 @@ SPAWNOK
  JMP MLOOP
 ```
 
-`LOADBLOB` = GRVERSE REGSKILL lines 321-350 verbatim with `CSKILL/CSKLEN` → `FSKILL/FSKLEN`, `$03` → `$06` load address hi, GRVERSE's `CNTLO/CNTHI` → `CNT/CNT+1`, SRC pointer at ZP $0C (LINEP/SHADP/MSGPTR occupy $06/$08/$0A), and CP load-port names from CPLIB (`CP_LADDRLO/CP_LADDRHI/CP_WDATA` — do NOT redefine GRVERSE's `CP_LADLO` variants).
+`LOADBLOB` full code is in Step 6 (GRVERSE REGSKILL shape; SRC pointer at ZP $0C; CP load-port names come from CPLIB — `CP_LADDRLO/CP_LADDRHI/CP_WDATA`, do NOT redefine GRVERSE's `CP_LADLO` variants).
 
 - [ ] **Step 5: Main loop + keys + quit**
 
@@ -2176,39 +2256,43 @@ MNOST
  STA KBDSTR
  CMP #$88 ; left
  BNE K2
+ JSR CURSDRAW
  DEC CURX
- BPL KMOVED
+ BPL KDONE
  LDA #19
  STA CURX
- JMP KMOVED
+ JMP KDONE
 K2
  CMP #$95 ; right
  BNE K3
+ JSR CURSDRAW
  INC CURX
  LDA CURX
  CMP #20
- BNE KMOVED
+ BNE KDONE
  LDA #0
  STA CURX
- JMP KMOVED
+ JMP KDONE
 K3
  CMP #$8B ; up
  BNE K4
+ JSR CURSDRAW
  DEC CURY
- BPL KMOVED
+ BPL KDONE
  LDA #19
  STA CURY
- JMP KMOVED
+ JMP KDONE
 K4
  CMP #$8A ; down
  BNE K5
+ JSR CURSDRAW
  INC CURY
  LDA CURY
  CMP #20
- BNE KMOVED
+ BNE KDONE
  LDA #0
  STA CURY
- JMP KMOVED
+ JMP KDONE
 K5
  CMP #$D0 ; P
  BNE K6
@@ -2235,33 +2319,260 @@ K8
  JMP MLOOP
 K9
  CMP #$D1 ; Q
- BNE MLOOP
+ BNE KNONE
 QUIT
  STA TEXTSW
  RTS
-KMOVED
-* erase old cursor (repaint from shadow),
-* draw new: CURSDRAW is XOR so toggling twice
-* restores - simplest: before moving, CURSDRAW
-* (undo); after move, CURSDRAW (apply).
+KNONE
+ JMP MLOOP
+KDONE
+* arrow handlers: CURSDRAW (XOR undo at old
+* pos) BEFORE mutate, CURSDRAW (apply) here
+ JSR CURSDRAW
  JMP MLOOP
 ```
 
-**Implementer notes:**
-- Cursor discipline: XOR is its own inverse. Apply CURSDRAW once at startup after DRAWALL; for every move, CURSDRAW (undo at old pos) → update CURX/CURY → CURSDRAW (apply at new). The key handlers above mutate CURX/CURY first — restructure: each arrow handler jumps to a common `KMOVE` that takes a delta, or simpler, save old CURX/CURY, undo, mutate, redraw. Write it the simple way (save/undo/mutate/apply) — 12 lines.
-- `DOCMDXY`: stage `CMDOP=A, CMDA0=CURX, CMDA1=CURY`, JSR SENDCMD; C=1 → print SNORESP on row 22; else RESULT=ROK → `JSR RDMKT / JSR HUDDRAW` + repaint commanded plot from a fresh single-byte read (or just let re-stream catch it — better: on OK for PLANT draw stage 1, for HARVEST draw stage 0, immediate feedback); RESULT≠ROK → print SERR + result-specific message on row 22.
-- `DOCMD1`: same with `CMDA0=1`.
-- EV_RIPE dispatch in DRAIN: repaint plot (EVA, EVB) stage 6 + SRIPE message row 22. EV_PRICE dispatch: LASTPR=PRICE, PRICE=EVA, HUDDRAW.
-- Last line of file: ` PUT FARMTASKB`.
+Cursor discipline: XOR is its own inverse — CURSDRAW before the mutate undoes the old cursor, CURSDRAW at KDONE applies the new. Startup applies it once after DRAWALL. Last line of file: ` PUT FARMTASKB`.
 
-- [ ] **Step 6: Build + size check**
+- [ ] **Step 6: Remaining routines (full code — no improvisation)**
+
+```
+* === DOCMDXY: A=op, args = cursor pos ===
+DOCMDXY
+ STA CMDOP
+ LDA CURX
+ STA CMDA0
+ LDA CURY
+ STA CMDA1
+ LDA #0
+ STA CMDA2
+ JMP DOCMD
+* === DOCMD1: A=op, qty=1 ===
+DOCMD1
+ STA CMDOP
+ LDA #1
+ STA CMDA0
+ LDA #0
+ STA CMDA1
+ STA CMDA2
+DOCMD
+ JSR SENDCMD
+ BCC DCRES
+ LDA #<SNORESP
+ STA MSGPTR
+ LDA #>SNORESP
+ STA MSGPTR+1
+ JMP DCMSG
+DCRES
+ CMP #ROK
+ BEQ DCOK
+ LDA #<SERR
+ STA MSGPTR
+ LDA #>SERR
+ STA MSGPTR+1
+DCMSG
+ LDA #0
+ STA PRCOL
+ LDY #22
+ JSR PRSTR
+ RTS
+DCOK
+ LDA CMDOP
+ CMP #OPPLANT
+ BNE DCH
+ LDA #1
+ JSR DCPAINT
+ JMP DCMKT
+DCH
+ CMP #OPHARV
+ BNE DCMKT
+ LDA #0
+ JSR DCPAINT
+DCMKT
+ JSR RDMKT
+ JSR HUDDRAW
+ LDA #<SOK
+ STA MSGPTR
+ LDA #>SOK
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #22
+ JSR PRSTR
+ RTS
+* === DCPAINT: A=stage -> plot+shadow at
+* cursor, re-apply cursor XOR on top ===
+DCPAINT
+ PHA
+ LDA CURX
+ STA EVA
+ LDA CURY
+ STA EVB
+ PLA
+ PHA
+ JSR SHADSET
+ PLA
+ LDX CURX
+ LDY CURY
+ JSR PLOTDRAW
+ JSR CURSDRAW
+ RTS
+
+* === MSGDEAD ===
+MSGDEAD
+ LDA #<SDEAD
+ STA MSGPTR
+ LDA #>SDEAD
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #22
+ JSR PRSTR
+ RTS
+
+* === DRAWALL: repaint grid from SHADOW,
+* help row, cursor ===
+DRAWALL
+ LDA #<SHADOW
+ STA SHADP
+ LDA #>SHADOW
+ STA SHADP+1
+ LDA #0
+ STA DAY
+DAROW
+ LDA #0
+ STA DAX
+DACOL
+ LDY #0
+ LDA (SHADP),Y
+ LDX DAX
+ LDY DAY
+ JSR PLOTDRAW
+ INC SHADP
+ BNE DANC
+ INC SHADP+1
+DANC
+ INC DAX
+ LDA DAX
+ CMP #GCOLS
+ BNE DACOL
+ INC DAY
+ LDA DAY
+ CMP #GROWSN
+ BNE DAROW
+ LDA #<SHELP
+ STA MSGPTR
+ LDA #>SHELP
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #23
+ JSR PRSTR
+ JSR CURSDRAW
+ RTS
+
+* === RESTREAM: re-read grid, repaint diffs,
+* preserve cursor XOR ===
+RESTREAM
+ LDA #GBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #<FGRID
+ STA SDM_ADDR
+ LDA #>FGRID
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #<SHADOW
+ STA SHADP
+ LDA #>SHADOW
+ STA SHADP+1
+ LDA #0
+ STA DAY
+RSROW2
+ LDA #0
+ STA DAX
+RSCOL2
+ JSR SDM_RDNEXT
+ LDY #0
+ LDA (SHADP),Y
+ CMP SDM_VAL
+ BEQ RSSAME
+ LDA SDM_VAL
+ STA (SHADP),Y
+ LDX DAX
+ LDY DAY
+ JSR PLOTDRAW
+ LDA DAX
+ CMP CURX
+ BNE RSSAME
+ LDA DAY
+ CMP CURY
+ BNE RSSAME
+ JSR CURSDRAW
+RSSAME
+ INC SHADP
+ BNE RSNC
+ INC SHADP+1
+RSNC
+ INC DAX
+ LDA DAX
+ CMP #GCOLS
+ BNE RSCOL2
+ INC DAY
+ LDA DAY
+ CMP #GROWSN
+ BNE RSROW2
+ RTS
+
+* === LOADBLOB: FSKILL -> coproc $0600 ===
+LOADBLOB
+ LDA #$00
+ STA CP_LADDRLO
+ LDA #$06
+ STA CP_LADDRHI
+ LDA #<FSKILL
+ STA SRC
+ LDA #>FSKILL
+ STA SRC+1
+ LDA #<FSKLEN
+ STA CNT
+ LDA #>FSKLEN
+ STA CNT+1
+ LDY #0
+LBLP
+ LDA (SRC),Y
+ STA CP_WDATA
+ INC SRC
+ BNE LBDEC
+ INC SRC+1
+LBDEC
+ LDA CNT
+ SEC
+ SBC #1
+ STA CNT
+ LDA CNT+1
+ SBC #0
+ STA CNT+1
+ ORA CNT
+ BNE LBLP
+ RTS
+```
+
+Notes:
+- RESTREAM's `JSR PLOTDRAW` between `SDM_RDNEXT` calls is safe: PLOTDRAW/CURSDRAW touch only the text page, never the $C0Cx SDM registers, so the read stream's auto-increment is undisturbed. `SDM_RDNEXT` clobbers only A and SDM_VAL (Y preserved).
+- In RESTREAM, `LDA SDM_VAL` must be reloaded before `LDX/LDY` for PLOTDRAW (A carries the stage) — order shown is correct as written: A is loaded from SDM_VAL, then X/Y loads don't touch A.
+- Zombie-slot caveat (accepted v1, document in code header): if the dead-world `C` cold-start path runs while the old GAMETASK is merely slow, the old slot stays CP_ACTIVE (leaks — 4 zombie cold starts exhaust slots and CP_CALL returns $FF, handled by the MSGDEAD path) and LOADBLOB overwrites $0600 under a possibly-executing task. The 3 s probe makes this remote; spec already accepts the duplicate-writer residual.
+
+- [ ] **Step 7: Build + size check**
 
 ```bash
 make farm && wc -c software/SDM/FARM.bin
 ```
 Expected: clean build. FARM.bin = code + 400-byte shadow + ~1 KB blob — expect 3-4.5 KB, ORG $6000 → ends ≤ $7200, fine under BASIC.SYSTEM at $9600.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add software/SDM/FARM.S Makefile
@@ -2296,7 +2607,7 @@ git commit -m "build(farm): FARM on sdmdisk; spec: pin skill id 2 + CP_CALL slot
 
 - [ ] **Step 4: Bench milestones (manual, user flashes — NEVER prog-flash without permission)**
 
-- **M2 (protocol on silicon):** boot SDMTEST.po, `BRUN FARM` once to cold-start, `Q` out. Enter the $C800 monitor; watch GBANK 32 offset $0003 (HEAD) advance as EV_PRICE fires (force: from monitor, write SUPPLY=$0122 high → price walks). Hand-poke a STATUS command: write $0111=$00, $0110=$01, watch $0110 clear and $0115=$01.
+- **M2 (protocol on silicon):** boot SDMTEST.po, `BRUN FARM` once to cold-start, `Q` out. Enter the $C800 monitor; watch GBANK 32 offset $0003 (HEAD) advance as EV_PRICE fires (force: from monitor, write SUPPLY=$0212 high → price walks). Hand-poke a STATUS command: write $0201=$00, $0200=$01, watch $0200 clear and $0205=$01.
 - **M3 (game):** `BRUN FARM` — plant/harvest/sell with keys, HUD live, ripe plots repaint within one re-stream period.
 - **M4 (re-entry):** `Q` to BASIC, wait 2+ min, `BRUN FARM` → probe OK, world advanced, no thrash (message row should NOT flash constant resync). Stay out ~30 min (>64 events) → re-entry still clean.
 - **M5 (tuning):** adjust `GROWD*/MKTD*/DECAYDIV` + `RSTRCT` reload + economy constants in FARMEQU.S, rebuild, re-test. Target: seed-to-ripe 2-3 min, price visibly drifting within ~10 s of a dump.

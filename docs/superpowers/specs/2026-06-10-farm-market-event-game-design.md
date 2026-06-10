@@ -42,11 +42,13 @@ All game state lives in one SDRAM bank, `GBANK` — default **bank 32** (verify 
 $0000  SIG      2 bytes  $46,$4D ("FM") — present = world live
 $0002  SEQCTR   1 byte   next event sequence number (rolling)
 $0003  HEAD     1 byte   ring write index 0-63
-$0010  RING     256 bytes  64 records x 4 bytes
-$0110  MAILBOX  6 bytes  FLAG, OP, ARG0, ARG1, ARG2, RESULT
-$0120  MARKET   7 bytes  PRICEL, PRICEH, SUPPLY, CASHL, CASHH, SEEDS, CROPS
-$0200  GRID     400 bytes  20x20 plots, row-major
+$0100  RING     256 bytes  64 records x 4 bytes ($0100-$01FF exactly)
+$0200  MAILBOX  6 bytes  FLAG, OP, ARG0, ARG1, ARG2, RESULT
+$0210  MARKET   7 bytes  PRICEL, PRICEH, SUPPLY, CASHL, CASHH, SEEDS, CROPS
+$0300  GRID     400 bytes  20x20 plots, row-major
 ```
+
+The ring is page-aligned on purpose: record address = $0100 + index×4 has a **constant high byte** and an 8-bit low byte (max 63×4 = 252), so neither side ever needs address-carry logic. (An earlier draft at $0010 crossed into page 1 at index 60 — 8-bit address math there silently wraps record writes onto SIG/SEQCTR/HEAD.)
 
 Plot byte: `0` empty, `1` seeded, `2`-`5` growing, `6` ripe.
 
@@ -54,7 +56,7 @@ Coproc reaches GBANK through the SDRAM ports (`SADDRLO/HI $E000`, `SBANKR $E002`
 
 ## Event ring protocol (reusable)
 
-Record: `SEQ, TYPE, P0, P1` (4 bytes). Record address = `$10 + (index * 4)`, index wraps at 64 (`AND #$3F`).
+Record: `SEQ, TYPE, P0, P1` (4 bytes). Record address = `$0100 + (index * 4)`, index wraps at 64 (`AND #$3F`); high byte constant, low byte = index×4.
 
 Event types (v1):
 
