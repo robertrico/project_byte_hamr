@@ -89,7 +89,7 @@ module project_obscurus_tb;
     // ---- Conway's Multiverse TICK1 oracle state ----
     // LIFE8 skill image (built from software/SDM/LIFE8.S -> life8.mem, copied to
     // the sim build dir by the Makefile). LSIM=1 sim build => GROWS=8 rows.
-    localparam integer LIFE8LEN = 638;
+    localparam integer LIFE8LEN = 689;
     reg [7:0] life8img [0:1023];
     initial $readmemh("life8.mem", life8img);
     reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
@@ -229,15 +229,53 @@ module project_obscurus_tb;
             end
         end
     endtask
-    task mv_tick;    // ring slot0 (one TICK1 gen), wait for JMP DONE, free slot
+    task mv_tick;    // ring slot0 SKILL 1 (LIFE1 = one univ-0 gen + DONE)
         begin
-            stage_mbox(2'd0, 8'h00, 8'h00, 8'h00);
+            stage_mbox(2'd0, 8'h01, 8'h00, 8'h00);
             ring(2'd0);
             wait_done(4'b0001, 40000000, c4ok);
             if (!c4ok) begin errors=errors+1;
                 $display("FAIL multiverse TICK1 skill never reached DONE");
             end
             collect(2'd0);
+        end
+    endtask
+
+    // ---- multiverse ROUND-ROBIN helpers (forever-loop proof) ----
+    // Seed `bank` buffer A (640 bytes) with a clean horizontal blinker at
+    // row3 col7..9 (byte1 bits0..2 => idx 241 = $07), interior of an 8x80 grid.
+    task mv_seed_blinker(input [9:0] bank);
+        begin
+            for (mvi=0; mvi<640; mvi=mvi+1)
+                if (mvi==241) sdram_write(bank, 16'h0000+241, 8'h07);
+                else          sdram_write(bank, 16'h0000+mvi, 8'h00);
+        end
+    endtask
+    task mv_readback_bank(input [9:0] bank, input [15:0] base);
+        begin
+            set_bank(bank); set_addr(base);
+            bufsum = 0;
+            for (mvi=0; mvi<640; mvi=mvi+1) begin
+                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
+                rb[mvi] = tmp; bufsum = bufsum + tmp;
+            end
+        end
+    endtask
+    // After halt, assert univ in `bank` evolved its blinker by `front`/`gen`.
+    // The FRONT-selected buffer always holds the latest fully-computed gen:
+    //   front=1 (odd ticks) -> vertical blinker (col8 = byte1 bit1 = $02 at
+    //   rows2,3,4 => idx 161/241/321);  front=0 (even) -> horizontal seed ($07
+    //   at idx 241). Either way GEN>=1 already proved the universe was ticked.
+    task mv_chk_blinker(input [9:0] bank, input [7:0] front, input integer u);
+        begin
+            mv_readback_bank(bank, front ? 16'h4000 : 16'h0000);
+            if (front) begin                    // vertical (evolved)
+                mv_chk(161,8'h02); mv_chk(241,8'h02); mv_chk(321,8'h02);
+                mv_sum(16'h0006);
+            end else begin                       // horizontal (seed, even gen)
+                mv_chk(241,8'h07);
+                mv_sum(16'h0007);
+            end
         end
     endtask
 
@@ -891,13 +929,16 @@ module project_obscurus_tb;
         sdram_write(10'd24, 16'h0020, 8'h00);   // GEN[0]   = 0
         mv_seed;                                 // buffer A (bank 16) := patterns
 
-        // register LIFE8 as skill 0 @ coproc $0300, TABLE[0] = $0300
+        // load LIFE8 image @ coproc $0300. Two entries via a fixed JMP table:
+        //   skill 0 -> $0300 = JMP LIFE8 (forever round-robin, never DONE)
+        //   skill 1 -> $0303 = JMP LIFE1 (single univ-0 tick + DONE = oracle)
         wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);            // CP_LADDR = $0300
         for (mvi=0; mvi<LIFE8LEN; mvi=mvi+1) load_byte(life8img[mvi]);
         wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);            // CP_LADDR = $0200
         load_byte(8'h00); load_byte(8'h03);                  // TABLE[0] = $0300
+        load_byte(8'h03); load_byte(8'h03);                  // TABLE[1] = $0303
         cp_read(13'h0300, tmp);
-        if (tmp!==8'hA9) begin errors=errors+1;
+        if (tmp!==8'h4C) begin errors=errors+1;
             $display("FAIL multiverse TICK1 not loaded @ $0300 = %02X",tmp); end
 
         // --- GEN 1 (front A -> back B, sum16 = $004F) ---
@@ -930,6 +971,57 @@ module project_obscurus_tb;
             $display("PASS multiverse TICK1 (blinker/byte-boundary/glider/torus, 4 gens)");
         else
             $display("FAIL multiverse TICK1 %0d errors", errors);
+
+        // ===== CONWAY'S MULTIVERSE: ROUND-ROBIN (forever loop, univ0+univ1) =====
+        // Prove the real LIFE8 (skill 0 @ $0300) free-running loop ticks MULTIPLE
+        // universes round-robin. Seed univ0 (bank16) AND univ1 (bank17) buffer A
+        // with a horizontal blinker, FRONT=GEN=0. Ring skill 0 (budget 0). The
+        // loop NEVER DONEs, so we POLL the GEN counters until BOTH univ0 and univ1
+        // have ticked (GEN[0]>=1 && GEN[1]>=1 = round-robin reached both). Then we
+        // HALT the coproc with an nRES_READ pulse (clears call_req; the sdram_model
+        // array has no reset port so SDRAM survives) and read back each universe's
+        // LIVE buffer (selected by FRONT) and assert the blinker evolved -- proving
+        // per-universe RB/WB derivation (bank=UBASE+u, live/other buffer) + flip +
+        // bump are all correct across more than one universe.
+        begin : multiverse_rr
+            reg [7:0] g0, g1, f0, f1; integer rrg;
+            mv_seed_blinker(10'd16);                 // univ0 buffer A := blinker
+            mv_seed_blinker(10'd17);                 // univ1 buffer A := blinker
+            sdram_write(10'd24, 16'h0010, 8'h00);    // FRONT[0] = 0
+            sdram_write(10'd24, 16'h0011, 8'h00);    // FRONT[1] = 0
+            sdram_write(10'd24, 16'h0020, 8'h00);    // GEN[0]   = 0
+            sdram_write(10'd24, 16'h0021, 8'h00);    // GEN[1]   = 0
+            // skill 0 = forever round-robin; arg0 unused, budget 0 (no watchdog)
+            stage_mbox(2'd0, 8'h00, 8'h00, 8'h00);
+            ring(2'd0);
+            // poll GEN[0] and GEN[1] until both ticked, generous cycle cap
+            rrg = 0; g0 = 0; g1 = 0;
+            while ((g0 < 8'd1) || (g1 < 8'd1)) begin
+                sdram_read(10'd24, 16'h0020, g0);
+                sdram_read(10'd24, 16'h0021, g1);
+                rrg = rrg + 1;
+                if (rrg > 200000) begin errors=errors+1;
+                    $display("FAIL multiverse round-robin GEN stuck g0=%0d g1=%0d",g0,g1);
+                    g0 = 8'd1; g1 = 8'd1; end
+            end
+            // HALT the free-running loop (SDRAM persists across the reset pulse)
+            nRES_READ=1'b0; #500; nRES_READ=1'b1; #200;
+            wait (dut.ready);
+            // read final FRONT for each universe, assert the live buffer evolved
+            sdram_read(10'd24, 16'h0010, f0);
+            sdram_read(10'd24, 16'h0020, g0);
+            sdram_read(10'd24, 16'h0011, f1);
+            sdram_read(10'd24, 16'h0021, g1);
+            $display("multiverse round-robin halt: u0 FRONT=%0d GEN=%0d  u1 FRONT=%0d GEN=%0d",f0,g0,f1,g1);
+            mv_chk_blinker(10'd16, f0, 0);
+            mv_chk_blinker(10'd17, f1, 1);
+            if ((g0 < 8'd1) || (g1 < 8'd1)) begin errors=errors+1;
+                $display("FAIL multiverse round-robin GEN0=%0d GEN1=%0d",g0,g1); end
+            if (errors==0)
+                $display("PASS multiverse round-robin (univ0 + univ1 both ticked + evolved)");
+            else
+                $display("FAIL multiverse round-robin %0d errors", errors);
+        end
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
