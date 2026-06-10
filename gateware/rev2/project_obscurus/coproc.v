@@ -140,11 +140,18 @@ module coproc #(
     wire is_nmilo=(AB==16'hFFFA), is_nmihi=(AB==16'hFFFB);
     wire is_count=(AB==16'hE010);
     wire is_coreid=(AB==16'hE011);
+    // SDRAM READ window ($E004-08): auto-incrementing read pointer (raddr/rbank),
+    // STA $E007 trigger (we<=0 post + registered rdy stall, mirroring the $E003
+    // write), latch sread<=rdata on done + advance the flat 24-bit pointer; the
+    // latched byte is fetched zero-latency via LDA $E008 (is_e008_q DI mux).
+    wire is_e004=(AB==16'hE004), is_e005=(AB==16'hE005), is_e006=(AB==16'hE006),
+         is_e007=(AB==16'hE007), is_e008=(AB==16'hE008);
+    reg [15:0] raddr; reg [7:0] rbank; reg [7:0] sread; reg rd_pending;
     wire is_callreq=(AB==16'hE015);   // C4: kernel reads call_req
     wire is_snapbusy=(AB==16'hE01B);  // C4: kernel reads snapshot_busy (bit0)
     reg [7:0] bram_qa;
     reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q,is_e014_q;
-    reg is_callreq_q, is_snapbusy_q;
+    reg is_callreq_q, is_snapbusy_q, is_e008_q;
     always @(posedge clk) begin
         bram_qa    <= bram[AB[12:0]];   // port A read
         in_bram_q  <= in_bram;
@@ -155,6 +162,7 @@ module coproc #(
         is_coreid_q <= is_coreid;
         is_e014_q <= is_e014;
         is_callreq_q <= is_callreq; is_snapbusy_q <= is_snapbusy;
+        is_e008_q <= is_e008;
     end
     assign DI = is_rstlo_q ? 8'h00 : is_rsthi_q ? 8'h10
               : is_irqlo_q ? 8'h00 : is_irqhi_q ? 8'h1F
@@ -164,6 +172,7 @@ module coproc #(
               : is_e014_q   ? {7'b0, go_pending}
               : is_callreq_q  ? {4'b0, call_req}
               : is_snapbusy_q ? {7'b0, snapshot_busy}
+              : is_e008_q   ? sread
               : in_bram_q  ? bram_qa
               :              8'h00;
 
@@ -172,6 +181,10 @@ module coproc #(
 
     wire is_e000=(AB==16'hE000), is_e001=(AB==16'hE001),
          is_e002=(AB==16'hE002), is_e003=(AB==16'hE003);
+    // SDRAM READ window ($E004-08): auto-incrementing read pointer (raddr/rbank),
+    // STA $E007 trigger (we<=0 post + registered rdy stall, mirroring the $E003
+    // write), latch sread<=rdata on done + advance the flat 24-bit pointer; the
+    // latched byte is fetched zero-latency via LDA $E008 (is_e008_q DI mux).
     reg [15:0] saddr; reg [7:0] sbank;
     reg busy_d; always @(posedge clk) busy_d <= busy; wire done = busy_d & ~busy;
 
@@ -181,18 +194,32 @@ module coproc #(
         if (!rst_n) begin
             req<=0; we<=0; phys_addr<=0; wdata<=0; rdy<=0; state<=ST_BOOT;
             saddr<=0; sbank<=0;
+            raddr<=0; rbank<=0; sread<=0; rd_pending<=0;
         end else begin
             req <= 1'b0;
             if (is_e000 & WE & rdy) saddr[7:0]  <= DO;
             if (is_e001 & WE & rdy) saddr[15:8] <= DO;
             if (is_e002 & WE & rdy) sbank       <= DO;
+            if (is_e004 & WE & rdy) raddr[7:0]  <= DO;
+            if (is_e005 & WE & rdy) raddr[15:8] <= DO;
+            if (is_e006 & WE & rdy) rbank       <= DO;
             case (state)
                 ST_BOOT: if (ready) begin rdy<=1'b1; state<=ST_RUN; end
                 ST_RUN:  if (is_e003 & WE) begin
                     we<=1'b1; phys_addr<={2'b00, sbank, saddr}; wdata<=DO;
                     req<=1'b1; rdy<=1'b0; state<=ST_WAIT;
+                end else if (is_e007 & WE) begin
+                    we<=1'b0; phys_addr<={2'b00, rbank, raddr};
+                    req<=1'b1; rdy<=1'b0; rd_pending<=1'b1; state<=ST_WAIT;
                 end
-                ST_WAIT: if (done) begin rdy<=1'b1; state<=ST_RUN; end
+                ST_WAIT: if (done) begin
+                    if (rd_pending) begin
+                        sread <= rdata;
+                        {rbank, raddr} <= {rbank, raddr} + 1'b1;
+                        rd_pending <= 1'b0;
+                    end
+                    rdy<=1'b1; state<=ST_RUN;
+                end
                 default: state<=ST_BOOT;
             endcase
         end
