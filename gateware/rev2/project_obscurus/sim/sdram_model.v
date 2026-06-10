@@ -25,7 +25,9 @@ module sdram_model (
     localparam CMD_READ   = 4'b0101;
     localparam CMD_WRITE  = 4'b0100;
 
-    localparam WORDS = 65536;      // banks 0-1 (word 0..65535)
+    // 1M words covers monitor banks 0..31 (phys byte addr 0..2M-1, widx=phys>>1).
+    // Conway's Multiverse lives in banks 16..24, well beyond the old 2-bank model.
+    localparam WORDS = 1048576;    // 1<<20 words = banks 0..31
     reg [15:0] mem [0:WORDS-1];
     integer ii;
     initial for (ii = 0; ii < WORDS; ii = ii + 1) mem[ii] = 16'h0000;
@@ -70,7 +72,7 @@ module sdram_model (
             rd_widx    <= widx(cur_ba, cur_row, a[9:0]);
         end else if (rd_pending) begin
             if (rd_latency == 0) begin
-                dq_drive   <= (rd_widx < WORDS) ? mem[rd_widx[15:0]] : 16'h0000;
+                dq_drive   <= (rd_widx < WORDS) ? mem[rd_widx] : 16'h0000;
                 dq_oe      <= 1'b1;
                 rd_pending <= 1'b0;
             end else begin
