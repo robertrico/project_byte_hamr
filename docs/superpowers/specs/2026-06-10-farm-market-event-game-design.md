@@ -63,9 +63,11 @@ Event types (v1):
 | $01 | EV_RIPE | plot x (0-19) | plot y (0-19) |
 | $02 | EV_PRICE | price lo | price hi |
 
-**Writer rule (coproc):** write all 4 record bytes first, bump HEAD last. HEAD is a single byte, so the reader can never see a half-written record behind a published HEAD.
+**Writer rule (coproc, PUTEV order is normative):** write all 4 record bytes (SEQ = current SEQCTR), then SEQCTR++, then HEAD++ **last**. HEAD is a single byte, so the reader can never see a half-written record behind a published HEAD. SEQCTR therefore always equals the SEQ of the *next* event to be published.
 
-**Reader rule (//e):** keep local TAIL and expected SEQ. While TAIL ≠ HEAD: read record, check `record.SEQ == expected`. Match → dispatch, TAIL++, expected++. Mismatch → the ring lapped us (//e was away > 64 events) → **resync** (see below). Overrun is a designed-for recoverable condition, not an error.
+**Reader rule (//e):** keep local TAIL and expected SEQ. While TAIL ≠ HEAD: read record, check `record.SEQ == expected`; optionally re-read the record's SEQ byte after the other 3 bytes and re-check (guards the improbable exact-lap tear where the writer overwrites a record mid-read). Match → dispatch, TAIL++, expected++. Mismatch → the ring lapped us (//e was away > 64 events) → **resync** (see below). Overrun is a designed-for recoverable condition, not an error.
+
+Known theoretical hole, accepted for v1: with an 8-bit SEQ, a lap of exactly 256·k events false-matches. Requires the reader starved 256+ events mid-play; the re-entry path always resyncs, so in practice unreachable.
 
 Single writer (GAMETASK), single reader (//e). No locks needed.
 
@@ -78,12 +80,13 @@ ARG0-2 arguments
 RESULT written by task before clearing FLAG
 ```
 
-**Handoff discipline (level, not pulse):** the //e writes OP/ARGs first, sets FLAG=1 last. GAMETASK sees FLAG=1, executes, writes RESULT, clears FLAG=0 last. The //e polls FLAG until 0, then reads RESULT. Ownership strictly alternates; safe under preemption with no atomics. One command in flight — sufficient for keypress-driven play. The //e applies a ~1 s timeout counter on the FLAG poll; timeout → "COPROC NOT RESPONDING" on the message line, command abandoned.
+**Handoff discipline (level, not pulse):** the //e writes OP/ARGs first, sets FLAG=1 last. GAMETASK sees FLAG=1, executes, writes RESULT, clears FLAG=0 last. The //e polls FLAG until 0, then reads RESULT. Ownership strictly alternates; safe under preemption with no atomics. One command in flight — sufficient for keypress-driven play. The //e applies a ~1 s timeout counter on the FLAG poll; timeout → "COPROC NOT RESPONDING" on the message line, command abandoned. **After a timeout the coproc may still own the mailbox (slow, not dead): the //e must observe FLAG=0 before writing any subsequent command** — never write OP/ARGs while FLAG=1.
 
 Ops (v1):
 
 | OP | Name | Args | RESULT |
 |---|---|---|---|
+| $00 | STATUS | — | OK (liveness probe) |
 | $01 | PLANT | x, y | OK / ERR_OCCUPIED / ERR_NO_SEEDS |
 | $02 | HARVEST | x, y | OK / ERR_NOT_RIPE |
 | $03 | SELL | qty | OK / ERR_NO_CROPS |
@@ -103,9 +106,9 @@ Per loop pass:
 2. **Growth divider:** every `GROWDIV` passes, scan 400 plots; stages 1-5 advance by 1; a plot reaching 6 publishes `EV_RIPE x,y`.
 3. **Market divider:** every `MKTDIV` passes: `TARGET = max(FLOOR, BASE - SUPPLY/2)`; PRICE steps by 1 toward TARGET; on change publish `EV_PRICE`. Every `DECAYDIV` market ticks, SUPPLY decrements toward 0 (standing demand).
 
-Command semantics: PLANT requires plot=0 and SEEDS>0 (plot=1, SEEDS−−). HARVEST requires plot=6 (plot=0, CROPS++). SELL qty requires CROPS≥qty (CROPS−=qty, CASH+=qty×PRICE, SUPPLY+=qty — add-loop multiply). BUYSEED qty requires CASH≥qty×SEEDCOST (SEEDS+=qty, CASH−=).
+Command semantics: PLANT requires plot=0 and SEEDS>0 (plot=1, SEEDS−−). HARVEST requires plot=6 (plot=0, CROPS++). SELL qty requires CROPS≥qty (CROPS−=qty, CASH+=qty×PRICE clamped at $FFFF, SUPPLY+=qty — add-loop multiply). BUYSEED qty requires CASH≥qty×SEEDCOST (SEEDS+=qty, CASH−=).
 
-**Interrupt discipline:** every multi-write SDRAM port sequence (set SADDR → stream SDATA; PUTEV; mailbox consume) is bracketed `SEI`/`CLI` (racetask3 precedent). The port address register is shared hardware — a preempting co-resident task (e.g. LIFE8GR) interleaving port ops would corrupt addressing. v1 assumes GAMETASK is the only port user, but the brackets make co-residency safe and cost nothing.
+**Interrupt discipline:** each individual SDRAM port access sequence is bracketed `SEI`/`CLI` (racetask3 precedent) — one bracket per `SADDR set → SDATA stream` write burst and per `RADDR set → RTRIG → RDATA` read, **never around a whole pass** (the 400-plot growth scan brackets per plot access, or interrupts would be off for the entire scan under the preemptive tick). The port address register is shared hardware — a preempting co-resident task (e.g. LIFE8GR) interleaving port ops would corrupt addressing. v1 assumes GAMETASK is the only port user, but the brackets make co-residency safe and cost nothing.
 
 **Pacing:** no coproc wall clock; dividers count loop passes. Defaults sized for ~2-3 min seed-to-ripe and price moves every few seconds — tuned on bench (M5). All in `FARMEQU.S`.
 
@@ -114,10 +117,10 @@ Event publish (`PUTEV` in `EVLIB.S`, PUT-include): reads SEQCTR + HEAD, writes r
 ## //e program (`FARM.S` → FARM bin)
 
 **Startup:** read SIG via SDM.
-- Absent → **cold start:** initialize GBANK (SIG, SEQCTR=0, HEAD=0, MARKET defaults: CASH=100, SEEDS=5, CROPS=0, PRICE=BASE, SUPPLY=0; grid zeroed; mailbox FLAG=0), load GAMETASK blob into coproc BRAM via `CP_LADDRLO/HI` + `CP_WDATA`, write its skill-table vector at $0200+id*2, `CP_CALL` skill id with budget=0.
-- Present → **re-entry:** task already running; resync and resume play. This is the idle hook.
+- Absent → **cold start:** initialize GBANK (SEQCTR=0, HEAD=0, MARKET defaults: CASH=100, SEEDS=5, CROPS=0, PRICE=BASE, SUPPLY=0; grid zeroed; mailbox FLAG=0), load GAMETASK blob into coproc BRAM via `CP_LADDRLO/HI` + `CP_WDATA`, write its skill-table vector (coproc BRAM $0200+id*2 — distinct address space from the GBANK GRID offset $0200), `CP_CALL` skill id with budget=0, **then write SIG last**. SIG present therefore implies the spawn completed.
+- Present → **probable re-entry:** SIG alone is not proof of life (FPGA reflash, other coproc software loaded over GAMETASK, stray bytes). Send `STATUS` (OP $00) probe: OK → resync and resume play (the idle hook). Timeout → world is dead; report it and offer cold start.
 
-**Resync:** TAIL = HEAD (read once), read MARKET block, read 400-byte grid via `SDM_RDNEXT` streaming, full redraw. 16-bit fields (PRICE, CASH) read twice until consecutive reads match (coproc may write between byte reads).
+**Resync:** re-seed the reader's cursor from a consistent (SEQCTR, HEAD) pair: read SEQCTR, read HEAD, read SEQCTR again; retry until the two SEQCTR reads match (a publish bumps both, so an unchanged SEQCTR brackets a stable HEAD). Then `TAIL = HEAD`, `expected = SEQCTR`. Read MARKET block, read 400-byte grid via `SDM_RDNEXT` streaming, full redraw. 16-bit fields (PRICE, CASH) read twice until consecutive reads match (coproc may write between byte reads). Without the `expected = SEQCTR` re-seed, every post-resync event would mismatch and re-trigger resync forever.
 
 **Screen:** Lo-Res **mixed mode** — GRVERSE GRON switch list with `$C053` (mixed) instead of `$C052`, full undo list retained (80VID, 80STORE, DHIRES, HIRES, PAGE2 off). Clear via line table rows 0-39 only; never blanket-fill $400-$7FF (screen holes are slot-firmware scratch). Grid: 20×20 plots × 2×2 Lo-Res cells = 40×40, exactly the mixed-mode GR area. Low nibble = top row of the cell pair.
 
@@ -132,14 +135,15 @@ Colors (HDMI-converted display; all 16 GR colors solid, no artifact constraints)
 | 4 mature | aqua ($E) |
 | 5 budding | orange ($9) |
 | 6 ripe | yellow ($D) |
-| cursor | XOR $F on its 2×2 block |
+| cursor | XOR #$FF on both bytes of its 2×2 block (each byte = two stacked nibbles) |
 
 **HUD (text rows 20-23):** row 20 `CASH/SEEDS/CROPS`; row 21 `PRICE` + trend arrow (sign of last EV_PRICE delta); row 22 message line (results, errors, RIPE pings); row 23 key help.
 
 **Main loop:**
-1. Drain ring: TAIL≠HEAD → EV_RIPE recolors plot, EV_PRICE updates HUD. SEQ mismatch → resync.
-2. Keyboard: arrows move cursor; `P` plant, `H` harvest, `S` sell 1, `B` buy 1 seed, `Q` quit.
-3. Command: write mailbox, FLAG=1, poll with timeout, show RESULT, on OK redraw affected plot + re-read MARKET block, update HUD.
+1. Drain ring: TAIL≠HEAD → EV_RIPE recolors plot + message-line ping, EV_PRICE updates HUD. SEQ mismatch → resync.
+2. **Periodic grid re-stream** (growth visibility): every ~2-3 s (loop-pass counter), stream the 400-byte grid via `SDM_RDNEXT` into a local shadow, repaint only bytes that changed (dirty-compare). Without this, stages 2-5 would never render during play — grid is otherwise read only at start/resync/command, so a plot would sit brown until EV_RIPE snapped it yellow. ~400 byte reads every few seconds, negligible. EV_RIPE stays for the instant ping.
+3. Keyboard: arrows move cursor; `P` plant, `H` harvest, `S` sell 1, `B` buy 1 seed, `Q` quit.
+4. Command: write mailbox, FLAG=1, poll with timeout, show RESULT, on OK redraw affected plot + re-read MARKET block, update HUD.
 
 Only dirty cells redraw. Zero-ZP discipline throughout (SDM and CP libs are already zero-ZP; game scratch in main RAM, no ProDOS ZP).
 
@@ -172,7 +176,7 @@ Makefile: `farm` target assembles FARMTASK.S → bin → generates FARMTASKB.S (
 
 ## Testing + milestones
 
-**M1 — sim green.** iverilog (-g2005) tb, `coproc_c4_tb.v` pattern: load kernel + game blob, host-model drives CP ports (register + CP_CALL budget=0) and SDM ports. Assert, in order: (a) PLANT 3,3 → FLAG clears, RESULT=OK, grid[3,3]=1; (b) run → plot walks 1→6, EV_RIPE in ring, SEQ/HEAD consistent; (c) HARVEST → CROPS=1; SELL → CASH/SUPPLY move, EV_PRICE eventually published; (d) error paths: PLANT occupied → ERR_OCCUPIED, HARVEST unripe → ERR_NOT_RIPE. Sim build uses tiny dividers.
+**M1 — sim green.** iverilog (-g2005) tb, `coproc_c4_tb.v` pattern: load kernel + game blob, host-model drives CP ports (register + CP_CALL budget=0) and SDM ports. Assert, in order: (a) PLANT 3,3 → FLAG clears, RESULT=OK, grid[3,3]=1; (b) run → plot walks 1→6, EV_RIPE in ring, SEQ/HEAD consistent; (c) HARVEST → CROPS=1; SELL → CASH/SUPPLY move, EV_PRICE eventually published; (d) error paths: PLANT occupied → ERR_OCCUPIED, HARVEST unripe → ERR_NOT_RIPE; (e) STATUS probe → OK. Sim build uses tiny dividers.
 
 **M2 — protocol on silicon, no UI.** Register + spawn GAMETASK, then use the project_obscurus $C800 monitor to watch HEAD advance and hand-poke a mailbox command. Isolates protocol from game code.
 
