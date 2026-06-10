@@ -92,16 +92,41 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 The bit-packed Life is the core risk. **TDD: the sim is the correctness oracle — write it first, make `TICK1` pass it.** The exact 6502 bit-fiddling will be iterated against the sim; the algorithm + the oracle are pinned here.
 
 ### The algorithm (`TICK1` — one universe, one generation)
-Inputs: read-bank `RB` (the front buffer's bank+base), write-bank `WB` (the back buffer's bank+base). For each row r in 0..191:
-1. **Read 3 rows** into BRAM packed buffers (80 B each): `ROWUP` = row (r-1) mod 192, `ROWMID` = row r, `ROWDN` = row (r+1) mod 192. Read via the read window: set `RADDRLO/HI` to the row's byte offset (`r*80` within the buffer base), `RBANKR` to RB, then 80× (`STA RTRIG` / `LDA RDATA`) — the read pointer auto-increments, so one `STA RTRIG`/`LDA RDATA` per byte walks the row. (Torus vertical: row -1 → offset 191*80; row 192 → offset 0.)
-2. **Column sums** `COLSUM[0..559]` (560 B BRAM): for each column x, `COLSUM[x] = bit(ROWUP,x) + bit(ROWMID,x) + bit(ROWDN,x)` (0..3). Iterate byte-by-byte (80 bytes) × bit-by-bit (bits 0..6), tracking column x = byte*7+bit incrementally (NO mod-7 division — use loop counters).
-3. **Build result row** `ROWOUT` (80 B): for each column x, `n = COLSUM[(x-1)%560] + COLSUM[x] + COLSUM[(x+1)%560] - bit(ROWMID,x)`; `alive = (bit(ROWMID,x) & (n==2 | n==3)) | (~bit(ROWMID,x) & (n==3))`; set bit x of `ROWOUT` accordingly. (Torus horizontal: x-1 of column 0 → column 559; x+1 of column 559 → column 0.) Pack bit 0 = leftmost.
-4. **Write `ROWOUT`** (80 B) to the back buffer row r: set `SADDRLO/HI` = `r*80`, `SBANKR` = WB; per byte: bump the write pointer (`STA SADDRLO`, +`SADDRHI` on page cross — **write window has NO autoinc**), `STA SDATA`. (Carry a software write pointer.)
+Inputs: read-bank `RB` (the front buffer's bank+base), write-bank `WB` (the back buffer's bank+base). Three 80-B BRAM row buffers `ROWBUF0/1/2` with three role indices `UP`/`MID`/`DN` that ROTATE (a TRUE sliding window — read ONE new row per output row, not three).
+1. **Prime** (before the row loop): read row 191 → the UP buffer (torus: row -1 = row 191), row 0 → MID, row 1 → DN.
+2. **For each row r in 0..191:** compute ROWOUT from UP/MID/DN (steps 2-3 below), write it, then **SLIDE**: rotate roles (UP←MID, MID←DN), and read the next bottom row into the freed buffer (the new DN). For r in 0..189 the new DN = row r+2; for r=190 the new DN = row 0 (wait — the slide reads the row that will be DN for r+1, i.e. row (r+1)+1 = r+2, mod 192). So r=190 reads row 0 (torus), r=191 needs no further read (last row). Net: **192 reads (+1 prime) per gen, not 576** — 3× fewer SDRAM ops on the coproc's dominant cost.
+- **Reading one row** (the read window): set `RADDRLO/HI` to the row's byte offset (`rowindex*80`), `RBANKR` to RB, then 80× (`STA RTRIG`/`LDA RDATA`) — the read pointer auto-increments, so one trigger/fetch per byte walks the row. (Torus vertical handled by the prime + the wrap read above.)
+- Rotation is by INDEX, not copy: keep a 3-entry table of buffer base addresses; `UP/MID/DN` are indices into it that cycle 0→1→2→0. No byte copying.
+3. **Column sums** `COLSUM[0..559]`: for each column x, `COLSUM[x] = bit(UP,x) + bit(MID,x) + bit(DN,x)` (0..3), where UP/MID/DN are the rotating row buffers. Iterate byte-by-byte (80 bytes) × bit-by-bit (bits 0..6), tracking column x = byte*7+bit incrementally (NO mod-7 division — use loop counters).
+4. **Build result row** `ROWOUT` (80 B): for each column x, `n = COLSUM[(x-1)%560] + COLSUM[x] + COLSUM[(x+1)%560] - bit(MID,x)`; `alive = (bit(MID,x) & (n==2 | n==3)) | (~bit(MID,x) & (n==3))`; set bit x of `ROWOUT`. (Torus horizontal: x-1 of column 0 → column 559; x+1 of column 559 → column 0.) Pack bit 0 = leftmost.
+5. **Write `ROWOUT`** (80 B) to the back buffer row r: set `SADDRLO/HI` = `r*80`, `SBANKR` = WB; per byte bump the write pointer (`STA SADDRLO`, +`SADDRHI` on page cross — **write window has NO autoinc**), `STA SDATA`. (Carry a software write pointer.)
 
-BRAM budget: ROWUP/MID/DN (240) + COLSUM (560) + ROWOUT (80) = 880 B + code, fits the $0300-$0F7F task region (mailbox at $0F80 untouched).
+**Scratch BRAM — PINNED addresses (P3; below the $0F80 C4 mailbox, above the code at $0300):**
+```
+ROWBUF0 = $0C00   (80 B)   ; the 3 rotating row buffers
+ROWBUF1 = $0C50   (80 B)
+ROWBUF2 = $0CA0   (80 B)
+ROWOUT  = $0CF0   (80 B)   ; result row being built
+COLSUM  = $0D40   (560 B -> $0F6F)  ; ends below the $0F80 mailbox
+```
+Code occupies $0300-$0BFF (~2.3 KB — ample for the tick + loop). The 3-entry buffer-base table (for the index rotation) holds ROWBUF0/1/2. NO overlap: code < $0C00 ≤ scratch < $0F80 mailbox.
 
 ### Step 1: Write the sim correctness oracle in `project_obscurus_tb.v`
-Seed a small grid (KEEP 80-byte rows — only reduce row count via a `LROWS` equate, R10), place a **glider** (so it travels + crosses a 7-cell byte boundary over generations) and a **blinker** (period-2 oscillator), and a pattern near an edge (to exercise **torus wrap**). Run TICK1 N times (via the kernel — register LIFE8 + GO, or drive the tick directly), read the result grid back via the monitor port, assert it matches the **hand-computed** Conway generations.
+**The harness is the EXISTING skill-load pattern (P1 — pinned, no new mechanism):** reuse the
+tb's proven idiom — the sdrtest/cmpskill blocks do exactly this (project_obscurus_tb.v ~L630-660):
+1. Set `CP_LADDR=$0300` (`wr_reg 4'h9/4'hA`), `load_byte` each LIFE8 byte → coproc BRAM $0300.
+2. Write TABLE[0]=$0300 (`load_byte $00,$03` at coproc $0200).
+3. `stage_mbox(2'd0, 8'h00, 8'h00, 8'h00)` — slot 0, skill 0, **budget 0 (no watchdog kill, R1)**,
+   arg 0. `ring(2'd0)`.
+LIFE8 then runs forever — so **DON'T use `wait_done` (it never DONEs); SYNC ON `GEN[u]`** instead:
+poll `sdram_read(MBANK, $0020+u, gen)` until it increments = one tick of universe u completed
+(deterministic). Then `sdram_read` the front buffer rows back and assert.
+**Sim scaling:** set `LROWS` small (e.g. 8) AND `NUNIV`=1 (test universe 0 only) via equates so a
+tick is fast in sim — but KEEP `ROWBYTES`=80 (R10: shrinking width changes the byte-boundary math).
+The seed + oracle: place a **glider** (travels + crosses a 7-cell byte boundary over gens) + a
+**blinker** (period-2, the simplest hand-checkable oracle) + an edge pattern (**torus wrap**); seed
+via `sdram_write(UBASE, addr, byte)` into buffer A, `FRONT[0]=0`. After each `GEN[0]` increment,
+read back + assert the result equals the **hand-computed** Conway generation.
 ```verilog
         // ===== Multiverse: TICK1 correctness (the load-bearing test) =====
         // seed bank UBASE(16), buffer A: a blinker (3 horizontal cells) + a glider, + an
@@ -246,6 +271,10 @@ Embed LIFE8's bytes as a `DFB` block (from `xxd software/SDM/LIFE8` — or load 
 
 ### Step 2: seed 8 universes
 `SEED`: write 8 patterns into universes 0..7 buffer A (FRONT[u]=0), via SDRAMLIB (SDM_SETBANK bank UBASE+u, SDM_SETADDR, SDM_WRNEXT the pattern bytes). Patterns: u0 Gosper glider gun, u1 gliders, u2 oscillators, u3 r-pentomino, u4-u7 random soup (a simple PRNG: LFSR seeded from a counter). Zero FRONT[u]/GEN[u] in MBANK. Keep seed data compact.
+**u0 (Gosper gun) is the centerpiece — pin it as EXACT verified bytes.** It's the canonical 36×9
+pattern; a single wrong byte = no gliders = no centerpiece. Hand-place it into the 7-cells/byte
+layout, then VERIFY in the Task 2 sim (seed the gun, run ~30 gens, assert a glider emerges) before
+trusting it on the bench. The other seeds are forgiving; the gun is not.
 
 ### Step 3: GO LIFE8 with budget=0 (R1)
 Stage LIFE8's mailbox: skill_id 0, **budget byte = 0**, then CP_RING (CALL slot 0). (Or batch GO with budget confirmed 0.) LIFE8 starts ticking all 8.
@@ -269,7 +298,9 @@ NOKEY
 ### Step 5: assemble + disk
 ```bash
 make life8 mverse 2>&1 | tail -3
-make sdmdisk 2>&1 | tail -5      # add MVERSE (+ LIFE8 if loaded from disk) to the pack
+make sdmdisk 2>&1 | tail -5      # EDIT the sdmdisk recipe (Makefile ~L529): add the MVERSE
+                                 # pack line (+ LIFE8 if loaded from disk vs embedded as DFB);
+                                 # bump the .po size if the existing image is full
 grep -cP '\t' software/SDM/MVERSE.S   # 0
 grep -cP '[^\x00-\x7F]' software/SDM/MVERSE.S  # 0
 ```
@@ -297,6 +328,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
    -> 8 DHGR Life universes, all evolving. Press 0-7 to flip channels;
       each world keeps advancing while unwatched. Leave one, flip back, it moved on.
 ```
+**Honest tearing note (P4):** the active channel may show occasional tearing — the ~300 ms blit
+can span a coproc front-pointer flip if a round-robin pass happens to be shorter than the blit.
+It self-heals on the next gen-change render (the gen-skip re-blits). Not corruption, just a
+transient torn frame on the watched universe. Fine for the demo; don't claim flawless.
 - [ ] **Step 4: Record** — update `project_coproc_c0.md` + `MEMORY.md`: Conway's Multiverse (8 live DHGR universes, LIFE8 free-running skill, //e channel-surf), the bit-packed-Life + DHGR-de-interleave + budget=0 + flip-before-bump notes, and that the hardware "Conway's Life Engine" is the separate future project.
 
 ---
