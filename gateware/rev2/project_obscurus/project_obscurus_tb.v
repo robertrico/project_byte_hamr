@@ -746,6 +746,64 @@ module project_obscurus_tb;
         end else $display("PASS C4 run-budget force-complete + slot reusable (3->4)");
         collect(2'd0);
 
+        // ===== SDRAM READ WINDOW: round-trip through the REAL arbiter =====
+        // Proves the coproc READ window ($E004-$E008) against the actual sdram_arb +
+        // SDRAM model (not a Task-1 stub): the host SEEDS a region, a skill READS it
+        // back via the auto-incrementing read window, SUMS the bytes, and WRITES the
+        // sum to a result cell -- which the host reads and asserts. A pass means the
+        // R2 latch (sread<=rdata on `done`, advance ptr) fires on the correct cycle
+        // relative to the real arbiter's c1_busy/c1_rdata timing.
+        //
+        // The C4 block above left the kernel idle (KISPIN, free-running tick armed).
+        // We register sdrtest as skill 0 (overwriting cmpskill @ $0300; TABLE[0] still
+        // $0300) and CALL it into slot 0 via the same async ring/wait_done path.
+        //
+        // Seed bank0 $0080..$0087 = $11,$22,$33,$44,$55,$66,$77,$88.
+        //   sum = $11+$22+$33+$44+$55+$66+$77+$88 = $0264 -> low byte $64.
+        begin : sdrtest_blk
+            integer si; reg [7:0] seedv;
+            for (si=0; si<8; si=si+1) begin
+                seedv = 8'h11 * (si+1);          // $11,$22,...,$88
+                sdram_write(10'd0, 16'h0080 + si, seedv);
+            end
+        end
+        // clear the result cell so a non-running skill can't masquerade as a pass
+        sdram_write(10'd0, 16'h0090, 8'h00);
+        // load sdrtest (61 bytes) @ coproc $0300
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);   // CP_LADDR = $0300
+        load_byte(8'hA9); load_byte(8'h80); load_byte(8'h8D); load_byte(8'h04); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h05); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h8D); load_byte(8'h06); load_byte(8'hE0);
+        load_byte(8'hA9); load_byte(8'h00); load_byte(8'h85); load_byte(8'h80); load_byte(8'hA9);
+        load_byte(8'h08); load_byte(8'h85); load_byte(8'h81); load_byte(8'h8D); load_byte(8'h07);
+        load_byte(8'hE0); load_byte(8'hAD); load_byte(8'h08); load_byte(8'hE0); load_byte(8'h18);
+        load_byte(8'h65); load_byte(8'h80); load_byte(8'h85); load_byte(8'h80); load_byte(8'hC6);
+        load_byte(8'h81); load_byte(8'hD0); load_byte(8'hF1); load_byte(8'hA9); load_byte(8'h90);
+        load_byte(8'h8D); load_byte(8'h00); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h00);
+        load_byte(8'h8D); load_byte(8'h01); load_byte(8'hE0); load_byte(8'hA9); load_byte(8'h00);
+        load_byte(8'h8D); load_byte(8'h02); load_byte(8'hE0); load_byte(8'hA5); load_byte(8'h80);
+        load_byte(8'h8D); load_byte(8'h03); load_byte(8'hE0); load_byte(8'h4C); load_byte(8'h06);
+        load_byte(8'h10);                            // 61 bytes
+        // TABLE entry skill 0 = $0300 @ coproc $0200
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02); load_byte(8'h00); load_byte(8'h03);
+        cp_read(13'h0300, tmp);
+        if (tmp!==8'hA9) begin errors=errors+1; $display("FAIL sdram-read: sdrtest not loaded @ $0300 = %02X",tmp); end
+        // CALL sdrtest into slot 0 (skill 0, budget 0 = no limit, arg0 unused)
+        stage_mbox(2'd0, 8'h00, 8'h00, 8'h00);
+        ring(2'd0);
+        wait_done(4'b0001, 300000, c4ok);
+        if (!c4ok) begin
+            errors=errors+1; rd_reg(4'h1, r0);
+            $display("FAIL sdram-read: sdrtest never completed DONE=%02X ACTIVE=%02X (read handshake stuck against real arbiter?)",tmp,r0);
+        end
+        sdram_read(10'd0, 16'h0090, tmp);
+        if (tmp!==8'h64) begin
+            errors=errors+1;
+            $display("FAIL sdram-read: coproc summed host-seeded region (got %02X want 64) -- R2 latch timing wrong vs real arbiter?",tmp);
+        end else
+            $display("PASS sdram-read: coproc summed host-seeded region (got %02X want 64)",tmp);
+        collect(2'd0);
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
