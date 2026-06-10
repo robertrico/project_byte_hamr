@@ -39,8 +39,10 @@ bench-verified races by touching it.
 | `RBANK`    | `$E006` | W | read pointer bank byte |
 | `RDATA`    | `$E007` | R | **`LDA $E007`** → blocking read of `SDRAM[rptr]`; returns the byte; then `rptr++` (auto-increment) |
 
-- The read pointer `rptr` is a **flat auto-incrementing address** formed as `{rbank, raddr}`
-  (the same `{sbank, saddr}` mapping the write window uses for `phys_addr`). Auto-increment
+- The read pointer `rptr` is a **flat auto-incrementing address** driven onto the 26-bit
+  `phys_addr` as **`{2'b00, rbank, raddr}`** (8+16=24 bits zero-extended to 26 — EXACTLY the
+  write window's `phys_addr<={2'b00, sbank, saddr}` form at coproc.v:192; `{rbank,raddr}` alone
+  is only 24 bits and mis-maps the port). Auto-increment
   carries `raddr` lo→hi and into `rbank`, so a scan crosses bank boundaries — you can walk a
   contiguous region larger than one bank.
 - Usage: write `$E004/05/06` to set the start, then `LDA $E007` repeatedly to scan — **one
@@ -54,23 +56,43 @@ Mirror the write path's stall-until-done, with `we<=0` and a result latch:
 - `RADDR_LO/HI`, `RBANK` writes set `raddr[7:0]`/`raddr[15:8]`/`rbank` (gated `& WE & rdy`,
   exactly like `saddr`/`sbank`).
 - On `LDA $E007` (`is_e007 & ~WE` in `ST_RUN`): post `req<=1`, `we<=0`,
-  `phys_addr<={rbank, raddr}`, `rdy<=0` (stall the core), enter a read-wait state.
-- On `done` (the existing `busy_d & ~busy` edge): latch `sread<=rdata`, advance the pointer
-  `{rbank,raddr} <= {rbank,raddr} + 1`, then `rdy<=1` and return to `ST_RUN`.
+  `phys_addr<={2'b00, rbank, raddr}`, drive `rdy` combinationally low (see the crux below),
+  enter a read-wait state. (Reuse `ST_WAIT` with a `rd_pending` flag, or add a 4th state —
+  `state` is `[1:0]` and slot 3 is free.) `req` is pulsed (self-clears via the `req<=0` default)
+  — confirm the read-wait→`ST_RUN` return leaves `req` deasserted.
+- On `done` (the existing `busy_d & ~busy` edge): latch `sread<=rdata`, advance the pointer as a
+  flat 24-bit counter `{rbank,raddr} <= {rbank,raddr} + 1` (carry `raddr`→`rbank`), then release
+  `rdy` high and return to `ST_RUN`.
 - The DI mux returns `sread` for the `$E007` read: add `is_e007` + a registered `is_e007_q`
   (alongside the existing `is_count_q`/`is_e014_q`/`is_callreq_q`) → `is_e007_q ? sread : ...`.
 
-### The one care-point — Arlet registered DI (the C0 lesson)
-`LDA $E007` is a **blocking read**: the CPU stalls mid-instruction (RDY low) until the SDRAM
-read completes, then samples DI when RDY rises. The latched `sread` must be presented as DI at
-the cycle the core resumes. This is the same "Arlet wants SYNCHRONOUS 1-cycle-latency memory;
-register the DI select" discipline that C0 solved (a combinational `DI=bram[AB]` boots wrong
-and can form a delta loop). Get the `sread`→DI presentation aligned with the RDY-rise; verify
-in sim (the value the `LDA` lands in A must equal the seeded SDRAM byte).
-**Fallback if the blocking read fights the DI timing:** a two-step form — `STA $E007` triggers
-the read (stall-until-done + latch + auto-inc, identical to the write's stall-on-STA) and a
-plain registered `LDA $E008` returns `sread`. Simpler (no blocking-LDA timing) but 2 ops/byte.
-Build blocking first; fall back only if the timing can't be closed.
+### The crux — the registered-`rdy` race (this is NEW silicon, not a solved lesson)
+`LDA $E007` is a **blocking read**, and this is genuinely new behavior for this core: **no
+existing `$E0xx` read stalls** — `is_count_q`/`is_e014_q`/`is_callreq_q` all read a value
+that's *always present* (zero load latency). The write window RDY-stalls, but a write that
+advances one cycle early is harmless (the data `DO` was already captured, the op still posts).
+A *read* that advances early lands the WRONG byte in A. So the C0 "register the DI" lesson does
+NOT de-risk this — C0 was 1-cycle synchronous RAM; this is a multi-cycle RDY-stall on a read.
+
+**The hazard (must-fix):** `rdy` is a REGISTERED reg, set only at `posedge clk`. On the `LDA
+$E007` data cycle N: `is_e007` is combinational-high in cycle N; the FSM sees it at `posedge(N)`
+and sets `rdy<=0` → `rdy` is low only in cycle N+1. But at that *same* `posedge(N)`, Arlet
+samples `DI(N)` and `RDY(N)` — and `RDY(N)` is still 1. So Arlet latches the stale `sread` and
+advances. **The read never waits.** A registered `rdy` drop is one cycle too late.
+
+**The fix (mandated for the read path):** drive `rdy` **combinationally** low on the read
+access — `rdy_out = rdy_reg & ~(is_e007 & ~WE & (state==ST_RUN) & ~read_done)`. This engages the
+stall in cycle N itself, so Arlet sees `RDY(N)=0` and holds. Combinational `rdy` is SAFE (it is
+NOT DI, so it can't form the C0 `AB→DI→AB` delta loop; and while `RDY=0` Arlet is frozen so `AB`
+is held → `is_e007` is stable → `rdy_out` is stable — no oscillation). When the read completes,
+latch `sread`, present it via the DI mux, auto-inc the pointer, and release `rdy_out` high; Arlet
+resumes and samples the correct byte.
+
+**Fallback if combinational-`rdy` still won't close:** the two-step form — `STA $E007` triggers
+the read (the write-style stall: an early advance is benign, data isn't being returned yet) +
+latch + auto-inc, and a plain registered `LDA $E008` returns the already-latched `sread`. 2
+ops/byte, no stall-timing fight. **Build combinational-`rdy` blocking first; fall back to
+two-step only if it can't be closed in sim.**
 
 ## Data flow
 ```
@@ -114,10 +136,19 @@ round-trip example: LDA $E007 (read cell) ; INC ; STA $E000-03 (write back)
   `RADDR_*`. This is the documented streaming semantic (same as the host load port's `CP_RDATA`).
 
 ## Testing
-- **Sim — read window unit:** drive `coproc` with a stub SDRAM (the existing sim sdram model)
-  pre-loaded with a known pattern; a tiny coproc program sets rptr, does `LDA $E007` a few
-  times, stores the bytes to BRAM; assert the bytes match the pattern AND that consecutive
-  reads returned consecutive addresses (auto-inc works). iverilog `-g2005`.
+- **Sim — read window unit (must defeat the early-advance race, not just match a byte):** a
+  loose "`A == seeded byte`" check can PASS on a wrong-but-plausible early sample — so assert the
+  stall actually happened:
+  1. **Consecutive correctness:** a coproc program sets rptr, does several `LDA $E007` in a row
+     storing each to BRAM; assert the bytes equal *consecutive* pattern bytes (a stale/early
+     sample would repeat or skip — catches a failed stall + the auto-inc).
+  2. **Deliberately-slow stub:** make the sim SDRAM/arbiter take MANY cycles (e.g. 8+) before
+     `busy` falls, with `rdata` driven to a DIFFERENT value early then the correct value at
+     `done`; assert `A` holds the **post-stall** value (proves the CPU waited, didn't latch the
+     early `rdata`). This is the assertion that actually validates the combinational-`rdy` fix.
+  3. **rdata-stable-at-`done`:** assert `rdata` is stable on the exact `done` edge where `sread`
+     is latched (the write path never sampled `rdata`, so this is an unproven assumption — make
+     it explicit). iverilog `-g2005`.
 - **Sim — round-trip:** host seeds an SDRAM cell, a skill reads it (`$E007`), increments, writes
   it back (`$E003`); assert the host reads back the incremented value. Proves read+write compose.
 - **Sim — regression:** all prior tests (monitor/C1/C2/C3/C3.1/C-flash/C4) still pass — the
