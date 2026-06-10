@@ -65,7 +65,7 @@ COLSUM array only needs 40 bytes now (vs 560); keep it pinned in BRAM scratch (t
 Reuse the DHGR map shape (separate `BRUN` — GR and DHGR are never run simultaneously, so bank reuse is fine): universe u = bank `UBASE+u`, buffer A `$0000`, buffer B (now only needs +240, but keep generous separation, e.g. `$0400`). Metadata bank `MBANK`: `FRONT[u]`@`$0010+u`, `GEN[u]`@`$0020+u`. (Pin the GR buffer-B offset in the plan; grids are 240 B so any clear offset works.) GRVERSE seeds on launch, so prior DHGR state in those banks is overwritten — no conflict.
 
 ## Components / files (new branch off `main`)
-- `software/SDM/LIFE8GR.S` — copy LIFE8.S, the three alters (8/byte bit loop, GR equates, GWIDTH-1 wrap). Same TICK1.
+- `software/SDM/LIFE8GR.S` — copy LIFE8.S, the FOUR alters (8/byte bit loop, GR equates, GWIDTH-1 wrap, MUL80→MUL5 stride). Same TICK1.
 - `software/SDM/LIFEMAPGR.S` — GR equates (ROWBYTES=5, GROWS=48, GWIDTH=40, banks) — OR reuse LIFEMAP with GR values (decide in plan; separate file is cleaner since DHGR's are different).
 - `software/SDM/GRVERSE.S` — copy MVERSE.S, GR init (G4 undo-DHGR + enable) + GR clear (G5 line-table) + snapshot-retry + bit→nibble render + text-page line table + seeds + surf loop. `PUT SDRAMLIB`. **Embeds the LIFE8GR bytes via an auto-generated include (G3, below), NOT a hand-pasted DFB blob.**
 - Makefile: `life8gr`/`grverse` targets + sdmdisk pack (add GRVERSE; keep MVERSE — both ship).
