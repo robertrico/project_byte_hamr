@@ -92,6 +92,13 @@ module project_obscurus_tb;
     localparam integer LIFE8LEN = 689;
     reg [7:0] life8img [0:1023];
     initial $readmemh("life8.mem", life8img);
+    // LIFE8GR = LIFE8 + 4 GR alters (8 cells/byte, ROWBYTES=5, GWIDTH=40,
+    // MUL5 stride). LSIM=1 sim build => GROWS=8 rows. Loaded over $0300 AFTER
+    // the DHGR oracle (both ORG $0300, can't co-reside) -- BRAM survives a sim
+    // reset, so a plain load-port overwrite re-points the skill.
+    localparam integer LIFE8GRLEN = 680;
+    reg [7:0] life8grimg [0:1023];
+    initial $readmemh("life8gr.mem", life8grimg);
     reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
     integer   bufsum, mvi;
 
@@ -275,6 +282,28 @@ module project_obscurus_tb;
             end else begin                       // horizontal (seed, even gen)
                 mv_chk(241,8'h07);
                 mv_sum(16'h0007);
+            end
+        end
+    endtask
+
+    // ---- Conway's Multiverse GR helpers (8 cells/byte, ROWBYTES=5) ----
+    // GR sim universe: GROWS=8 rows x 5 bytes = 40 contiguous bytes; cell
+    // (row,col) is at idx row*5 + col/8, bit col%8 (bit0=leftmost column).
+    // Both buffers live in bank UBASE(=16): A @ $0000, B @ $0400. Readbacks
+    // reuse rb[]/bufsum so mv_chk()/mv_sum() apply unchanged.
+    task mvgr_clear;     // zero buffer A (40 bytes) in bank 16
+        begin
+            for (mvi=0; mvi<40; mvi=mvi+1)
+                sdram_write(10'd16, 16'h0000+mvi, 8'h00);
+        end
+    endtask
+    task mvgr_readback(input [15:0] base);  // slurp 40 bytes -> rb[], sum16
+        begin
+            set_bank(10'd16); set_addr(base);
+            bufsum = 0;
+            for (mvi=0; mvi<40; mvi=mvi+1) begin
+                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
+                rb[mvi] = tmp; bufsum = bufsum + tmp;
             end
         end
     endtask
@@ -1021,6 +1050,67 @@ module project_obscurus_tb;
                 $display("PASS multiverse round-robin (univ0 + univ1 both ticked + evolved)");
             else
                 $display("FAIL multiverse round-robin %0d errors", errors);
+        end
+
+        // ===== CONWAY'S MULTIVERSE GR: TICK1 (8 cells/byte, 40x48 GR grid) =====
+        // Re-target proof: reload $0300 with LIFE8GR (overwrites LIFE8 -- both
+        // ORG $0300, can't co-reside; BRAM survives the round-robin reset pulse,
+        // so a load-port overwrite re-points the skill). TABLE[0]=$0300 (LIFE8GR
+        // forever) / TABLE[1]=$0303 (LIFE1 GR = one univ-0 tick + DONE = oracle)
+        // unchanged. Three patterns on the GR dims, expected gens from an
+        // independent torus reference sim: an interior horizontal blinker
+        // (-> vertical, 1 tick); a glider straddling the byte0/byte1 boundary
+        // (-> +1row/+1col after 4 ticks, catches the 8/byte math); a blinker on
+        // the col39<->col0 torus seam (-> vertical col0, exercises GWIDTH-1 wrap).
+        begin : multiverse_gr
+            integer gi;
+            wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);            // CP_LADDR=$0300
+            for (gi=0; gi<LIFE8GRLEN; gi=gi+1) load_byte(life8grimg[gi]);
+            wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);            // CP_LADDR=$0200
+            load_byte(8'h00); load_byte(8'h03);                  // TABLE[0]=$0300
+            load_byte(8'h03); load_byte(8'h03);                  // TABLE[1]=$0303
+            cp_read(13'h0300, tmp);
+            if (tmp!==8'h4C) begin errors=errors+1;
+                $display("FAIL multiverse-GR not loaded @ $0300 = %02X",tmp); end
+
+            // --- A: interior horizontal blinker row2 c10-12 -> vertical col11 ---
+            sdram_write(10'd24, 16'h0010, 8'h00);    // FRONT[0]=0
+            sdram_write(10'd24, 16'h0020, 8'h00);    // GEN[0]=0
+            mvgr_clear;
+            sdram_write(10'd16, 16'h0000+11, 8'h1C); // row2 byte1 = c10,11,12
+            mv_tick;                                 // 1 tick -> live buffer B
+            mvgr_readback(16'h0400);
+            mv_sum(16'h0018);
+            mv_chk(6,8'h08); mv_chk(11,8'h08); mv_chk(16,8'h08);
+
+            // --- C: torus-seam blinker row4 c39,0,1 -> vertical col0 ---
+            sdram_write(10'd24, 16'h0010, 8'h00);
+            sdram_write(10'd24, 16'h0020, 8'h00);
+            mvgr_clear;
+            sdram_write(10'd16, 16'h0000+24, 8'h80); // row4 byte4 = col39
+            sdram_write(10'd16, 16'h0000+20, 8'h03); // row4 byte0 = col0,1
+            mv_tick;                                 // 1 tick -> live buffer B
+            mvgr_readback(16'h0400);
+            mv_sum(16'h0003);
+            mv_chk(15,8'h01); mv_chk(20,8'h01); mv_chk(25,8'h01);
+
+            // --- B: glider straddling byte0/byte1 -> seed shifted +1,+1 @ gen4 --
+            sdram_write(10'd24, 16'h0010, 8'h00);
+            sdram_write(10'd24, 16'h0020, 8'h00);
+            mvgr_clear;
+            sdram_write(10'd16, 16'h0000+10, 8'h80); // (2,7)
+            sdram_write(10'd16, 16'h0000+16, 8'h01); // (3,8)
+            sdram_write(10'd16, 16'h0000+20, 8'hC0); // (4,6),(4,7)
+            sdram_write(10'd16, 16'h0000+21, 8'h01); // (4,8)
+            mv_tick; mv_tick; mv_tick; mv_tick;      // 4 ticks -> live buffer A
+            mvgr_readback(16'h0000);
+            mv_sum(16'h0086);
+            mv_chk(16,8'h01); mv_chk(21,8'h02); mv_chk(25,8'h80); mv_chk(26,8'h03);
+
+            if (errors==0)
+                $display("PASS multiverse-GR TICK1 (blinker/glider-byte-boundary/torus-seam, GWIDTH-1 wrap + MUL5)");
+            else
+                $display("FAIL multiverse-GR TICK1 %0d errors", errors);
         end
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
