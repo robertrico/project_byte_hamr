@@ -80,6 +80,11 @@ $E000-$E008 windows. Therefore:
   profiles, news/headline strings, future vendor tables). Content edits never
   touch a blob. Seeding happens before the SIG write, so the single-writer
   invariant is never violated (same ordering as v1 grid init).
+- **Content versioning**: each bank carries a content-version byte CVER at
+  $0005, written by the //e at seed time; the FARM binary holds the expected
+  value. Valid SIG + mismatched CVER at entry → stale content from an older
+  binary → take the quiesce path and re-seed. Without this, "content edits
+  never touch a blob" silently runs new code against old tables.
 - **Blob-resident data only for hot-loop constants**; optionally copy
   SDRAM→scratch once at task start.
 
@@ -102,6 +107,28 @@ GBANK single-writer invariant holds: FARMTASK owns bank 32, WORKSHOP owns
 bank 33. All cross-bank transfers are mediated by the //e via two mailbox
 round-trips (e.g. withdraw from farm, deposit to workshop). No task ever
 writes another task's bank.
+
+### Host BRAM-write quiesce invariant (new, hardware-mandated)
+
+The coproc BRAM has ONE shared write port (Yosys won't infer DP16KD with two
+write ports — coproc.v); the host loader has priority and a same-cycle Arlet
+write is **silently dropped**. The RTL's stated safety assumption is "they
+never legitimately collide" — true only while no task runs. Streaming a blob
+through the loader while another task is alive drops dozens-to-hundreds of
+that task's stack/scratch writes per load: crashes on RTS/RTI, silent world
+corruption, and sim won't reproduce the collision density.
+
+**Invariant: the host writes coproc BRAM only while no task is RUNNING.**
+Consequences:
+
+- There is no single-task respawn. Any dead-task recovery, blob upgrade, or
+  content re-seed = **kernel reset → reload BOTH blobs → respawn BOTH tasks →
+  resync both rings**. This is the already-proven soft-reset path; worlds
+  live in SDRAM, so the only cost is restarting a healthy task.
+- Rejected alternative: RTL fix (stall Arlet for the loader-write cycle) —
+  gateware change + sim proof for something the software invariant gets free.
+- v1 carries a latent low-probability version (tick ISR pushes idle-stack
+  frames during LOADBLOB); the sim collision assertion below covers both.
 
 ## Components
 
@@ -131,6 +158,7 @@ GBANK 33 layout (signature "WK" = $57,$4B):
 | $0002       | SEQCTR                                               |
 | $0003       | HEAD                                                 |
 | $0004       | heartbeat (increments every loop pass)               |
+| $0005       | CVER content version (//e-seeded)                    |
 | $0100-$01FF | RING 64x4, page-aligned (EVLIB verbatim)             |
 | $0200-$0207 | MAILBOX, 8 B: FLAG, OP, I0-I3, RES, RES1             |
 | $0210+      | pantry: 4 per-crop ingredient counts; goods          |
@@ -140,9 +168,17 @@ GBANK 33 layout (signature "WK" = $57,$4B):
 | $0300+      | recipe table (//e-seeded static content)             |
 
 Mailbox ops: OPDEPOSIT(crop, qty), OPCRAFT(I0-I3), OPCOLLECT(→ RES =
-product id, RES1 = value), OPSTAT, OPMODE(flags) — event modifiers,
-currently bit 0 = BOOM (craft values x2). Ring events: WEVDONE(station,
-product); heartbeat is polled, not evented.
+product id, RES1 = value), OPMODE(flags) — event modifiers, currently bit 0
+= BOOM (craft values x2). No OPSTAT: liveness is the heartbeat byte, state
+is read directly from the bank (grid-resync precedent). Ring events:
+WEVDONE(station, product); heartbeat is polled, not evented.
+
+**Loop-pass timing note:** GROWD/MKTD and station dividers count task loop
+passes. Round-robin with a second budget=0 task roughly halves each task's
+pass rate — growth/market run ~2x slower wall-clock once WORKSHOP spawns
+(increment 3), and drift with workshop load thereafter. Accepted: dividers
+get retuned at increment 3 (the deferred M5 tuning pass lands there). Sim
+FSIM dividers and the ~90 s farmonly figure stretch the same way.
 
 **Cross-bank transfer rule:** //e-mediated two-phase transfers
 (OPWITHDRAW→OPDEPOSIT, OPCOLLECT→OPADDCASH) can lose goods if a reset lands
@@ -205,7 +241,12 @@ loses value but can never duplicate it.
 | $0226-$0229 | FCROPS[4]                                |
 
   Per-crop drift; state already in SDRAM, no blob data cost. //e HUD readers
-  and cold-start init update to the new map in the same increment.
+  and cold-start init update to the new map in the same increment. Farm bank
+  also gains FHBEAT $0004 and CVER $0005 (free today).
+- EVPRICE payload redefined for 4 crops: **P0 = crop id, P1 = price lo**,
+  with prices capped <256 by the drift logic (v1 base 10/floor 2 never
+  approached it; the cap is now normative). Market-screen trend arrows
+  compare against the //e's last-seen price per crop.
 - Saturation rules (silent-wrap bugs otherwise): cash credits saturate at
   $FFFF; SUPPLY += qty saturates at $FF.
 - Mailbox: OPPLANT(x, y, crop), OPSELL(crop, qty), OPBUY(crop, qty); new
@@ -213,7 +254,9 @@ loses value but can never duplicate it.
   OPPLANT now uses all three arg bytes — the farm mailbox is arg-full; any
   future op needing more args must widen the mailbox (bank layout change).
 - Sell/buy quantity prompt is **2 digits (1-99)** — qty must fit one mailbox
-  arg byte; 1-99 keeps the prompt simple, repeat the op for more.
+  arg byte; 1-99 keeps the prompt simple, repeat the op for more. The prompt
+  is modal: digits/RETURN/ESC only; M/W/ESC navigation suspends until it
+  closes.
 - Render: per-crop GR base color, brightness/pattern by stage, ripe bright,
   dead magenta ($1). Exact colors tuned at plan time with bench screenshots.
 - Blob budget: FARMTASK.bin is 1299 B; under the raised 1792 B cap that is
@@ -242,9 +285,11 @@ loses value but can never duplicate it.
 - Screen switch = soft-switch GR/TEXT + full repaint from local state; the
   farm repaint reuses the existing re-entry resync renderer.
 - News/status line pinned on every screen.
-- Re-entry/respawn: probe BOTH SIGs, respawn whichever task is dead
-  (SPAWNT x2), resync two rings with two expected-SEQ counters — the proven
-  v1 pattern, doubled.
+- Re-entry/respawn: probe BOTH SIGs + heartbeats. All-alive → resync two
+  rings (two expected-SEQ counters) and play. ANY task dead, blob stale, or
+  content-version mismatch → the quiesce path: kernel reset, reload both
+  blobs, re-seed content if versions differ, respawn both, resync both. No
+  single-task respawn (see quiesce invariant).
 
 ### World events (FARMTASK)
 
@@ -292,7 +337,11 @@ increment 1.
   gains phases per increment: seeds (two crops planted, divergent growth
   rates), workshop (deposit → craft → RUINED → forced discovery → collect,
   byte-exact mailbox+ring), events (poked LFSR seed forces EV_NEWS; verify
-  blight kills + day tick), dual-task respawn after reset.
+  blight kills + day tick), dual-task quiesce-recovery after reset (kernel
+  reset → both reload → both respawn → both rings resync).
+- tb assertion: host loader write (`b_wr_ok`) coincident with an Arlet BRAM
+  write (`a_wr_ok`) = test failure. Guards the quiesce invariant forever and
+  catches v1's latent idle-stack-during-LOADBLOB case.
 - Full suite stays the pre-merge gate (~9 min); `+vcd` only when waves needed.
 - Bench per increment with `/obs-screenshot`; monitor pokes force rare paths
   (discovery roll, blight) on hardware. A monitor poke is a second writer —
