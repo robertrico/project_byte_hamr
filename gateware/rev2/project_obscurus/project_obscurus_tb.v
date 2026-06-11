@@ -1303,29 +1303,33 @@ module project_obscurus_tb;
                 begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
             else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
         end
-        // (c) HARVEST -> CROPS=1-3 (LFSR yield), plot 0
-        // yield is LFSR-phase-dependent: cycle-deterministic in sim but
-        // fragile to tb edits, so assert the honest 1-3 range
+        // (c) HARVEST -> CROPS=0-3 (LFSR yield; 0 = rare crop-death roll),
+        // plot 0. Yield is LFSR-phase-dependent: cycle-deterministic in
+        // sim but fragile to tb edits, so assert the honest 0-3 range.
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
         sdram_read(10'd32, 16'h0216, r);
-        if (r < 8'h01 || r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 1-3 (LFSR yield)", r); end
+        if (r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 0-3 (LFSR yield)", r); end
         end
 
         // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
         begin : farm_econ
         reg [7:0] r, r2; reg ok; integer nc, want;
-        // yield is 1-3 (LFSR), so SELL the ACTUAL crop count to empty
-        // the barn, then assert E5. Expected cash scales with yield.
+        // yield is 0-3 (LFSR, 0 = rare death roll), so SELL the ACTUAL
+        // crop count to empty the barn, then assert E5. Expected cash
+        // scales with yield. nc==0 (death) -> skip the sell leg.
         sdram_read(10'd32, 16'h0216, r); nc = r;
-        if (nc < 1 || nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 1-3", nc); end
-        farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
-        want = 100 + nc*10;
-        sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
-        if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
-        sdram_read(10'd32, 16'h0212, r);
-        if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
+        if (nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 0-3", nc); end
+        want = 100;
+        if (nc > 0) begin
+            farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
+            if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
+            want = 100 + nc*10;
+            sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
+            if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
+            sdram_read(10'd32, 16'h0212, r);
+            if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
+        end else $display("note: death roll at m1 harvest, sell leg skipped");
         // SELL with no crops -> E5
         farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
         if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
