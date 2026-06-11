@@ -356,11 +356,12 @@ module project_obscurus_tb;
         sdram_write(10'd32, 16'h0204, a2);
         sdram_write(10'd32, 16'h0200, 8'h01);          // FLAG last
         ok = 0; res = 8'hFF;
-        for (t=0; t<200000 && !ok; t=t+1) begin
+        for (t=0; t<5000 && !ok; t=t+1) begin
             sdram_read(10'd32, 16'h0200, f);
             if (f == 8'h00) ok = 1;
         end
         if (ok) sdram_read(10'd32, 16'h0205, res);
+        else $display("farm_cmd timeout op=%02X (FLAG never cleared)", op);
     end endtask
 
     // reader-rule drain: from farm_tail/farm_seq, dispatch into ev arrays
@@ -369,7 +370,7 @@ module project_obscurus_tb;
     reg [7:0] ev_type [0:255]; reg [7:0] ev_p0 [0:255]; reg [7:0] ev_p1 [0:255];
     integer farm_resyncs = 0;
     task farm_drain;
-        reg [7:0] h, s, s2, rs, rt, rp0, rp1; integer guard;
+        reg [7:0] h, s, s2, rs, rt, rp0, rp1; integer guard; integer rsg;
     begin
         sdram_read(10'd32, 16'h0003, h);
         guard = 0;
@@ -381,11 +382,16 @@ module project_obscurus_tb;
             if (rs !== farm_seq) begin
                 // overrun -> resync: stable (SEQCTR,HEAD) pair
                 farm_resyncs = farm_resyncs + 1;
-                s2 = 8'hFF;
-                while (s2 !== s) begin
+                s2 = 8'hFF; rsg = 0;
+                while (s2 !== s && rsg < 16) begin
                     sdram_read(10'd32, 16'h0002, s);
                     sdram_read(10'd32, 16'h0003, h);
                     sdram_read(10'd32, 16'h0002, s2);
+                    rsg = rsg + 1;
+                end
+                if (s2 !== s) begin
+                    errors = errors + 1;
+                    $display("FAIL farm_drain resync: no stable (SEQCTR,HEAD) pair in 16 tries");
                 end
                 farm_tail = h; farm_seq = s;
             end else begin
@@ -1204,6 +1210,8 @@ module project_obscurus_tb;
         end
 
         // ===== FARM: event ring + mailbox protocol (skill 2, GBANK 32) =====
+        // NOTE: farm phases m1/econ/lap are one ordered narrative -
+        // do not reorder or skip (later phases consume earlier state).
         $display("--- FARM protocol tests ---");
         farm_init;
         farm_load;
@@ -1329,7 +1337,7 @@ module project_obscurus_tb;
         end
         end
 
-        // ===== lap recovery: >64 events with stale reader cursor =====
+        // ===== FARM lap recovery: >64 events with stale reader cursor =====
         begin : farm_lap
         reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
         baseresync = farm_resyncs;
