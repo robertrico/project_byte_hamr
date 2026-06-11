@@ -34,6 +34,8 @@ CROP = $0B27
 TGT = $0B28
 M20L = $0B29
 M20H = $0B2A
+LFSRL = $0B2B
+LFSRH = $0B2C
 
  JMP GAME
 
@@ -43,8 +45,15 @@ GAME
  JSR RELOADM
  LDA #0
  STA DECAYC
+* seed LFSR non-zero (constant; entropy is
+* the wall-clock sample phase at harvest)
+ LDA #$C3
+ STA LFSRL
+ LDA #$A5
+ STA LFSRH
 GLOOP
  JSR DOMBOX
+ JSR NEXTRND
 * growth 24-bit down-counter
  LDA GROWC0
  SEC
@@ -97,6 +106,20 @@ RELOADM
  LDA #MKTD2
  STA MKTC2
  RTS
+
+* === NEXTRND: 16-bit Galois LFSR step ===
+* free-running, stepped once per GLOOP pass
+NEXTRND
+ LSR LFSRH
+ ROR LFSRL
+ BCC NRNO
+ LDA LFSRH
+ EOR #$B4
+ STA LFSRH
+NRNO
+ RTS
+* yield map: LFSR&3 -> 1,1,2,3 (avg 1.5)
+YTAB DFB 1,1,2,3
 
 * === PORT HELPERS ===
 * RDB: read GBANK byte at addr A(lo) Y(hi) -> A
@@ -211,8 +234,21 @@ HVOK
  LDA #RERRFULL
  JMP MBFIN
 HVROOM
+* yield 1-3 from free-running LFSR (QTY
+* reuse safe - mailbox dispatch sequential)
+ LDA LFSRL
+ AND #$03
+ TAX
+ LDA YTAB,X
+ STA QTY
+ LDA #<FCROPS
+ LDY #>FCROPS
+ JSR RDB
  CLC
- ADC #1
+ ADC QTY
+ BCC HVNC
+ LDA #$FF
+HVNC
  TAX
  LDA #<FCROPS
  LDY #>FCROPS
