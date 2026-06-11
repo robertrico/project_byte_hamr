@@ -99,6 +99,22 @@ module project_obscurus_tb;
     localparam integer LIFE8GRLEN = 680;
     reg [7:0] life8grimg [0:1023];
     initial $readmemh("life8gr.mem", life8grimg);
+    // ---- FARM game protocol (skill 2 @ $0600, GBANK=32) ----
+    // Blob length is MEASURED from the readmemh image, not hardcoded:
+    // $readmemh leaves unwritten entries X, so scan for the last defined
+    // byte. A stale constant here once truncated PUTEV off the blob tail
+    // (ring silently dead) - never hardcode this again.
+    reg [7:0] farmimg [0:2047];
+    initial $readmemh("farmtask.mem", farmimg);
+    integer FARMLEN;
+    initial begin
+        #1; FARMLEN = 0;
+        begin : flen_scan
+            integer fi;
+            for (fi = 0; fi < 2048; fi = fi + 1)
+                if (farmimg[fi] !== 8'hxx) FARMLEN = fi + 1;
+        end
+    end
     reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
     integer   bufsum, mvi;
 
@@ -308,11 +324,114 @@ module project_obscurus_tb;
         end
     endtask
 
+    // ---- FARM protocol helpers (skill 2, GBANK=32) ----
+    // load FARMTASK blob -> coproc BRAM $0600, table[2]=$0600
+    task farm_load;
+        integer i;
+    begin
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h06);      // CP_LADDR = $0600
+        for (i=0; i<FARMLEN; i=i+1) load_byte(farmimg[i]);
+        wr_reg(4'h9, 8'h04); wr_reg(4'hA, 8'h02);      // table[2] @ $0204
+        load_byte(8'h00); load_byte(8'h06);            // vector = $0600
+    end endtask
+
+    // init GBANK cold-start state. SIG written here too (tb rig writes it
+    // up front; FARM.S cold start writes SIG last - the liveness ordering
+    // matters on hardware, not in this single-threaded rig). SIG also serves
+    // as the lap-test regression net: ring page-wrap bugs land on $0000-$0003.
+    task farm_init;
+        integer i;
+    begin
+        sdram_write(10'd32, 16'h0000, 8'h46);          // SIG 'F'
+        sdram_write(10'd32, 16'h0001, 8'h4D);          // SIG 'M'
+        sdram_write(10'd32, 16'h0002, 8'h00);          // SEQCTR
+        sdram_write(10'd32, 16'h0003, 8'h00);          // HEAD
+        sdram_write(10'd32, 16'h0200, 8'h00);          // MFLAG
+        sdram_write(10'd32, 16'h0210, 8'd10);          // PRICEL=BASE
+        sdram_write(10'd32, 16'h0211, 8'h00);
+        sdram_write(10'd32, 16'h0212, 8'h00);          // SUPPLY
+        sdram_write(10'd32, 16'h0213, 8'd100);         // CASHL
+        sdram_write(10'd32, 16'h0214, 8'h00);
+        sdram_write(10'd32, 16'h0215, 8'd5);           // SEEDS
+        sdram_write(10'd32, 16'h0216, 8'h00);          // CROPS
+        for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0300+i, 8'h00);
+    end endtask
+
+    // send one command, poll FLAG clear, return RESULT. ok=0 on timeout.
+    task farm_cmd(input [7:0] op, input [7:0] a0, input [7:0] a1,
+                  input [7:0] a2, output [7:0] res, output ok);
+        integer t; reg [7:0] f;
+    begin
+        sdram_write(10'd32, 16'h0201, op);
+        sdram_write(10'd32, 16'h0202, a0);
+        sdram_write(10'd32, 16'h0203, a1);
+        sdram_write(10'd32, 16'h0204, a2);
+        sdram_write(10'd32, 16'h0200, 8'h01);          // FLAG last
+        ok = 0; res = 8'hFF;
+        for (t=0; t<5000 && !ok; t=t+1) begin
+            sdram_read(10'd32, 16'h0200, f);
+            if (f == 8'h00) ok = 1;
+        end
+        if (ok) sdram_read(10'd32, 16'h0205, res);
+        else $display("farm_cmd timeout op=%02X (FLAG never cleared)", op);
+    end endtask
+
+    // reader-rule drain: from farm_tail/farm_seq, dispatch into ev arrays
+    reg [7:0] farm_tail = 0, farm_seq = 0;
+    integer farm_nev = 0;
+    reg [7:0] ev_type [0:255]; reg [7:0] ev_p0 [0:255]; reg [7:0] ev_p1 [0:255];
+    integer farm_resyncs = 0;
+    task farm_drain;
+        reg [7:0] h, s, s2, rs, rt, rp0, rp1; integer guard; integer rsg;
+    begin
+        sdram_read(10'd32, 16'h0003, h);
+        guard = 0;
+        while (farm_tail !== h && guard < 128) begin
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 0, rs);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 1, rt);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 2, rp0);
+            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 3, rp1);
+            if (rs !== farm_seq) begin
+                // overrun -> resync: stable (SEQCTR,HEAD) pair
+                farm_resyncs = farm_resyncs + 1;
+                s2 = 8'hFF; rsg = 0;
+                while (s2 !== s && rsg < 16) begin
+                    sdram_read(10'd32, 16'h0002, s);
+                    sdram_read(10'd32, 16'h0003, h);
+                    sdram_read(10'd32, 16'h0002, s2);
+                    rsg = rsg + 1;
+                end
+                if (s2 !== s) begin
+                    errors = errors + 1;
+                    $display("FAIL farm_drain resync: no stable (SEQCTR,HEAD) pair in 16 tries");
+                end
+                farm_tail = h; farm_seq = s;
+            end else begin
+                ev_type[farm_nev]=rt; ev_p0[farm_nev]=rp0; ev_p1[farm_nev]=rp1;
+                farm_nev = farm_nev + 1;
+                farm_tail = (farm_tail + 1) & 8'h3F;
+                farm_seq = farm_seq + 1;
+            end
+            guard = guard + 1;
+        end
+    end endtask
+
     initial begin
-        $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
+        // VCD only on demand (+vcd): full-suite dumps reach ~20 GB and
+        // dominate wall time. make sim PLUSARGS=+vcd when waves are needed.
+        if ($test$plusargs("vcd")) begin
+            $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
+        end
         nRES_READ=1'b0; #1000; nRES_READ=1'b1;
         wait (dut.ready);
         $display("[%0t] ready", $time);
+
+        // +farmonly skips every pre-farm phase (kernel boots on reset; the
+        // farm section is self-contained: farm_init/farm_load own all state,
+        // slot 0 is free on a fresh boot). Full suite remains the default
+        // and the pre-merge gate.
+        if ($test$plusargs("farmonly")) $display("--- farmonly: skipping pre-farm phases ---");
+        else begin : prefarm
 
         // 1. W-then-R round trip
         sdram_write(10'd0, 16'h0000, 8'hAA);
@@ -1113,8 +1232,188 @@ module project_obscurus_tb;
                 $display("FAIL multiverse-GR TICK1 %0d errors", errors);
         end
 
+        end // prefarm (+farmonly skips to here)
+
+        // ===== FARM: event ring + mailbox protocol (skill 2, GBANK 32) =====
+        // NOTE: farm phases m1/econ/lap are one ordered narrative -
+        // do not reorder or skip (later phases consume earlier state).
+        $display("--- FARM protocol tests ---");
+        farm_init;
+        farm_load;
+        rd_reg(4'h1, tmp);                    // ACTIVE: slot 0 must be free
+        if (tmp[0]) begin errors=errors+1;
+            $display("FAIL farm slot0 busy before spawn ACTIVE=%02X", tmp); end
+        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);   // skill 2, budget 0 forever
+        ring(2'd0);
+        // (a)-(e): named block - V2005 needs names for local declarations
+        begin : farm_m1
+        reg [7:0] r; reg ok;
+        // (a) STATUS probe
+        farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm STATUS r=%h ok=%b", r, ok); end
+        else $display("PASS farm STATUS");
+        // (b) PLANT 3,3 -> plot $033F = 1, SEEDS 4
+        farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm PLANT r=%h", r); end
+        sdram_read(10'd32, 16'h033F, r);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(3,3)=%h want 01", r); end
+        sdram_read(10'd32, 16'h0215, r);
+        if (r!==8'h04) begin errors=errors+1; $display("FAIL SEEDS=%h want 04", r); end
+        // PLANT corner 19,19 -> $048F (PLOTADR 16-bit math)
+        farm_cmd(8'h01, 8'd19, 8'd19, 8'h00, r, ok);
+        sdram_read(10'd32, 16'h048F, r);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(19,19)=%h", r); end
+        // (d) errors: PLANT occupied, HARVEST unripe
+        // (must run before 5 grow ticks elapse - see FSIM divider note)
+        farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
+        if (r!==8'hE1) begin errors=errors+1; $display("FAIL occupied r=%h want E1", r); end
+        farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
+        if (r!==8'hE2) begin errors=errors+1; $display("FAIL unripe r=%h want E2", r); end
+        // (d cont.) SELL qty=0 / BUYSEED qty=0 -> ERR_BAD
+        farm_cmd(8'h03, 8'd0, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL sell-0 r=%h want E6", r); end
+        farm_cmd(8'h04, 8'd0, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL buy-0 r=%h want E6", r); end
+        // (b cont.) wait on (19,19) - the LAST plot planted; watching (3,3)
+        // races a grow tick landing between the two PLANT commands
+        begin : farm_ripen
+        integer t; reg [7:0] pv;
+        pv = 0; t = 0;
+        while (pv !== 8'h06 && t < 400) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd32, 16'h048F, pv); t = t + 1;
+        end
+        if (pv!==8'h06) begin errors=errors+1; $display("FAIL plot never ripened"); end
+        end
+        // drain-with-retry: DOGROW writes the plot byte (poll target) BEFORE
+        // PUTEV finishes - a single drain can race the in-flight publish of
+        // the LAST-scanned plot's event. Re-drain until both events land.
+        begin : farm_evwait
+        integer t;
+        farm_drain;
+        t = 0;
+        while (farm_nev < 2 && t < 100) begin
+            repeat (10000) @(posedge clk100);
+            farm_drain; t = t + 1;
+        end
+        end
+        if (farm_nev < 2) begin errors=errors+1; $display("FAIL want 2 EV_RIPE got %0d", farm_nev); end
+        else begin
+            if (ev_type[0]!==8'h01 || ev_p0[0]!==8'd3 || ev_p1[0]!==8'd3)
+                begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
+            else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
+        end
+        // (c) HARVEST -> CROPS=0-3 (LFSR yield; 0 = rare crop-death roll),
+        // plot 0. Yield is LFSR-phase-dependent: cycle-deterministic in
+        // sim but fragile to tb edits, so assert the honest 0-3 range.
+        farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
+        sdram_read(10'd32, 16'h0216, r);
+        if (r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 0-3 (LFSR yield)", r); end
+        end
+
+        // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
+        begin : farm_econ
+        reg [7:0] r, r2; reg ok; integer nc, want;
+        // yield is 0-3 (LFSR, 0 = rare death roll), so SELL the ACTUAL
+        // crop count to empty the barn, then assert E5. Expected cash
+        // scales with yield. nc==0 (death) -> skip the sell leg.
+        sdram_read(10'd32, 16'h0216, r); nc = r;
+        if (nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 0-3", nc); end
+        want = 100;
+        if (nc > 0) begin
+            farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
+            if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
+            want = 100 + nc*10;
+            sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
+            if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
+            sdram_read(10'd32, 16'h0212, r);
+            if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
+        end else $display("note: death roll at m1 harvest, sell leg skipped");
+        // SELL with no crops -> E5
+        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
+        // BUYSEED 2 @ cost 3 -> CASH want-6, SEEDS 5
+        farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
+        want = want - 6;
+        sdram_read(10'd32, 16'h0213, r);
+        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", r, want); end
+        sdram_read(10'd32, 16'h0215, r);
+        if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
+        // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged
+        // (tb-only direct poke: rig deliberately bypasses single-writer rule)
+        sdram_write(10'd32, 16'h0215, 8'd254);
+        farm_cmd(8'h04, 8'd5, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE7) begin errors=errors+1; $display("FAIL seed-full r=%h want E7", r); end
+        sdram_read(10'd32, 16'h0215, r);
+        if (r!==8'd254) begin errors=errors+1; $display("FAIL SEEDS clobbered=%d", r); end
+        sdram_write(10'd32, 16'h0215, 8'd5);   // restore
+        // EV_PRICE drift: force SUPPLY=10 -> TGT=5. Supply decays while the
+        // price walks (DECAYDIV=4), so the target RISES under it and the
+        // price recovers - assert the MINIMUM seen, not the endpoint.
+        sdram_write(10'd32, 16'h0212, 8'd10);
+        begin : farm_pwalk
+        integer t; reg [7:0] pv, pmin;
+        pmin = 8'd255;
+        for (t=0; t<200; t=t+1) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd32, 16'h0210, pv);
+            if (pv < pmin) pmin = pv;
+        end
+        if (pmin > 8'd7) begin errors=errors+1; $display("FAIL price min=%d want <=7", pmin); end
+        end
+        farm_drain;
+        begin : farm_evcount
+        integer i; integer sawprice;
+        sawprice = 0;
+        for (i=0; i<farm_nev; i=i+1) if (ev_type[i]===8'h02) sawprice = sawprice + 1;
+        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE got %0d", sawprice); end
+        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE", sawprice);
+        end
+        end
+
+        // ===== FARM lap recovery: >64 events with stale reader cursor =====
+        begin : farm_lap
+        reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
+        baseresync = farm_resyncs;
+        // plant 70 plots (rows 5..8, cols 0..19 = 80 available; use 70)
+        sdram_write(10'd32, 16'h0215, 8'd255);          // plenty of seeds (tb poke)
+        for (i=0; i<70; i=i+1)
+            farm_cmd(8'h01, i%20, 8'd5 + i/20, 8'h00, r, ok);
+        // wait until the LAST-planted plot (9,8) ripens -> 70 EV_RIPE, ring lapped
+        t = 0; r = 0;
+        while (r !== 8'h06 && t < 600) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd32, 16'h0300 + 8*20 + 9, r);  // plot (9,8) = $03A9
+            t = t + 1;
+        end
+        if (r!==8'h06) begin errors=errors+1; $display("FAIL lap: plots never ripened"); end
+        farm_drain;
+        if (farm_resyncs < baseresync + 1)
+            begin errors=errors+1; $display("FAIL lap: resyncs=%0d want >=%0d", farm_resyncs, baseresync+1); end
+        // SIG regression net: a ring page-wrap bug writes records over
+        // $0000-$0003 - SIG must survive 70+ publishes including indexes 60-63
+        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
+        if (r!==8'h46 || r2!==8'h4D)
+            begin errors=errors+1; $display("FAIL lap: SIG destroyed %h %h (ring wrapped into page 0)", r, r2); end
+        // post-resync: cursor must be live -> one more event drains clean
+        sdram_write(10'd32, 16'h0212, 8'd20);            // kick price -> EV_PRICE soon
+        begin : farm_postsync
+        integer n0; n0 = farm_nev;
+        t = 0;
+        while (farm_nev == n0 && t < 200) begin
+            repeat (10000) @(posedge clk100);
+            farm_drain; t = t + 1;
+        end
+        if (farm_nev == n0)
+            begin errors=errors+1; $display("FAIL lap: post-resync drain dirty"); end
+        else $display("PASS lap recovery: resync + SIG intact + clean drain");
+        end
+        end
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
-    initial begin #600_000_000; $display("TIMEOUT"); $finish; end
+    initial begin #2_000_000_000; $display("TIMEOUT"); $finish; end
 endmodule

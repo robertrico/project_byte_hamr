@@ -25,9 +25,10 @@ module sdram_model (
     localparam CMD_READ   = 4'b0101;
     localparam CMD_WRITE  = 4'b0100;
 
-    // 1M words covers monitor banks 0..31 (phys byte addr 0..2M-1, widx=phys>>1).
-    // Conway's Multiverse lives in banks 16..24, well beyond the old 2-bank model.
-    localparam WORDS = 1048576;    // 1<<20 words = banks 0..31
+    // 2M words covers monitor banks 0..63 (phys byte addr 0..4M-1, widx=phys>>1).
+    // Conway's Multiverse lives in banks 16..24; the FARM game world (GBANK=32)
+    // sits at exactly the old 1M-word boundary, so the model was doubled.
+    localparam WORDS = 2097152;    // 1<<21 words = banks 0..63
     reg [15:0] mem [0:WORDS-1];
     integer ii;
     initial for (ii = 0; ii < WORDS; ii = ii + 1) mem[ii] = 16'h0000;

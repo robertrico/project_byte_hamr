@@ -90,7 +90,7 @@ Ops (v1):
 |---|---|---|---|
 | $00 | STATUS | — | OK (liveness probe) |
 | $01 | PLANT | x, y | OK / ERR_OCCUPIED / ERR_NO_SEEDS |
-| $02 | HARVEST | x, y | OK / ERR_NOT_RIPE / ERR_FULL (CROPS=255: plot stays ripe, barn full) |
+| $02 | HARVEST | x, y | OK (CROPS += 1-3, LFSR yield) / ERR_NOT_RIPE / ERR_FULL (CROPS=255: plot stays ripe, barn full) |
 | $03 | SELL | qty | OK / ERR_NO_CROPS |
 | $04 | BUYSEED | qty | OK / ERR_NO_CASH / ERR_FULL (SEEDS would exceed 255) |
 
@@ -102,7 +102,7 @@ After any OK result for SELL/BUYSEED/PLANT/HARVEST, the //e re-reads the 7-byte 
 
 ## GAMETASK (coproc, Merlin)
 
-Registered as a skill — default **skill id 3** (GRVERSE uses 2; verify the $0200 table at plan time) — spawned via `CP_CALL` with **budget=0** (run forever), forever loop that never reaches DONE — the LIFE8 multiverse pattern. ORG **$0600** in coproc BRAM: clear of resident LIFE8GR at $0300 (~$2B1 long), below mailboxes at $0F80, ~2.4 KB available. Uses **no zero page** (kernel owns $80-$EF) — absolute BRAM scratch only.
+Registered as a skill — **skill id 2** (Conway uses 0/1 — verified) — spawned via `CP_CALL` with **budget=0** (run forever), forever loop that never reaches DONE — the LIFE8 multiverse pattern. ORG **$0600** in coproc BRAM: clear of resident LIFE8GR at $0300 (~$2B1 long), below mailboxes at $0F80, ~2.4 KB available. Uses **no zero page** (kernel owns $80-$EF) — absolute BRAM scratch only.
 
 Per loop pass:
 
@@ -122,7 +122,7 @@ Event publish (`PUTEV` in `EVLIB.S`, PUT-include): reads SEQCTR + HEAD, writes r
 
 **Startup:** read SIG via SDM.
 - Absent → **cold start:** initialize GBANK (SEQCTR=0, HEAD=0, MARKET defaults: CASH=100, SEEDS=5, CROPS=0, PRICE=BASE, SUPPLY=0; grid zeroed; mailbox FLAG=0), load GAMETASK blob into coproc BRAM via `CP_LADDRLO/HI` + `CP_WDATA`, write its skill-table vector (coproc BRAM $0200+id*2 — distinct address space from the GBANK GRID offset $0200), `CP_CALL` skill id with budget=0, **then write SIG last**. SIG present therefore implies the spawn completed.
-- Present → **probable re-entry:** SIG alone is not proof of life (FPGA reflash, other coproc software loaded over GAMETASK, stray bytes). Send `STATUS` (OP $00) probe with a generous **~3 s timeout** (a false "dead" verdict is the dangerous one): OK → resync and resume play (the idle hook). Timeout → world is dead; report it and offer cold start. **Plan-time verify:** what `CP_CALL` does on a slot whose task still runs — cold start over a slow-but-alive GAMETASK would create two writers (invariant 1 broken). The long probe timeout makes this remote (loop pass ≪ 1 s), but pin the behavior.
+- Present → **probable re-entry:** SIG alone is not proof of life (FPGA reflash, other coproc software loaded over GAMETASK, stray bytes). Send `STATUS` (OP $00) probe with a generous **~3 s timeout** (a false "dead" verdict is the dangerous one): OK → resync and resume play (the idle hook). Timeout → world is dead; report it and offer cold start. **Plan-time verify:** what `CP_CALL` does on a slot whose task still runs — cold start over a slow-but-alive GAMETASK would create two writers (invariant 1 broken). The long probe timeout makes this remote (loop pass ≪ 1 s), but pin the behavior. Verified: CP_CALL scans CP_ACTIVE for the lowest clear bit and cannot overwrite a running slot; the residual risk is a duplicate spawn in a second slot.
 
 **Resync:** re-seed the reader's cursor from a consistent (SEQCTR, HEAD) pair: read SEQCTR, read HEAD, read SEQCTR again; retry until the two SEQCTR reads match (a publish bumps both, so an unchanged SEQCTR brackets a stable HEAD). Then `TAIL = HEAD`, `expected = SEQCTR`. (Benign hole: the writer bumps SEQCTR before HEAD, so a stable-SEQCTR window can still capture the old HEAD — worst case one extra resync on the next drain, self-healing via the mismatch check. Accepted.) Read MARKET block, read 400-byte grid via `SDM_RDNEXT` streaming, full redraw. 16-bit fields (PRICE, CASH) read twice until consecutive reads match (coproc may write between byte reads). Without the `expected = SEQCTR` re-seed, every post-resync event would mismatch and re-trigger resync forever.
 
@@ -180,7 +180,7 @@ Makefile: `farm` target assembles FARMTASK.S → bin → generates FARMTASKB.S (
 
 ## Testing + milestones
 
-**M1 — sim green.** iverilog (-g2005) tb, `coproc_c4_tb.v` pattern: load kernel + game blob, host-model drives CP ports (register + CP_CALL budget=0) and SDM ports. Assert, in order: (a) PLANT 3,3 → FLAG clears, RESULT=OK, grid[3,3]=1; (b) run → plot walks 1→6, EV_RIPE in ring, SEQ/HEAD consistent; (c) HARVEST → CROPS=1; SELL → CASH/SUPPLY move, EV_PRICE eventually published; (d) error paths: PLANT occupied → ERR_OCCUPIED, HARVEST unripe → ERR_NOT_RIPE; (e) STATUS probe → OK; (f) **lap recovery**: publish 65+ events while the host-model reader holds a stale cursor, then drain → SEQ mismatch detected → resync re-seeds (TAIL=HEAD, expected=SEQCTR) and subsequent events drain clean. Only test of the overrun path — re-entry resyncs unconditionally, so M4 never exercises mismatch detection. Sim build uses tiny dividers.
+**M1 — sim green.** iverilog (-g2005) tb, `coproc_c4_tb.v` pattern: load kernel + game blob, host-model drives CP ports (register + CP_CALL budget=0) and SDM ports. Assert, in order: (a) PLANT 3,3 → FLAG clears, RESULT=OK, grid[3,3]=1; (b) run → plot walks 1→6, EV_RIPE in ring, SEQ/HEAD consistent; (c) HARVEST → CROPS=1-3 (LFSR yield, v1.1); SELL → CASH/SUPPLY move, EV_PRICE eventually published; (d) error paths: PLANT occupied → ERR_OCCUPIED, HARVEST unripe → ERR_NOT_RIPE; (e) STATUS probe → OK; (f) **lap recovery**: publish 65+ events while the host-model reader holds a stale cursor, then drain → SEQ mismatch detected → resync re-seeds (TAIL=HEAD, expected=SEQCTR) and subsequent events drain clean. Only test of the overrun path — re-entry resyncs unconditionally, so M4 never exercises mismatch detection. Sim build uses tiny dividers.
 
 **M2 — protocol on silicon, no UI.** Register + spawn GAMETASK, then use the project_obscurus $C800 monitor to watch HEAD advance and hand-poke a mailbox command. Isolates protocol from game code.
 

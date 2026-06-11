@@ -1,6 +1,8 @@
 # Farm + Market Event Game Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+> **Status:** Tasks 1-10 executed on branch farm-game (M1 sim-verified 38 PASS / 0 FAIL). M2-M5 are bench milestones — pending hardware session.
 
 **Goal:** SDRAM event ring + command mailbox protocols on the C4 coproc, proven by a playable Lo-Res farm/market game (spec: `docs/superpowers/specs/2026-06-10-farm-market-event-game-design.md`).
 
@@ -43,7 +45,7 @@ Makefile                   MODIFY: farmtask/farmtaskb/farm/farmsim targets + sdm
 **Files:**
 - Create: `software/SDM/FARMEQU.S`
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 ```
 * FARMEQU.S - FARM GAME SHARED EQUATES
@@ -150,7 +152,7 @@ Notes for the implementer:
 - `GROWSN` not `GROWS` — LIFE8GR already claims `GROWS`; if both blobs were ever assembled into one listing the collision would be silent.
 - SDRAM port equates live here (not duplicated in FARMTASK.S) because EVLIB.S needs them too. LIFEMAPGR.S also defines them; FARMTASK must NOT also PUT LIFEMAPGR (duplicate-symbol error).
 
-- [ ] **Step 2: Assemble-check it parses (PUT into a throwaway shell)**
+- [x] **Step 2: Assemble-check it parses (PUT into a throwaway shell)**
 
 ```bash
 cd software/SDM && printf ' TYP $06\n DSK eqtest.bin\n ORG $0600\n PUT FARMEQU\n NOP\n' > EQTEST.S && Merlin32 -V . EQTEST.S && rm -f EQTEST.S eqtest.bin eqtest_Output.txt
@@ -159,7 +161,7 @@ cd software/SDM && printf ' TYP $06\n DSK eqtest.bin\n ORG $0600\n PUT FARMEQU\n
 (Use the exact Merlin32 invocation from the Makefile: `$(MERLIN32) $(MERLIN_LIB)` — check `grep MERLIN32 Makefile` for the binary path/flags and substitute.)
 Expected: assembles with no errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add software/SDM/FARMEQU.S
@@ -175,7 +177,7 @@ git commit -m "feat(farm): FARMEQU shared equates - GBANK map, ops, events, divi
 
 PUTEV contract (spec-normative order): write 4 record bytes (SEQ=SEQCTR), then SEQCTR++, then HEAD++ last. Caller sets `EVTYPE/EVP0/EVP1`. Uses absolute scratch only (no ZP — kernel owns it). Each port burst SEI/CLI-bracketed. Write port needs the address re-set per byte; the ring is page-aligned at $0100, so the record burst keeps SADDRHI constant at >FRING and runs an 8-bit lo byte (`HEAD*4` max 252 + 3 = 255 — no carry possible by construction).
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 ```
 * EVLIB.S - COPROC EVENT RING PUBLISH
@@ -259,7 +261,7 @@ PUTEV
 
 Note: the record burst runs with SADDRHI = >FRING ($01) and only SADDRLO re-set per byte (page-aligned ring, no carry possible); the SEQCTR/HEAD writes switch SADDRHI back to 0. The whole record+SEQCTR+HEAD burst sits in ONE SEI/CLI bracket deliberately: it is 6 port writes (~30 µs), and publishing atomically means a preempting task can never observe HEAD published without SEQCTR (keeps the resync pair-read hole to the documented benign case).
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add software/SDM/EVLIB.S
@@ -277,7 +279,7 @@ git commit -m "feat(farm): EVLIB - PUTEV ring publish, normative record/SEQCTR/H
 
 Single forever-loop task. Every pass: mailbox; growth divider; market divider. All scratch absolute at $0B10+ (EVLIB owns $0B00-$0B05; LIFE8GR owns $0C00-$0D67 — stay below $0C00).
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 ```
 * FARMTASK.S - FARM GAME COPROC TASK
@@ -856,14 +858,14 @@ MKDONE
 - Branch-range check: the dispatch `BEQ/CMP` chain reaches across the PLANT/HARVEST bodies — `JSELL/JBUY` trampolines are there because CSELL/CBUY are >127 bytes away. If Merlin32 reports branch out of range anywhere else, insert the same `Jxxx JMP target` trampoline pattern.
 - Blob size estimate ~900 bytes → $0600-$09xx, well under the $0F80 mailboxes and clear of $0B00 scratch.
 
-- [ ] **Step 2: Assemble**
+- [x] **Step 2: Assemble**
 
 ```bash
 cd software/SDM && Merlin32 -V . FARMTASK.S
 ```
 Expected: `FARMTASK.bin` produced, no errors. Check size: `wc -c FARMTASK.bin` — expect 700-1100 bytes; MUST be < 2432 ($0600+size ≤ $0F80).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add software/SDM/FARMTASK.S
@@ -877,7 +879,7 @@ git commit -m "feat(farm): FARMTASK - mailbox dispatch, growth scan, market drif
 **Files:**
 - Modify: `Makefile` (after the `life8gr:` target block, ~line 528, and the `sdmdisk` block ~line 558)
 
-- [ ] **Step 1: Add build rules**
+- [x] **Step 1: Add build rules**
 
 ```make
 # FARMTASK sim blob (FSIM=1 tiny dividers) -> farmtask.mem for the tb.
@@ -923,14 +925,14 @@ sdmdisk: ... farm     # append 'farm' to the prerequisite list
 	$(AC_CLASSIC) -p $(SDM_PO) FARM BIN 0x6000 < $(SDM_DIR)/FARM.bin
 ```
 
-- [ ] **Step 2: Verify the sim-blob rule works (FARM.S doesn't exist yet — only run farmtasksim)**
+- [x] **Step 2: Verify the sim-blob rule works (FARM.S doesn't exist yet — only run farmtasksim)**
 
 ```bash
 make farmtasksim && head -3 gateware/rev2/project_obscurus/farmtask.mem && wc -l gateware/rev2/project_obscurus/farmtask.mem
 ```
 Expected: hex lines; line count = FARMTASKSIM.bin byte count. The `make sim` MEM_FILES wildcard picks farmtask.mem up automatically (Makefile line 127/349).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Makefile
@@ -944,7 +946,7 @@ git commit -m "build(farm): farmtasksim mem + FARMTASKB DFB autogen + farm/sdmdi
 **Files:**
 - Modify: `gateware/rev2/project_obscurus/project_obscurus_tb.v` (append after the GR-oracle section; new helper tasks near the other task definitions ~line 300; test calls before the final PASS/FAIL summary in the `initial` block)
 
-- [ ] **Step 1: Add farm image + helper tasks**
+- [x] **Step 1: Add farm image + helper tasks**
 
 Near the LIFE8GR image declarations (~line 99):
 
@@ -1044,7 +1046,7 @@ Near the other tasks (~line 300):
     end endtask
 ```
 
-- [ ] **Step 2: Add the M1 test sequence in the `initial` block (before the final summary)**
+- [x] **Step 2: Add the M1 test sequence in the `initial` block (before the final summary)**
 
 ```verilog
         // ===== FARM: event ring + mailbox protocol (skill 2, GBANK 32) =====
@@ -1110,21 +1112,21 @@ Near the other tasks (~line 300):
 
 Notes: `clk100` is the tb's existing clock net name — verify (`grep "posedge clk" project_obscurus_tb.v | head -3`) and match. The ripen wait loop bounds total sim time; with FSIM dividers (GROWD=$80 = 128 passes/tick) 5 stages arrive well inside the 400 × 10k-cycle budget. Do not shrink GROWD below ~$80: the occupied/unripe error tests must complete before (3,3) ripens. Two tb hygiene points: (1) all local declarations need **named** begin blocks (`begin : farm_m1` — V2005 rule, existing tb style); (2) tb `sdram_write` pokes to live game state deliberately violate the single-writer invariant — fine in the rig, never copy the pattern into //e code. Before `stage_mbox(0, ...)`, verify slot 0 is actually free: `rd_reg(4'h1, r)` and assert `r[0]==0` (the prior multiverse tests end with their task halted, but make it explicit).
 
-- [ ] **Step 3: Set FARMLEN to the real blob size**
+- [x] **Step 3: Set FARMLEN to the real blob size**
 
 ```bash
 make farmtasksim && wc -l gateware/rev2/project_obscurus/farmtask.mem
 ```
 Put that number in `FARMLEN`.
 
-- [ ] **Step 4: Run sim, expect the farm tests to PASS (and all pre-existing tests still green)**
+- [x] **Step 4: Run sim, expect the farm tests to PASS (and all pre-existing tests still green)**
 
 ```bash
 make DESIGN=project_obscurus REV=rev2 sim 2>&1 | tail -30
 ```
 Expected: `PASS farm STATUS`, `PASS EV_RIPE 3,3 ...`, no new FAILs, existing `PASS` lines intact.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add gateware/rev2/project_obscurus/project_obscurus_tb.v
@@ -1138,7 +1140,7 @@ git commit -m "test(farm): M1 a-e - spawn, STATUS, PLANT/HARVEST, growth walk, E
 **Files:**
 - Modify: `gateware/rev2/project_obscurus/project_obscurus_tb.v` (continue the farm test block)
 
-- [ ] **Step 1: Append economy assertions**
+- [x] **Step 1: Append economy assertions**
 
 ```verilog
         begin : farm_econ
@@ -1195,14 +1197,14 @@ git commit -m "test(farm): M1 a-e - spawn, STATUS, PLANT/HARVEST, growth walk, E
 
 The min-tracking assertion is deliberate: with DECAYDIV=4 the live target rises as supply drains (price parks around 6-7 then climbs home to 10), so any endpoint assertion is wrong by construction. `pmin <= 7` proves downward drift; `sawprice >= 3` proves the events flowed.
 
-- [ ] **Step 2: Run sim**
+- [x] **Step 2: Run sim**
 
 ```bash
 make DESIGN=project_obscurus REV=rev2 sim 2>&1 | tail -20
 ```
 Expected: `PASS economy: ...`, zero new FAILs.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateware/rev2/project_obscurus/project_obscurus_tb.v
@@ -1218,7 +1220,7 @@ git commit -m "test(farm): M1 economy - SELL/BUYSEED, ERR_FULL clamp, price walk
 
 The reader's cursor (`farm_tail/farm_seq`) is deliberately NOT updated while the sim generates >64 events; the next `farm_drain` must detect SEQ mismatch, resync (counted in `farm_resyncs`), and drain clean afterward.
 
-- [ ] **Step 1: Append lap test**
+- [x] **Step 1: Append lap test**
 
 ```verilog
         // ===== lap recovery: >64 events with stale reader cursor =====
@@ -1263,14 +1265,14 @@ The reader's cursor (`farm_tail/farm_seq`) is deliberately NOT updated while the
 
 Caveat for the implementer: EV_PRICE events fire during the ripen wait too (market keeps ticking) — only adds to the >64 total, helps the lap. The resync assertion is `>=` from the start (a drain landing mid-publish can legitimately resync twice). The SIG check is the regression net for ring address-wrap bugs: tb arithmetic is full-width and would otherwise read correct addresses while 8-bit coproc/host math corrupts page 0.
 
-- [ ] **Step 2: Run sim — full suite**
+- [x] **Step 2: Run sim — full suite**
 
 ```bash
 make DESIGN=project_obscurus REV=rev2 sim 2>&1 | tail -15
 ```
 Expected: `PASS lap recovery ...`, all prior PASS intact. **This is M1 complete.**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add gateware/rev2/project_obscurus/project_obscurus_tb.v
@@ -1286,7 +1288,7 @@ git commit -m "test(farm): M1 f - ring lap detection + resync recovery (only ove
 
 This task builds everything except startup/main-loop logic, ending in an assemble check. ZP usage: $06-$0D transient pointers (GRVERSE precedent, non-ProDOS). Shadow grid + state live inline (DS). Text rows 20-23 via the same 24-entry line table.
 
-- [ ] **Step 1: Write FARM.S (part 1 content)**
+- [x] **Step 1: Write FARM.S (part 1 content)**
 
 ```
 * FARM.S - FARM/MARKET GAME, //e HOST SIDE
@@ -1550,7 +1552,7 @@ DECTH
   ```
   Merlin `ASC "..."` emits high-bit-set ASCII (project gotcha: that is what the text page wants — do NOT mask).
 
-- [ ] **Step 2: Add HUD update routine**
+- [x] **Step 2: Add HUD update routine**
 
 ```
 * === HUDDRAW: rows 20-22 ===
@@ -1680,7 +1682,7 @@ PD3P
 
 (Restructure PRDEC accordingly: its digit loop becomes `DIGITS`, its print loop stays in PRDEC after a `JSR DIGITS` — same save/restore-X,Y discipline as PRDEC3 above.)
 
-- [ ] **Step 3: Assemble check (MAIN stub)**
+- [x] **Step 3: Assemble check (MAIN stub)**
 
 Temporarily add `MAIN RTS` at the end, then:
 ```bash
@@ -1688,7 +1690,7 @@ cd software/SDM && Merlin32 -V . FARM.S
 ```
 Expected: clean assemble. (FARMTASKB PUT comes in part 2 — not yet referenced.)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add software/SDM/FARM.S
@@ -1702,7 +1704,7 @@ git commit -m "feat(farm): FARM.S part 1 - GR mixed init, line table, plot/curso
 **Files:**
 - Modify: `software/SDM/FARM.S` (replace MAIN stub; append protocol routines; append `PUT FARMTASKB` as the LAST line)
 
-- [ ] **Step 1: SDM access helpers (host side)**
+- [x] **Step 1: SDM access helpers (host side)**
 
 ```
 * === FRD: read GBANK byte, A=lo Y=hi -> SDM_VAL ===
@@ -1727,7 +1729,7 @@ FWR
  RTS
 ```
 
-- [ ] **Step 2: Command send with timeout**
+- [x] **Step 2: Command send with timeout**
 
 ```
 * === SENDCMD: TOP/TA0/TA1/TA2 staged by caller
@@ -1809,7 +1811,7 @@ SCRES
 
 (Timeout: 65536 polls, each poll = a full FRD (SETBANK+SETADDR+trigger+busy-poll) — realistically 1-3 s, calibrate in M5; the comment "~1 s" is an estimate, not a spec. The probe loops the whole SENDCMD 3× → up to ~10 s worst-case dead-world screen; acceptable for the rare path, note it on the message line by printing SDEAD only after the loop.)
 
-- [ ] **Step 3: Market re-read, event drain, resync**
+- [x] **Step 3: Market re-read, event drain, resync**
 
 ```
 * === RDMKT: refresh CASH/SEEDS/CROPS/PRICE
@@ -2081,7 +2083,7 @@ RGDEC
 - `DRAWALL`: walk SHADOW 0..399 (row y, col x), `JSR PLOTDRAW` per plot, then `JSR CURSDRAW` to re-apply cursor.
 - `RESTREAM` (periodic): same as RDGRID but compare each byte to SHADOW first; on diff, store + repaint that plot (and if it is the cursor plot, re-apply CURSDRAW after). Trigger: 16-bit RSTRCT counter incremented each main-loop pass; on wrap (~2-3 s of polling) do one re-stream. Pin exact reload constant on bench (M5).
 
-- [ ] **Step 4: Startup + cold start + probe**
+- [x] **Step 4: Startup + cold start + probe**
 
 ```
 * === MAIN ===
@@ -2238,7 +2240,7 @@ SPAWNOK
 
 `LOADBLOB` full code is in Step 6 (GRVERSE REGSKILL shape; SRC pointer at ZP $0C; CP load-port names come from CPLIB — `CP_LADDRLO/CP_LADDRHI/CP_WDATA`, do NOT redefine GRVERSE's `CP_LADLO` variants).
 
-- [ ] **Step 5: Main loop + keys + quit**
+- [x] **Step 5: Main loop + keys + quit**
 
 ```
 * === MLOOP ===
@@ -2334,7 +2336,7 @@ KDONE
 
 Cursor discipline: XOR is its own inverse — CURSDRAW before the mutate undoes the old cursor, CURSDRAW at KDONE applies the new. Startup applies it once after DRAWALL. Last line of file: ` PUT FARMTASKB`.
 
-- [ ] **Step 6: Remaining routines (full code — no improvisation)**
+- [x] **Step 6: Remaining routines (full code — no improvisation)**
 
 ```
 * === DOCMDXY: A=op, args = cursor pos ===
@@ -2565,14 +2567,14 @@ Notes:
 - In RESTREAM, `LDA SDM_VAL` must be reloaded before `LDX/LDY` for PLOTDRAW (A carries the stage) — order shown is correct as written: A is loaded from SDM_VAL, then X/Y loads don't touch A.
 - Zombie-slot caveat (accepted v1, document in code header): if the dead-world `C` cold-start path runs while the old GAMETASK is merely slow, the old slot stays CP_ACTIVE (leaks — 4 zombie cold starts exhaust slots and CP_CALL returns $FF, handled by the MSGDEAD path) and LOADBLOB overwrites $0600 under a possibly-executing task. The 3 s probe makes this remote; spec already accepts the duplicate-writer residual.
 
-- [ ] **Step 7: Build + size check**
+- [x] **Step 7: Build + size check**
 
 ```bash
 make farm && wc -c software/SDM/FARM.bin
 ```
 Expected: clean build. FARM.bin = code + 400-byte shadow + ~1 KB blob — expect 3-4.5 KB, ORG $6000 → ends ≤ $7200, fine under BASIC.SYSTEM at $9600.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add software/SDM/FARM.S Makefile
@@ -2587,18 +2589,18 @@ git commit -m "feat(farm): FARM.S part 2 - cold start/probe/resync, drain, mailb
 - Modify: `Makefile` (sdmdisk additions from Task 4 if not already done)
 - Modify: `docs/superpowers/specs/2026-06-10-farm-market-event-game-design.md` (pin skill id 2 + CP_CALL finding)
 
-- [ ] **Step 1: Build disk**
+- [x] **Step 1: Build disk**
 
 ```bash
 make sdmdisk
 ```
 Expected: SDMTEST.po now contains FARM (BIN $6000) alongside GRVERSE/MVERSE.
 
-- [ ] **Step 2: Update spec plan-time pins**
+- [x] **Step 2: Update spec plan-time pins**
 
 In the spec, change "default **skill id 3**" → "**skill id 2** (Conway uses 0/1 — verified)" and add to the CP_CALL plan-time-verify sentence: "Verified: CP_CALL scans CP_ACTIVE for the lowest clear bit and cannot overwrite a running slot; the residual risk is a duplicate spawn in a second slot."
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Makefile docs/superpowers/specs/2026-06-10-farm-market-event-game-design.md
