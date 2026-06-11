@@ -47,16 +47,27 @@ Invariant across games: ZP (kernel), $0100-$01FF stacks, $0200-$02FF TABLE
 
 Farm game footprint:
 
-| Region        | Use                                            |
-|---------------|------------------------------------------------|
-| $0300-$05FF   | WORKSHOP code (skill 3, 768 B Makefile cap)    |
-| $0600-$0BFF   | FARMTASK code (skill 2, 1536 B cap, unchanged) |
-| $0C00-$0DFF   | workshop scratch (reclaimed from Conway)       |
-| $0E00-$0E2C   | EVLIB + FARMTASK scratch (unchanged)           |
-| $0E30-$0F7F   | spare                                          |
+| Region        | Use                                              |
+|---------------|--------------------------------------------------|
+| $0300-$05FF   | WORKSHOP code (skill 3, 768 B Makefile cap)      |
+| $0600-$0CFF   | FARMTASK code (skill 2, cap raised 1536→1792 B)  |
+| $0D00-$0DFF   | workshop scratch (temps only; state is in SDRAM) |
+| $0E00-$0E2C   | FARMTASK scratch incl. its EVLIB scratch         |
+| $0E30-$0F7F   | spare                                            |
 
-Switching games is cold-start territory: the new game's blobs load, the old
-game's tasks die, each game's world persists in its own GBANK(s).
+The FARMTASK cap raise (FARMTASK_MAXLEN 1536→1792, lands with increment 2)
+is the blob-budget relief: FARMTASK.bin is 1299 B today, and seeds
+(~150-200 B) plus events (~200 B) do not fit under the old 1536 cap. The
+$0C00-$0CFF page was Conway scratch — farm reclaims it for code under the
+per-game ownership rule. Workshop scratch needs only EVLIB temps + mailbox/
+station temps; 256 B at $0D00 is ample.
+
+**Switching games starts with a kernel reset.** Budget=0 forever-loop tasks
+never reach DONE, CP_COLLECT only frees done slots, and there are 4 slots
+total — without a reset, one stale game (2 slots) plus farm v2's two spawns
+exhausts the table and the next CP_CALL returns $FF. Kernel reset
+(CLEARSLOTS) frees everything; each game's world persists in its own
+GBANK(s), so this is cold-start-cheap, not data loss.
 
 ### Data placement rules
 
@@ -92,6 +103,18 @@ writes another task's bank.
 - Reuses EVLIB (PUTEV) and the FARMEQU pattern via a new WORKEQU.S PUT-include.
 - Loop: poll mailbox → handle op → tick station timers → emit ring events.
 
+**EVLIB scratch parameterization (required — cross-task race otherwise).**
+EVLIB.S currently hard-codes its scratch at $0E00-$0E05. The kernel is
+preemptive (tasks run I-clear), and PUTEV has interrupt-enabled windows:
+callers store EVTYPE/EVP0/EVP1 before the JSR, and PUTEV itself drops to CLI
+between its read burst and write burst while EVSEQ/EVHEAD/EVRLO are live. Two
+tasks sharing those six bytes corrupt each other's ring publishes
+intermittently. Fix: move the scratch equates OUT of EVLIB.S into the
+includer — FARMEQU keeps $0E00-$0E05; WORKEQU defines its own at $0D00-$0D05.
+EVLIB binds by symbol name, so WORKEQU must also define GBANK/FSEQC/FHEAD/
+FRING (same F-prefixed names) with workshop values (33/$0002/$0003/$0100).
+Zero code change to EVLIB; each blob compiles its own correctly-bound PUTEV.
+
 GBANK 33 layout (signature "WK" = $57,$4B):
 
 | Addr        | Content                                              |
@@ -109,8 +132,15 @@ GBANK 33 layout (signature "WK" = $57,$4B):
 | $0300+      | recipe table (//e-seeded static content)             |
 
 Mailbox ops: OPDEPOSIT(crop, qty), OPCRAFT(I0-I3), OPCOLLECT(→ product,
-value), OPSTAT. Ring events: WEVDONE(station, product); heartbeat is polled,
-not evented.
+value), OPSTAT, OPMODE(flags) — event modifiers, currently bit 0 = BOOM
+(craft values x2). Ring events: WEVDONE(station, product); heartbeat is
+polled, not evented.
+
+**Cross-bank transfer rule:** //e-mediated two-phase transfers
+(OPWITHDRAW→OPDEPOSIT, OPCOLLECT→OPADDCASH) can lose goods if a reset lands
+between legs. Accepted: world is session-only and stakes are in-game cash.
+Ordering rule is normative — **debit first, credit second** — so a crash
+loses value but can never duplicate it.
 
 ### Crafting / recipe model
 
@@ -122,20 +152,24 @@ not evented.
   through the read window on each OPCRAFT.
 - Discovery: undiscovered + correct combo → LFSR roll vs (BASE + craft skill
   − rarity). Pass = bitmap bit set + product crafted. Fail = "RUINED",
-  ingredients lost. **Every attempt increments craft skill**, success, fail,
-  or dud combo. Discovered recipes always succeed.
+  ingredients lost. **Every attempt increments craft skill** (clamped at $FF
+  — no wrap), success, fail, or dud combo. Discovered recipes always succeed.
 - Stations: 2 concurrent crafts; seconds-scale divider per tick decrements
   active station timers; WEVDONE on completion. Crafts keep cooking while the
   player is on another screen, quit, or after a soft reset (task respawn).
 - Cash-out: //e OPCOLLECT (workshop) → OPADDCASH (farm task, new op). One
   wallet, lives in farm bank as today.
 - Product value > ingredient cost x1.5-2.5; BOOM event doubles craft margins.
+  Recipe value is one byte; base values stay <128 so the BOOM x2 still fits a
+  byte, and OPADDCASH credits in 16-bit on the farm side.
 
 ### Seeds (FARMTASK changes)
 
 - Plot byte = `crop*8 + stage`: crop = byte>>3 (0-3), stage = byte&7
   (0 empty [global $00], 1-5 grow, 6 ripe, 7 dead). Shift/mask arithmetic, no
   lookups. Old saves incompatible — acceptable, world is session-only.
+  Edge rule: $08/$10/$18 (crop≠0, stage 0) are illegal — harvest/clear always
+  writes $00, and all logic treats stage==0 as empty regardless of crop bits.
 - 4 crop profiles (all data, SDRAM where possible):
 
 | Crop    | Seed cost | Growth  | Price base | Role                          |
@@ -154,8 +188,9 @@ not evented.
   OPWITHDRAW(crop, qty) and OPADDCASH(value lo/hi) for the //e bus.
 - Render: per-crop GR base color, brightness/pattern by stage, ripe bright,
   dead magenta ($1). Exact colors tuned at plan time with bench screenshots.
-- Blob budget: ~330 B headroom now; seeds ≈ 150-200 B (indexed loops replace
-  scalars); events take the remainder; SDRAM offload is the relief valve.
+- Blob budget: FARMTASK.bin is 1299 B; under the raised 1792 B cap that is
+  493 B for seeds (~150-200 B, indexed loops replace scalars) plus events
+  (~200 B), with margin. The cap raise ships with increment 2.
 
 ### //e screen manager
 
@@ -184,10 +219,13 @@ not evented.
 - Day counter in farm bank, ticks every N market ticks → EV_DAY; every screen
   shows DAY nn.
 - EV_NEWS: LFSR roll per day → one of CALM (default), DROUGHT (growth masks
-  x2 slower, crop prices climb), BOOM (craft values x2 — //e forwards a
-  MODESET op to the workshop task; bus pattern, no cross-bank read), BLIGHT
+  x2 slower, crop prices climb), BOOM (craft values x2 — //e forwards
+  OPMODE(BOOM) to the workshop task; bus pattern, no cross-bank read), BLIGHT
   (random growing/ripe plots → stage 7 dead; per-crop susceptibility).
 - One active event at a time; state = (event id, days left) in farm bank.
+  **Expiry is evented**: when the active event's days-left hits zero,
+  FARMTASK emits EV_NEWS(CALM); the //e forwards OPMODE(clear) to the
+  workshop on seeing it. No //e polling of event state.
   Headline strings are SDRAM content, //e-seeded.
 - Dead plots cleared by replant only (P on a dead plot = clear + plant).
 - Intended dynamics: drought → sell the stockpile; blight → seed variety as
@@ -195,8 +233,10 @@ not evented.
 
 ### Heartbeat
 
-Both tasks increment byte $0004 of their own bank every loop pass. //e (or
-the monitor) can diagnose a wedged-vs-live task at a glance. Ships in
+Both tasks increment byte $0004 of their own bank every loop pass (equates
+FHBEAT/WHBEAT = $0004). //e (or the monitor) diagnoses wedged-vs-live by
+reading **twice with a delay** — the byte wraps every 256 passes at coproc
+speed, so two immediate reads can alias equal on a live task. Ships in
 increment 1.
 
 ## Ship order (one plan per increment, each bench-playable)
@@ -223,9 +263,9 @@ increment 1.
 - Full suite stays the pre-merge gate (~9 min); `+vcd` only when waves needed.
 - Bench per increment with `/obs-screenshot`; monitor pokes force rare paths
   (discovery roll, blight) on hardware.
-- Makefile: WORKSHOP_MAXLEN=768 cap + workshop.mem staleness guard; tb
-  measures blob lengths from readmemh X-scan, never hardcoded (FARMLEN
-  lesson).
+- Makefile: WORKSHOP_MAXLEN=768 cap + workshop.mem staleness guard;
+  FARMTASK_MAXLEN 1536→1792 with increment 2; tb measures blob lengths from
+  readmemh X-scan, never hardcoded (FARMLEN lesson).
 
 ## Deferred / out of scope
 
