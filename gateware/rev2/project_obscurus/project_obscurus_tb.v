@@ -1277,6 +1277,58 @@ module project_obscurus_tb;
         if (r!==8'h01) begin errors=errors+1; $display("FAIL CROPS=%h want 01", r); end
         end
 
+        // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
+        begin : farm_econ
+        reg [7:0] r, r2; reg ok;
+        // SELL 1 @ price 10 -> CASH 110, SUPPLY 1, CROPS 0
+        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
+        sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
+        if ({r2,r}!==16'd110) begin errors=errors+1; $display("FAIL CASH=%d want 110", {r2,r}); end
+        sdram_read(10'd32, 16'h0212, r);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL SUPPLY=%h", r); end
+        // SELL with no crops -> E5
+        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
+        // BUYSEED 2 @ cost 3 -> CASH 104, SEEDS 5
+        farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
+        sdram_read(10'd32, 16'h0213, r);
+        if (r!==8'd104) begin errors=errors+1; $display("FAIL CASH=%d want 104", r); end
+        sdram_read(10'd32, 16'h0215, r);
+        if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
+        // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged
+        // (tb-only direct poke: rig deliberately bypasses single-writer rule)
+        sdram_write(10'd32, 16'h0215, 8'd254);
+        farm_cmd(8'h04, 8'd5, 8'h00, 8'h00, r, ok);
+        if (r!==8'hE7) begin errors=errors+1; $display("FAIL seed-full r=%h want E7", r); end
+        sdram_read(10'd32, 16'h0215, r);
+        if (r!==8'd254) begin errors=errors+1; $display("FAIL SEEDS clobbered=%d", r); end
+        sdram_write(10'd32, 16'h0215, 8'd5);   // restore
+        // EV_PRICE drift: force SUPPLY=10 -> TGT=5. Supply decays while the
+        // price walks (DECAYDIV=4), so the target RISES under it and the
+        // price recovers - assert the MINIMUM seen, not the endpoint.
+        sdram_write(10'd32, 16'h0212, 8'd10);
+        begin : farm_pwalk
+        integer t; reg [7:0] pv, pmin;
+        pmin = 8'd255;
+        for (t=0; t<200; t=t+1) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd32, 16'h0210, pv);
+            if (pv < pmin) pmin = pv;
+        end
+        if (pmin > 8'd7) begin errors=errors+1; $display("FAIL price min=%d want <=7", pmin); end
+        end
+        farm_drain;
+        begin : farm_evcount
+        integer i; integer sawprice;
+        sawprice = 0;
+        for (i=0; i<farm_nev; i=i+1) if (ev_type[i]===8'h02) sawprice = sawprice + 1;
+        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE got %0d", sawprice); end
+        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE", sawprice);
+        end
+        end
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
