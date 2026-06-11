@@ -2607,7 +2607,7 @@ git add Makefile docs/superpowers/specs/2026-06-10-farm-market-event-game-design
 git commit -m "build(farm): FARM on sdmdisk; spec: pin skill id 2 + CP_CALL slot-reuse finding"
 ```
 
-- [x] **Step 4: Bench milestones (manual, user flashes — NEVER prog-flash without permission)**
+- [ ] **Step 4: Bench milestones (manual, user flashes — NEVER prog-flash without permission)**
 
 - **M2 (protocol on silicon):** boot SDMTEST.po, `BRUN FARM` once to cold-start, `Q` out. Enter the $C800 monitor; watch GBANK 32 offset $0003 (HEAD) advance as EV_PRICE fires (force: from monitor, write SUPPLY=$0212 high → price walks). Hand-poke a STATUS command: write $0201=$00, $0200=$01, watch $0200 clear and $0205=$01.
 - **M3 (game):** `BRUN FARM` — plant/harvest/sell with keys, HUD live, ripe plots repaint within one re-stream period.
