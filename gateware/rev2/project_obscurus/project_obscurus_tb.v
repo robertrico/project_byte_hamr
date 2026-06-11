@@ -1312,6 +1312,23 @@ module project_obscurus_tb;
         if (r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 0-3 (LFSR yield)", r); end
         end
 
+        // ===== FARM heartbeat: FHBEAT ($0004) advances while task lives =====
+        // read-twice-with-delay (spec: byte wraps every 256 passes, so two
+        // close reads can alias equal on a live task -> retry a few samples)
+        begin : farm_beat
+        reg [7:0] h1, h2; integer t; reg beat;
+        beat = 0;
+        sdram_read(10'd32, 16'h0004, h1);
+        for (t = 0; t < 5 && !beat; t = t + 1) begin
+            repeat (200000) @(posedge clk100);
+            sdram_read(10'd32, 16'h0004, h2);
+            if (h2 !== h1) beat = 1;
+        end
+        if (!beat) begin errors=errors+1;
+            $display("FAIL farm heartbeat stuck h=%h", h1); end
+        else $display("PASS farm heartbeat %h -> %h", h1, h2);
+        end
+
         // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
         begin : farm_econ
         reg [7:0] r, r2; reg ok; integer nc, want;
