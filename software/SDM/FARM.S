@@ -439,6 +439,8 @@ SOK ASC "OK"
  DFB 0
 SLOST ASC "CROP DIED!"
  DFB 0
+SRESP ASC "TASK RESPAWNED"
+ DFB 0
 SERR ASC "ERR "
  DFB 0
 
@@ -835,7 +837,19 @@ PRLOOP
  BCC PROBED
  DEX
  BNE PRLOOP
-* dead world
+* probe dead. soft reset (ctrl-reset) resets
+* the coproc kernel: ALL slots cleared but
+* SDRAM world intact -> respawn task, keep
+* world. slots still busy -> wedged task,
+* never spawn a 2nd writer -> dead menu.
+ LDA CP_ACTIVE
+ BNE PRDEAD
+ JSR SPAWNT
+ BCS PRDEAD
+ JSR RESYNC
+ JSR MSGRESP
+ JMP MLOOP
+PRDEAD
  JSR MSGDEAD
 PRKEY
  LDA KBD
@@ -918,24 +932,9 @@ CZLP
  STA CNT+1
  ORA CNT
  BNE CZLP
-* load blob -> coproc $0600
- JSR LOADBLOB
-* table[2] @ coproc $0204 = $00,$06
- LDA #$04
- STA CP_LADDRLO
- LDA #$02
- STA CP_LADDRHI
- LDA #$00
- STA CP_WDATA
- LDA #$06
- STA CP_WDATA
-* spawn: CP_CALL A=skill X=arg0 Y=budget
- LDA #2
- LDX #0
- LDY #0
- JSR CP_CALL
- CMP #$FF
- BNE SPAWNOK
+* load blob + spawn task
+ JSR SPAWNT
+ BCC SPAWNOK
  JSR MSGDEAD
  JMP QUIT
 SPAWNOK
@@ -1309,6 +1308,43 @@ RSNC
  LDA DAY
  CMP #GROWSN
  BNE RSROW2
+ RTS
+
+* === SPAWNT: blob + table[2] + spawn ===
+* C=0 OK, C=1 no free slot
+SPAWNT
+ JSR LOADBLOB
+ LDA #$04
+ STA CP_LADDRLO
+ LDA #$02
+ STA CP_LADDRHI
+ LDA #$00
+ STA CP_WDATA
+ LDA #$06
+ STA CP_WDATA
+ LDA #2
+ LDX #0
+ LDY #0
+ JSR CP_CALL
+ CMP #$FF
+ BEQ SPTFAIL
+ CLC
+ RTS
+SPTFAIL
+ SEC
+ RTS
+
+* === MSGRESP: task-respawned notice ===
+MSGRESP
+ JSR CLRMSG
+ LDA #<SRESP
+ STA MSGPTR
+ LDA #>SRESP
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #20
+ JSR PRSTR
  RTS
 
 * === LOADBLOB: FSKILL -> coproc $0600 ===

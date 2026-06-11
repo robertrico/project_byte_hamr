@@ -1412,6 +1412,30 @@ module project_obscurus_tb;
         end
         end
 
+        // ===== FARM soft-reset survival: kernel reset clears slots but
+        // SDRAM world survives -> respawn task, keep world (FARM.S SPAWNT
+        // path). Mirrors a //e ctrl-reset mid-game.
+        begin : farm_reset
+        reg [7:0] r, r2; reg ok;
+        $display("--- FARM soft-reset survival ---");
+        nRES_READ = 1'b0; #1000; nRES_READ = 1'b1;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);   // kernel RESET -> idle spin
+        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
+        if (r!==8'h46 || r2!==8'h4D) begin errors=errors+1; $display("FAIL reset: SIG lost %h %h", r, r2); end
+        rd_reg(4'h1, r);                   // CP_ACTIVE: reset must clear slots
+        if (r[3:0]!==4'h0) begin errors=errors+1; $display("FAIL reset: slots not cleared %h", r); end
+        sdram_read(10'd32, 16'h03A9, r);   // plot (9,8) ripe from lap phase
+        if (r!==8'h06) begin errors=errors+1; $display("FAIL reset: grid lost %h", r); end
+        // respawn exactly as FARM.S SPAWNT does: reload blob+table, ring
+        farm_load;
+        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
+        ring(2'd0);
+        farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL reset: respawn STATUS r=%h ok=%b", r, ok); end
+        else $display("PASS soft-reset survival: SIG+grid intact, slots cleared, task respawned");
+        end
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
