@@ -1329,6 +1329,45 @@ module project_obscurus_tb;
         end
         end
 
+        // ===== lap recovery: >64 events with stale reader cursor =====
+        begin : farm_lap
+        reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
+        baseresync = farm_resyncs;
+        // plant 70 plots (rows 5..8, cols 0..19 = 80 available; use 70)
+        sdram_write(10'd32, 16'h0215, 8'd255);          // plenty of seeds (tb poke)
+        for (i=0; i<70; i=i+1)
+            farm_cmd(8'h01, i%20, 8'd5 + i/20, 8'h00, r, ok);
+        // wait until the LAST-planted plot (9,8) ripens -> 70 EV_RIPE, ring lapped
+        t = 0; r = 0;
+        while (r !== 8'h06 && t < 600) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd32, 16'h0300 + 8*20 + 9, r);  // plot (9,8) = $03A9
+            t = t + 1;
+        end
+        if (r!==8'h06) begin errors=errors+1; $display("FAIL lap: plots never ripened"); end
+        farm_drain;
+        if (farm_resyncs < baseresync + 1)
+            begin errors=errors+1; $display("FAIL lap: resyncs=%0d want >=%0d", farm_resyncs, baseresync+1); end
+        // SIG regression net: a ring page-wrap bug writes records over
+        // $0000-$0003 - SIG must survive 70+ publishes including indexes 60-63
+        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
+        if (r!==8'h46 || r2!==8'h4D)
+            begin errors=errors+1; $display("FAIL lap: SIG destroyed %h %h (ring wrapped into page 0)", r, r2); end
+        // post-resync: cursor must be live -> one more event drains clean
+        sdram_write(10'd32, 16'h0212, 8'd20);            // kick price -> EV_PRICE soon
+        begin : farm_postsync
+        integer n0; n0 = farm_nev;
+        t = 0;
+        while (farm_nev == n0 && t < 200) begin
+            repeat (10000) @(posedge clk100);
+            farm_drain; t = t + 1;
+        end
+        if (farm_nev == n0)
+            begin errors=errors+1; $display("FAIL lap: post-resync drain dirty"); end
+        else $display("PASS lap recovery: resync + SIG intact + clean drain");
+        end
+        end
+
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
     end
