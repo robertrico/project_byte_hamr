@@ -1314,7 +1314,7 @@ module project_obscurus_tb;
 
         // ===== FARM heartbeat: FHBEAT ($0004) advances while task lives =====
         // read-twice-with-delay (spec: byte wraps every 256 passes, so two
-        // close reads can alias equal on a live task -> retry a few samples)
+        // close reads can alias equal -> retries reduce (not eliminate) odds)
         begin : farm_beat
         reg [7:0] h1, h2; integer t; reg beat;
         beat = 0;
