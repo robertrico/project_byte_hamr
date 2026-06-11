@@ -90,7 +90,7 @@ Ops (v1):
 |---|---|---|---|
 | $00 | STATUS | — | OK (liveness probe) |
 | $01 | PLANT | x, y | OK / ERR_OCCUPIED / ERR_NO_SEEDS |
-| $02 | HARVEST | x, y | OK / ERR_NOT_RIPE / ERR_FULL (CROPS=255: plot stays ripe, barn full) |
+| $02 | HARVEST | x, y | OK (CROPS += 1-3, LFSR yield) / ERR_NOT_RIPE / ERR_FULL (CROPS=255: plot stays ripe, barn full) |
 | $03 | SELL | qty | OK / ERR_NO_CROPS |
 | $04 | BUYSEED | qty | OK / ERR_NO_CASH / ERR_FULL (SEEDS would exceed 255) |
 
