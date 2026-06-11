@@ -54,6 +54,7 @@ GAME
  STA LFSRH
 GLOOP
  JSR DOMBOX
+* heartbeat liveness pulse
  INC HBV
  LDX HBV
  LDA #<FHBEAT
