@@ -416,7 +416,18 @@ SCROP ASC "CROP "
  DFB 0
 SYIELD ASC "YIELD "
  DFB 0
-SHELP ASC "(P)LANT (H)ARVEST (S)ELL (B)UY (Q)UIT"
+* key letters inverse ($00-$1F = inverse
+* uppercase, none collide with 0 terminator)
+SHELP DFB $10
+ ASC "LANT "
+ DFB $08
+ ASC "ARVEST "
+ DFB $13
+ ASC "ELL "
+ DFB $02
+ ASC "UY "
+ DFB $11
+ ASC "UIT"
  DFB 0
 SDEAD ASC "WORLD DEAD - C COLDSTART"
  DFB 0
