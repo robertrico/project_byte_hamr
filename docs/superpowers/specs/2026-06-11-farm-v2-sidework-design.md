@@ -88,6 +88,14 @@ Speed: //e via SDMLIB is a few bus cycles per byte (re-entry already reads the
 scans are effectively free. SDRAM is plenty fast for everything but per-plot
 per-tick inner loops.
 
+**Window-access convention:** every $E000-$E008 burst sits inside an SEI/CLI
+pair. FARMTASK already does this via its RDB/WRB helpers; the kernel ISR
+touches only the $E010+ control registers, never the data windows, so
+SEI-guarded bursts cannot be torn by a context switch. WORKSHOP inherits the
+rule. To share the code, RDB/WRB move out of FARMTASK.S into a new
+**PORTLIB.S PUT-include** — bank bound by the includer's GBANK symbol, the
+same binding trick as EVLIB.
+
 ### Single-writer + //e-as-bus
 
 GBANK single-writer invariant holds: FARMTASK owns bank 32, WORKSHOP owns
@@ -124,17 +132,17 @@ GBANK 33 layout (signature "WK" = $57,$4B):
 | $0003       | HEAD                                                 |
 | $0004       | heartbeat (increments every loop pass)               |
 | $0100-$01FF | RING 64x4, page-aligned (EVLIB verbatim)             |
-| $0200-$0207 | MAILBOX, 8 B: FLAG, OP, I0-I3, RES, spare            |
+| $0200-$0207 | MAILBOX, 8 B: FLAG, OP, I0-I3, RES, RES1             |
 | $0210+      | pantry: 4 per-crop ingredient counts; goods          |
 |             | inventory; 2 station records (recipe, timer, state); |
 |             | CRAFT SKILL byte                                     |
 | $0240       | discovered-recipe bitmap                             |
 | $0300+      | recipe table (//e-seeded static content)             |
 
-Mailbox ops: OPDEPOSIT(crop, qty), OPCRAFT(I0-I3), OPCOLLECT(→ product,
-value), OPSTAT, OPMODE(flags) — event modifiers, currently bit 0 = BOOM
-(craft values x2). Ring events: WEVDONE(station, product); heartbeat is
-polled, not evented.
+Mailbox ops: OPDEPOSIT(crop, qty), OPCRAFT(I0-I3), OPCOLLECT(→ RES =
+product id, RES1 = value), OPSTAT, OPMODE(flags) — event modifiers,
+currently bit 0 = BOOM (craft values x2). Ring events: WEVDONE(station,
+product); heartbeat is polled, not evented.
 
 **Cross-bank transfer rule:** //e-mediated two-phase transfers
 (OPWITHDRAW→OPDEPOSIT, OPCOLLECT→OPADDCASH) can lose goods if a reset lands
@@ -151,9 +159,11 @@ loses value but can never duplicate it.
   is 65, so most combos are duds. Table lives in GBANK 33 SDRAM; blob scans it
   through the read window on each OPCRAFT.
 - Discovery: undiscovered + correct combo → LFSR roll vs (BASE + craft skill
-  − rarity). Pass = bitmap bit set + product crafted. Fail = "RUINED",
-  ingredients lost. **Every attempt increments craft skill** (clamped at $FF
-  — no wrap), success, fail, or dud combo. Discovered recipes always succeed.
+  − rarity), threshold floored at 0 — a high-rarity recipe with low skill is
+  simply impossible until skill grows (intended). Pass = bitmap bit set +
+  product crafted. Fail = "RUINED", ingredients lost. **Every attempt
+  increments craft skill** (clamped at $FF — no wrap), success, fail, or dud
+  combo. Discovered recipes always succeed.
 - Stations: 2 concurrent crafts; seconds-scale divider per tick decrements
   active station timers; WEVDONE on completion. Crafts keep cooking while the
   player is on another screen, quit, or after a soft reset (task respawn).
@@ -180,12 +190,30 @@ loses value but can never duplicate it.
 | PUMPKIN | dearest   | slowest | highest    | craft-heavy, event-sensitive  |
 
 - Growth: single global GROWD tick retained; per-crop speed = advance every
-  Nth tick via a 4-entry mask table.
-- Market: farm-bank $0210 area becomes 4 x (PRICE lo/hi, SUPPLY) with
-  per-crop drift; state already in SDRAM, no blob data cost.
-- Inventory: FSEEDS/FCROPS become 4-wide arrays.
-- Mailbox: OPPLANT(+crop), OPSELL(+crop, qty), OPBUY(+crop); new
-  OPWITHDRAW(crop, qty) and OPADDCASH(value lo/hi) for the //e bus.
+  Nth tick via a 4-entry mask table. Masks are copied SDRAM→scratch at task
+  spawn (hot inner loop stays off the window); the DROUGHT handler mutates
+  the scratch copy and restores it on expiry.
+- Farm bank (GBANK 32) v2 layout — the v1 $0210-$0216 scalar block is
+  REPLACED (collision otherwise: FCASHL $0213 sits inside the new market
+  array):
+
+| Addr        | Content                                  |
+|-------------|------------------------------------------|
+| $0210-$021B | MARKET: 4 x (PRICE lo, PRICE hi, SUPPLY) |
+| $0220-$0221 | FCASH lo/hi                              |
+| $0222-$0225 | FSEEDS[4]                                |
+| $0226-$0229 | FCROPS[4]                                |
+
+  Per-crop drift; state already in SDRAM, no blob data cost. //e HUD readers
+  and cold-start init update to the new map in the same increment.
+- Saturation rules (silent-wrap bugs otherwise): cash credits saturate at
+  $FFFF; SUPPLY += qty saturates at $FF.
+- Mailbox: OPPLANT(x, y, crop), OPSELL(crop, qty), OPBUY(crop, qty); new
+  OPWITHDRAW(crop, qty) and OPADDCASH(value lo/hi) for the //e bus. Note
+  OPPLANT now uses all three arg bytes — the farm mailbox is arg-full; any
+  future op needing more args must widen the mailbox (bank layout change).
+- Sell/buy quantity prompt is **2 digits (1-99)** — qty must fit one mailbox
+  arg byte; 1-99 keeps the prompt simple, repeat the op for more.
 - Render: per-crop GR base color, brightness/pattern by stage, ripe bright,
   dead magenta ($1). Exact colors tuned at plan time with bench screenshots.
 - Blob budget: FARMTASK.bin is 1299 B; under the raised 1792 B cap that is
@@ -200,9 +228,13 @@ loses value but can never duplicate it.
   updaters (always) → current screen's event-hook decides redraw; poll
   keyboard → current screen's key-handler.
 - Screens: FARM (GR mixed, the 20x20 grid), MARKET (text 40x24: 4-crop price
-  board with trends, buy seeds, sell crops with 1-3 digit quantity prompt),
+  board with trends, buy seeds, sell crops with 2-digit quantity prompt),
   WORKSHOP (text: pantry, 2 stations with timers, recipe book — known recipes
   named, unknown as "?????", combo picker). SELL/vendor screen reserved v2.6.
+- Farm-screen text rows (GR mixed gives rows 20-23) are assigned now so
+  increments 2 and 4 don't fight: row 20 = status + CASH + DAY nn; row 21 =
+  messages; row 22 = news headline; row 23 = key legend. (Market/seed detail
+  rows leave the farm screen — that data lives on the market screen.)
 - Keys: global M = market, W = workshop, ESC = back to farm; Q quits from
   farm screen (confirm). Farm legend becomes PLANT HARVEST MARKET WORKSHOP
   QUIT (inverse first letters). **S is removed; selling lives on the market
@@ -217,7 +249,8 @@ loses value but can never duplicate it.
 ### World events (FARMTASK)
 
 - Day counter in farm bank, ticks every N market ticks → EV_DAY; every screen
-  shows DAY nn.
+  shows DAY nn. Event ids: EV_DAY = 3, EV_NEWS = 4 (EVRIPE = 1, EVPRICE = 2
+  taken).
 - EV_NEWS: LFSR roll per day → one of CALM (default), DROUGHT (growth masks
   x2 slower, crop prices climb), BOOM (craft values x2 — //e forwards
   OPMODE(BOOM) to the workshop task; bus pattern, no cross-bank read), BLIGHT
@@ -262,7 +295,11 @@ increment 1.
   blight kills + day tick), dual-task respawn after reset.
 - Full suite stays the pre-merge gate (~9 min); `+vcd` only when waves needed.
 - Bench per increment with `/obs-screenshot`; monitor pokes force rare paths
-  (discovery roll, blight) on hardware.
+  (discovery roll, blight) on hardware. A monitor poke is a second writer —
+  poke only while the owning task is quiesced (dead, or between ticks with
+  care), same caveat the tb carries.
+- WORKEQU.S gets a `DO FSIM` tiny-divider block for station timers, mirroring
+  FARMEQU's, or the workshop sim phase takes minutes instead of seconds.
 - Makefile: WORKSHOP_MAXLEN=768 cap + workshop.mem staleness guard;
   FARMTASK_MAXLEN 1536→1792 with increment 2; tb measures blob lengths from
   readmemh X-scan, never hardcoded (FARMLEN lesson).
