@@ -84,7 +84,9 @@ MKTD1 = $80
 MKTD2 = $00
  FIN
 * SUPPLY DECAY: 1 EVERY DECAYDIV MKT TICKS
-DECAYDIV = 4
+* 8 = slower supply drain - dumps depress
+* price ~2x longer (bench feedback)
+DECAYDIV = 8
 * COPROC SDRAM PORTS
 SADDRLO = $E000
 SADDRHI = $E001
