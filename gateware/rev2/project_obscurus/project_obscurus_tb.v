@@ -100,9 +100,21 @@ module project_obscurus_tb;
     reg [7:0] life8grimg [0:1023];
     initial $readmemh("life8gr.mem", life8grimg);
     // ---- FARM game protocol (skill 2 @ $0600, GBANK=32) ----
-    localparam integer FARMLEN = 1206;   // = FARMTASKSIM.bin size (farmtask.mem lines)
+    // Blob length is MEASURED from the readmemh image, not hardcoded:
+    // $readmemh leaves unwritten entries X, so scan for the last defined
+    // byte. A stale constant here once truncated PUTEV off the blob tail
+    // (ring silently dead) - never hardcode this again.
     reg [7:0] farmimg [0:2047];
     initial $readmemh("farmtask.mem", farmimg);
+    integer FARMLEN;
+    initial begin
+        #1; FARMLEN = 0;
+        begin : flen_scan
+            integer fi;
+            for (fi = 0; fi < 2048; fi = fi + 1)
+                if (farmimg[fi] !== 8'hxx) FARMLEN = fi + 1;
+        end
+    end
     reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
     integer   bufsum, mvi;
 
@@ -405,10 +417,21 @@ module project_obscurus_tb;
     end endtask
 
     initial begin
-        $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
+        // VCD only on demand (+vcd): full-suite dumps reach ~20 GB and
+        // dominate wall time. make sim PLUSARGS=+vcd when waves are needed.
+        if ($test$plusargs("vcd")) begin
+            $dumpfile("project_obscurus_tb.vcd"); $dumpvars(0, project_obscurus_tb);
+        end
         nRES_READ=1'b0; #1000; nRES_READ=1'b1;
         wait (dut.ready);
         $display("[%0t] ready", $time);
+
+        // +farmonly skips every pre-farm phase (kernel boots on reset; the
+        // farm section is self-contained: farm_init/farm_load own all state,
+        // slot 0 is free on a fresh boot). Full suite remains the default
+        // and the pre-merge gate.
+        if ($test$plusargs("farmonly")) $display("--- farmonly: skipping pre-farm phases ---");
+        else begin : prefarm
 
         // 1. W-then-R round trip
         sdram_write(10'd0, 16'h0000, 8'hAA);
@@ -1209,6 +1232,8 @@ module project_obscurus_tb;
                 $display("FAIL multiverse-GR TICK1 %0d errors", errors);
         end
 
+        end // prefarm (+farmonly skips to here)
+
         // ===== FARM: event ring + mailbox protocol (skill 2, GBANK 32) =====
         // NOTE: farm phases m1/econ/lap are one ordered narrative -
         // do not reorder or skip (later phases consume earlier state).
@@ -1278,31 +1303,38 @@ module project_obscurus_tb;
                 begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
             else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
         end
-        // (c) HARVEST -> CROPS=1, plot 0
+        // (c) HARVEST -> CROPS=1-3 (LFSR yield), plot 0
+        // yield is LFSR-phase-dependent: cycle-deterministic in sim but
+        // fragile to tb edits, so assert the honest 1-3 range
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
         sdram_read(10'd32, 16'h0216, r);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL CROPS=%h want 01", r); end
+        if (r < 8'h01 || r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 1-3 (LFSR yield)", r); end
         end
 
         // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
         begin : farm_econ
-        reg [7:0] r, r2; reg ok;
-        // SELL 1 @ price 10 -> CASH 110, SUPPLY 1, CROPS 0
-        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
+        reg [7:0] r, r2; reg ok; integer nc, want;
+        // yield is 1-3 (LFSR), so SELL the ACTUAL crop count to empty
+        // the barn, then assert E5. Expected cash scales with yield.
+        sdram_read(10'd32, 16'h0216, r); nc = r;
+        if (nc < 1 || nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 1-3", nc); end
+        farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
+        want = 100 + nc*10;
         sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
-        if ({r2,r}!==16'd110) begin errors=errors+1; $display("FAIL CASH=%d want 110", {r2,r}); end
+        if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
         sdram_read(10'd32, 16'h0212, r);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL SUPPLY=%h", r); end
+        if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
         // SELL with no crops -> E5
         farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
         if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
-        // BUYSEED 2 @ cost 3 -> CASH 104, SEEDS 5
+        // BUYSEED 2 @ cost 3 -> CASH want-6, SEEDS 5
         farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
+        want = want - 6;
         sdram_read(10'd32, 16'h0213, r);
-        if (r!==8'd104) begin errors=errors+1; $display("FAIL CASH=%d want 104", r); end
+        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", r, want); end
         sdram_read(10'd32, 16'h0215, r);
         if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
         // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged

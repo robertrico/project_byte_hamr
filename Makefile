@@ -339,9 +339,13 @@ SIM_MODELS  := $(wildcard $(DESIGN_DIR)/sim/*.v)
 SIM_OUT := $(BUILD_DIR)/$(DESIGN)_tb.vvp
 VCD     := $(BUILD_DIR)/$(DESIGN)_tb.vcd
 
+# PLUSARGS: runtime test selection for the tb, e.g.
+#   make sim PLUSARGS=+farmonly   farm phases only (fast iteration)
+#   make sim PLUSARGS=+vcd        enable waveform dump (~20 GB full suite!)
+# Default (no PLUSARGS) = full suite, no VCD = the pre-merge gate.
 sim: $(SIM_OUT)
 	@echo "=== Running Simulation ==="
-	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp
+	cd $(BUILD_DIR) && $(VVP) $(DESIGN)_tb.vvp $(PLUSARGS)
 	@if [ -f $(VCD) ]; then echo "VCD written to $(VCD)"; fi
 
 $(SIM_OUT): $(VERILOG_SRC) $(SIM_MODELS) $(SIM_MAIN_TB) $(SIM_AUX_TB) $(MEM_FILES) | $(BUILD_DIR)
