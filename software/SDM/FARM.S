@@ -2666,20 +2666,7 @@ WKR23LP
 * stale context here - clear + HUDCASH)
  JSR CLRROW20
  JSR HUDCASH
-* row 23: clear (farm legend is longer)
- LDX #23
- LDA GRLO,X
- STA LINEP
- LDA GRHI,X
- STA LINEP+1
- LDA #$A0
- LDY #0
-WKR23LP
- STA (LINEP),Y
- INY
- CPY #40
- BNE WKR23LP
-* row 23: legend
+* row 23: legend (cleared at WKDRAW top)
  LDA #<SWKLEG
  STA MSGPTR
  LDA #>SWKLEG
