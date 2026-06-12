@@ -181,37 +181,94 @@ CR20LP
  BNE CR20LP
  RTS
 
-* === STAGE COLOR TABLE ===
-STAGEC
- DFB $00,$08,$04,$0C,$0E,$09,$0D
 * crop ripe colors: wheat carrot berry pumpkn
 CROPC DFB $0D,$09,$03,$0C
 
 * === PLOTDRAW: X=px Y=py A=plot byte ->
-* 2x2 block; stage<6 STAGEC, ripe CROPC[crop]
+* crop color from stg1; growth fill; checker
+* stg0: blk; 1-5: fill; 6(STRIPE): chk; 7: dead
 PLOTDRAW
  STX PLOTC
  STA NTMP
- AND #7
- CMP #STRIPE
- BEQ PDRIPE
- TAX
- LDA STAGEC,X
- JMP PDCOL
-PDRIPE
- LDA NTMP
+* crop color -> T16+1
  LSR
  LSR
  LSR
+ AND #3
  TAX
  LDA CROPC,X
-PDCOL
+ STA T16+1
+* stage dispatch
+ LDA NTMP
+ AND #7
+ BEQ PDST0
+ CMP #STRIPE
+ BEQ PDST6
+ CMP #7
+ BEQ PDST7
+* stages 1-5: precompute color*$11 -> T16
+ STA NTMP
+ LDA T16+1
+ ASL
+ ASL
+ ASL
+ ASL
+ ORA T16+1
  STA T16
+ LDA NTMP
+ CMP #1
+ BEQ PDST1
+ CMP #2
+ BEQ PDST2
+ CMP #3
+ BEQ PDST3
+* stages 4,5: solid crop color both cells
+ LDA T16
+ STA NTMP
+ LDA T16
+ JMP PDGO
+PDST0
+ LDA #0
+ STA NTMP
+ LDA #0
+ JMP PDGO
+PDST1
+* cell0=color lo nibble, cell1=0
+ LDA T16+1
+ STA NTMP
+ LDA #0
+ JMP PDGO
+PDST2
+* cell0=color*$11, cell1=0
+ LDA T16
+ STA NTMP
+ LDA #0
+ JMP PDGO
+PDST3
+* cell0=color*$11, cell1=color lo nibble
+ LDA T16
+ STA NTMP
+ LDA T16+1
+ JMP PDGO
+PDST6
+* ripe: cell0=color|$F0, cell1=$0F|color<<4
+ LDA T16+1
+ ORA #$F0
+ STA NTMP
+ LDA T16+1
  ASL
  ASL
  ASL
  ASL
- ORA T16
+ ORA #$0F
+ JMP PDGO
+PDST7
+* dead: magenta $1 solid
+ LDA #$11
+ STA NTMP
+ LDA #$11
+PDGO
+* A=cell1, NTMP=cell0, Y=py from entry
  STA T16
  LDA GRLO,Y
  STA LINEP
@@ -220,9 +277,10 @@ PDCOL
  LDA PLOTC
  ASL
  TAY
- LDA T16
+ LDA NTMP
  STA (LINEP),Y
  INY
+ LDA T16
  STA (LINEP),Y
  RTS
 
@@ -413,10 +471,6 @@ HUDDRAW
 * --- STRINGS (HI-ASCII, 0-TERM) ---
 SCASH ASC "CASH "
  DFB 0
-SBUY ASC "BUY   "
- DFB 0
-SSELL ASC "SELL "
- DFB 0
 SSEED ASC "SEED  "
  DFB 0
 SYIELD ASC "YIELD "
@@ -435,9 +489,9 @@ SHELP DFB $10
  DFB 0
 SMKT ASC "MARKET"
  DFB 0
-SSD ASC "SD"
+SMHDR ASC "NAME    COST PRICE SEED CROP"
  DFB 0
-SCR ASC "CR"
+SMHINT ASC "1-4 PICK CROP, B BUY, S SELL"
  DFB 0
 * MUST MATCH SEEDC IN FARMTASK.S
 SEEDCT DFB 2,4,7,12
@@ -1736,6 +1790,14 @@ MKENTER
  STA SCREEN
  STA TEXTSW
  JSR CLRMSG
+ LDA #<SMHINT
+ STA MSGPTR
+ LDA #>SMHINT
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #21
+ JSR PRSTR
  JSR MKDRAW
  RTS
 * === MKEXIT: -> GR farm screen ===
@@ -1824,46 +1886,25 @@ MKNOSEL
  STA PRCOL
  LDY EVT
  JSR PRSTR
-* BUY col 10, cost col 14-16
- LDA #<SBUY
- STA MSGPTR
- LDA #>SBUY
- STA MSGPTR+1
- LDA #10
- STA PRCOL
- LDY EVT
- JSR PRSTR
+* cost col 12-14
  LDX NTMP
  LDA SEEDCT,X
  STA T16
  LDA #0
  STA T16+1
- LDX #14
+ LDX #12
  LDY EVT
  JSR PRDEC3
-* SELL col 18, price col 23-25
- LDA #<SSELL
- STA MSGPTR
- LDA #>SSELL
- STA MSGPTR+1
- LDA #18
- STA PRCOL
- LDY EVT
- JSR PRSTR
+* price col 17-19
  LDX NTMP
  LDA PRICE4,X
  STA T16
  LDA #0
  STA T16+1
- LDX #23
+ LDX #17
  LDY EVT
  JSR PRDEC3
-* PRSTR/PRDEC3 clobber LINEP - reload
- LDY EVT
- LDA GRLO,Y
- STA LINEP
- LDA GRHI,Y
- STA LINEP+1
+* trend glyph col 21 (LINEP at row EVT base)
  LDX NTMP
  LDA PRICE4,X
  CMP LASTP4,X
@@ -1877,40 +1918,24 @@ MKTDN
 MKTFL
  LDA #$BD ; '='
 MKTPUT
- LDY #26
+ LDY #21
  STA (LINEP),Y
-* SD col 28-29, value col 31-33
- LDA #<SSD
- STA MSGPTR
- LDA #>SSD
- STA MSGPTR+1
- LDA #28
- STA PRCOL
- LDY EVT
- JSR PRSTR
+* seeds col 23-25
  LDX NTMP
  LDA SEED4,X
  STA T16
  LDA #0
  STA T16+1
- LDX #31
+ LDX #23
  LDY EVT
  JSR PRDEC3
-* CR col 34-35, value col 37-39
- LDA #<SCR
- STA MSGPTR
- LDA #>SCR
- STA MSGPTR+1
- LDA #34
- STA PRCOL
- LDY EVT
- JSR PRSTR
+* crops col 28-30
  LDX NTMP
  LDA CROP4,X
  STA T16
  LDA #0
  STA T16+1
- LDX #37
+ LDX #28
  LDY EVT
  JSR PRDEC3
  RTS
@@ -1925,6 +1950,15 @@ MKDRAW
  LDA #15
  STA PRCOL
  LDY #1
+ JSR PRSTR
+* header row 3 col 3
+ LDA #<SMHDR
+ STA MSGPTR
+ LDA #>SMHDR
+ STA MSGPTR+1
+ LDA #3
+ STA PRCOL
+ LDY #3
  JSR PRSTR
  LDA #0
  STA NTMP
