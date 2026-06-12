@@ -222,7 +222,9 @@ PLOTDRAW
  BEQ PDST2
  CMP #3
  BEQ PDST3
-* stages 4,5: solid crop color both cells
+ CMP #4
+ BEQ PDST4
+* stage 5: solid crop both cells
  LDA T16
  STA NTMP
  LDA T16
@@ -233,22 +235,33 @@ PDST0
  LDA #0
  JMP PDGO
 PDST1
-* cell0=color lo nibble, cell1=0
- LDA T16+1
+* tilled soil: full gray block (bounds)
+ LDA #$55
  STA NTMP
- LDA #0
+ LDA #$55
  JMP PDGO
 PDST2
-* cell0=color*$11, cell1=0
+* bottom-left crop, rest soil
  LDA T16
+ AND #$F0
+ ORA #$05
  STA NTMP
- LDA #0
+ LDA #$55
  JMP PDGO
 PDST3
-* cell0=color*$11, cell1=color lo nibble
+* bottom row crop, top soil
+ LDA T16
+ AND #$F0
+ ORA #$05
+ STA NTMP
+ JMP PDGO
+PDST4
+* left col full, right bottom crop
  LDA T16
  STA NTMP
- LDA T16+1
+ LDA T16
+ AND #$F0
+ ORA #$05
  JMP PDGO
 PDST6
 * ripe: cell0=color|$F0, cell1=$0F|color<<4
