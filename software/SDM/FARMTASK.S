@@ -30,7 +30,6 @@ SUP = $0E23
 CSHL = $0E24
 CSHH = $0E25
 SEED = $0E26
-CROP = $0E27
 TGT = $0E28
 M20L = $0E29
 M20H = $0E2A
@@ -767,7 +766,7 @@ MKDONE
  RTS
 
 * per-crop profiles (blob-resident: hot loop)
-GROWM DFB $00,$01,$03,$07
+GROWM DFB $00,$01,$03,$07 ;0=every 1/2/4/8th tick
 BASEP DFB 8,14,24,40
 SEEDC DFB 2,4,7,12
 
