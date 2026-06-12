@@ -1579,10 +1579,25 @@ module project_obscurus_tb;
         begin : wk_m1
         reg [7:0] r, r1; reg ok; reg [7:0] h1, h2; integer t;
         $display("--- WORKSHOP task tests ---");
-        // (the farm reset phase just respawned farm into slot 0)
+        // quiesce: host may not touch BRAM while a task runs.
+        // reset, wait restore_done, load BOTH blobs, ring BOTH.
+        nRES_READ = 1'b0; #1000; nRES_READ = 1'b1;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);
+        begin : wkm1_rstwait
+        integer t; reg [7:0] fs;
+        fs = 8'h00; t = 0;
+        while (!fs[1] && t < 20000) begin
+            rd_reg(4'hF, fs); t = t + 1;
+        end
+        if (!fs[1]) begin errors=errors+1; $display("FAIL wk_m1: restore never done"); end
+        end
         wk_init;
+        farm_load;
         wk_load;
-        stage_mbox(2'd1, 8'd3, 8'd0, 8'd0);   // slot 1, skill 3
+        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
+        stage_mbox(2'd1, 8'd3, 8'd0, 8'd0);
+        ring(2'd0);
         ring(2'd1);
         wk_cmd(8'h00, 8'h00, 8'h00, 8'h00, 8'h00, r, r1, ok);   // OPSTAT
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wk STATUS r=%h ok=%b", r, ok); end
@@ -1626,6 +1641,7 @@ module project_obscurus_tb;
         // refill pantry, force discovery (SKILL=$FF -> threshold maxed)
         wk_cmd(8'h01, 8'd0, 8'd3, 8'h00, 8'h00, r, r1, ok);  // deposit 3 more wheat (rig: no farm debit needed for unit test)
         sdram_write(10'd33, 16'h0214, 8'hFF);                // rig: maxed skill
+        sdram_write(10'd33, 16'h0215, 8'h01);                // rig: BREAD pre-discovered (det.)
         wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL craft r=%h", r); end
         sdram_read(10'd33, 16'h0220, r);                     // station0 STATE
@@ -1643,6 +1659,8 @@ module project_obscurus_tb;
         end
         if (st!==8'h02) begin errors=errors+1; $display("FAIL station never done"); end
         end
+        // allow coproc to complete PUTEV after STATE=2 write (timing gap)
+        repeat (2000) @(posedge clk100);
         // drain wk ring: expect WEVDONE type 5, p0=station0, p1=recipe0
         begin : wkring
         reg [7:0] h, rs, rt, rp0, rp1; integer g;
@@ -1665,6 +1683,7 @@ module project_obscurus_tb;
         else $display("PASS collect BREAD value 28");
         wk_cmd(8'h04, 8'h01, 8'h00, 8'h00, 8'h00, r, r1, ok);  // OPMODE BOOM
         wk_cmd(8'h01, 8'd2, 8'd2, 8'h00, 8'h00, r, r1, ok);    // deposit 2 berries
+        sdram_write(10'd33, 16'h0215, 8'h21);                    // rig: BREAD+JAM disc bits
         wk_cmd(8'h02, 8'd2, 8'd2, 8'hFF, 8'hFF, r, r1, ok);    // JAM (skill FF)
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL jam craft r=%h", r); end
         begin : wkdone2
