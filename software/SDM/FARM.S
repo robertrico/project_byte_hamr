@@ -1820,9 +1820,11 @@ MKEXIT
  LDA #0
  STA SCREEN
  STA GRAPH
+* DRAWALL already applies cursor XOR -
+* a second CURSDRAW here ERASES it and
+* phase-inverts every later toggle (ghosts)
  JSR DRAWALL
  JSR HUDDRAW
- JSR CURSDRAW
  RTS
 * === MKCLR: blank text rows 0-19 ===
 MKCLR
