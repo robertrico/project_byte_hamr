@@ -410,6 +410,7 @@ SSD ASC "SD"
  DFB 0
 SCR ASC "CR"
  DFB 0
+* MUST MATCH SEEDC IN FARMTASK.S
 SEEDCT DFB 2,4,7,12
 SMHELP DFB $02
  ASC "UY "
@@ -740,7 +741,9 @@ EVD2
  STA PRICE4,X
  LDA SCREEN
  BEQ EVDONE
- JSR MKDRAW
+ LDX EVA
+ STX NTMP
+ JSR MKDRAWROW
 EVDONE
  RTS
 
@@ -1196,6 +1199,7 @@ MK2
  LDA #>SQTYB
  STA MSGPTR+1
  JSR QTYPROMPT
+* re-read after op feeds MKDRAW
  JSR RDMKT
  JSR MKDRAW
  JMP MLOOP
@@ -1209,6 +1213,7 @@ MK3
  LDA #>SQTYS
  STA MSGPTR+1
  JSR QTYPROMPT
+* re-read after op feeds MKDRAW
  JSR RDMKT
  JSR MKDRAW
  JMP MLOOP
@@ -1657,6 +1662,7 @@ MKENTER
  LDA #1
  STA SCREEN
  STA TEXTSW
+ JSR CLRMSG
  JSR MKDRAW
  RTS
 * === MKEXIT: -> GR farm screen ===
@@ -1691,27 +1697,10 @@ MKCCOL
  CPY #20
  BNE MKCROW
  RTS
-* === MKDRAW: full market repaint ===
-* row 1 title; rows 4/7/10/13 = crop rows:
-*  col 0 sel star, col 1 key, col 3 name,
-*  col 10 BUY, col 14 cost, col 18 SELL,
-*  col 23 price, col 27 trend, col 29 SD,
-*  col 32 sd-count, col 34 CR, col 37 cr-count
-* row 20 cash via HUDDRAW; row 23 legend
-MKDRAW
- JSR MKCLR
- LDA #<SMKT
- STA MSGPTR
- LDA #>SMKT
- STA MSGPTR+1
- LDA #15
- STA PRCOL
- LDY #1
- JSR PRSTR
- LDA #0
- STA NTMP
-MKROW
-* row Y = 4 + crop*3
+* === MKDRAWROW: repaint ONE crop row ===
+* NTMP=crop index 0-3; blanks row first.
+MKDRAWROW
+* compute row Y = NTMP*3+4
  LDA NTMP
  ASL
  CLC
@@ -1719,8 +1708,21 @@ MKROW
  CLC
  ADC #4
  TAY
- STY EVT
+ STY EVT ;EVT=row scratch
+* blank 40 cols of this row
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+MDRCLR
+ STA (LINEP),Y
+ INY
+ CPY #40
+ BNE MDRCLR
 * set LINEP for direct (LINEP),Y stores
+ LDY EVT
  LDA GRLO,Y
  STA LINEP
  LDA GRHI,Y
@@ -1783,7 +1785,7 @@ MKNOSEL
  LDX #23
  LDY EVT
  JSR PRDEC
-* trend glyph col 27
+* PRSTR/PRDEC clobber LINEP - reload
  LDY EVT
  LDA GRLO,Y
  STA LINEP
@@ -1838,10 +1840,27 @@ MKTPUT
  LDX #37
  LDY EVT
  JSR PRDEC
+ RTS
+* === MKDRAW: full market repaint ===
+* MKCLR + title + 4x MKDRAWROW + legend
+MKDRAW
+ JSR MKCLR
+ LDA #<SMKT
+ STA MSGPTR
+ LDA #>SMKT
+ STA MSGPTR+1
+ LDA #15
+ STA PRCOL
+ LDY #1
+ JSR PRSTR
+ LDA #0
+ STA NTMP
+MDRLP
+ JSR MKDRAWROW
  INC NTMP
  LDA NTMP
  CMP #4
- BNE MKJROW
+ BNE MDRLP
 * legend row 23 + cash row 20
  LDA #<SMHELP
  STA MSGPTR
@@ -1853,7 +1872,5 @@ MKTPUT
  JSR PRSTR
  JSR HUDDRAW
  RTS
-MKJROW
- JMP MKROW
 
  PUT FARMTASKB
