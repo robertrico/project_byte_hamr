@@ -347,13 +347,21 @@ module project_obscurus_tb;
         sdram_write(10'd32, 16'h0002, 8'h00);          // SEQCTR
         sdram_write(10'd32, 16'h0003, 8'h00);          // HEAD
         sdram_write(10'd32, 16'h0200, 8'h00);          // MFLAG
-        sdram_write(10'd32, 16'h0210, 8'd10);          // PRICEL=BASE
-        sdram_write(10'd32, 16'h0211, 8'h00);
-        sdram_write(10'd32, 16'h0212, 8'h00);          // SUPPLY
-        sdram_write(10'd32, 16'h0213, 8'd100);         // CASHL
-        sdram_write(10'd32, 16'h0214, 8'h00);
-        sdram_write(10'd32, 16'h0215, 8'd5);           // SEEDS
-        sdram_write(10'd32, 16'h0216, 8'h00);          // CROPS
+        // v2 market array: 4 x (PRICE lo, PRICE hi, SUPPLY) at $0210+c*3
+        sdram_write(10'd32, 16'h0210, 8'd8);  sdram_write(10'd32, 16'h0211, 8'h00); sdram_write(10'd32, 16'h0212, 8'h00);
+        sdram_write(10'd32, 16'h0213, 8'd14); sdram_write(10'd32, 16'h0214, 8'h00); sdram_write(10'd32, 16'h0215, 8'h00);
+        sdram_write(10'd32, 16'h0216, 8'd24); sdram_write(10'd32, 16'h0217, 8'h00); sdram_write(10'd32, 16'h0218, 8'h00);
+        sdram_write(10'd32, 16'h0219, 8'd40); sdram_write(10'd32, 16'h021A, 8'h00); sdram_write(10'd32, 16'h021B, 8'h00);
+        sdram_write(10'd32, 16'h0220, 8'd100);         // CASH lo
+        sdram_write(10'd32, 16'h0221, 8'h00);          // CASH hi
+        sdram_write(10'd32, 16'h0222, 8'd5);           // SEEDS wheat
+        sdram_write(10'd32, 16'h0223, 8'd3);           // SEEDS carrot
+        sdram_write(10'd32, 16'h0224, 8'd2);           // SEEDS berry
+        sdram_write(10'd32, 16'h0225, 8'd1);           // SEEDS pumpkin
+        sdram_write(10'd32, 16'h0226, 8'h00);          // CROPS wheat
+        sdram_write(10'd32, 16'h0227, 8'h00);
+        sdram_write(10'd32, 16'h0228, 8'h00);
+        sdram_write(10'd32, 16'h0229, 8'h00);
         for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0300+i, 8'h00);
     end endtask
 
@@ -1252,27 +1260,37 @@ module project_obscurus_tb;
         farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm STATUS r=%h ok=%b", r, ok); end
         else $display("PASS farm STATUS");
-        // (b) PLANT 3,3 -> plot $033F = 1, SEEDS 4
+        // (b) PLANT 3,3 crop0 -> plot $033F = 1, wheat SEEDS 4 @ $0222
         farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm PLANT r=%h", r); end
         sdram_read(10'd32, 16'h033F, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(3,3)=%h want 01", r); end
-        sdram_read(10'd32, 16'h0215, r);
+        sdram_read(10'd32, 16'h0222, r);
         if (r!==8'h04) begin errors=errors+1; $display("FAIL SEEDS=%h want 04", r); end
         // PLANT corner 19,19 -> $048F (PLOTADR 16-bit math)
         farm_cmd(8'h01, 8'd19, 8'd19, 8'h00, r, ok);
         sdram_read(10'd32, 16'h048F, r);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(19,19)=%h", r); end
+        // v2: PLANT 5,5 crop3 (pumpkin) -> plot = 3*8+1 = $19, SEEDS[3] 0
+        farm_cmd(8'h01, 8'd5, 8'd5, 8'd3, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL plant pumpkin r=%h", r); end
+        sdram_read(10'd32, 16'h0369, r);   // $0300 + 5*20 + 5 = $0369
+        if (r!==8'h19) begin errors=errors+1; $display("FAIL plot(5,5)=%h want 19", r); end
+        sdram_read(10'd32, 16'h0225, r);
+        if (r!==8'h00) begin errors=errors+1; $display("FAIL SEEDS[3]=%h want 00", r); end
+        // crop>3 rejected
+        farm_cmd(8'h01, 8'd7, 8'd7, 8'd4, r, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL plant crop4 r=%h want E6", r); end
         // (d) errors: PLANT occupied, HARVEST unripe
         // (must run before 5 grow ticks elapse - see FSIM divider note)
         farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'hE1) begin errors=errors+1; $display("FAIL occupied r=%h want E1", r); end
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'hE2) begin errors=errors+1; $display("FAIL unripe r=%h want E2", r); end
-        // (d cont.) SELL qty=0 / BUYSEED qty=0 -> ERR_BAD
-        farm_cmd(8'h03, 8'd0, 8'h00, 8'h00, r, ok);
+        // (d cont.) SELL qty=0 / BUYSEED qty=0 -> ERR_BAD (args: crop, qty)
+        farm_cmd(8'h03, 8'd0, 8'd0, 8'h00, r, ok);
         if (r!==8'hE6) begin errors=errors+1; $display("FAIL sell-0 r=%h want E6", r); end
-        farm_cmd(8'h04, 8'd0, 8'h00, 8'h00, r, ok);
+        farm_cmd(8'h04, 8'd0, 8'd0, 8'h00, r, ok);
         if (r!==8'hE6) begin errors=errors+1; $display("FAIL buy-0 r=%h want E6", r); end
         // (b cont.) wait on (19,19) - the LAST plot planted; watching (3,3)
         // races a grow tick landing between the two PLANT commands
@@ -1303,12 +1321,18 @@ module project_obscurus_tb;
                 begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
             else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
         end
+        // v2 divergence: pumpkin (mask $07) must NOT be ripe when wheat is;
+        // it advances at most stage 2 by now
+        sdram_read(10'd32, 16'h0369, r);
+        if (r < 8'h19 || r > 8'h1B) begin errors=errors+1;
+            $display("FAIL pumpkin diverge plot=%h want 19-1B", r); end
+        else $display("PASS seeds diverge: wheat ripe, pumpkin=%h", r);
         // (c) HARVEST -> CROPS=0-3 (LFSR yield; 0 = rare crop-death roll),
         // plot 0. Yield is LFSR-phase-dependent: cycle-deterministic in
         // sim but fragile to tb edits, so assert the honest 0-3 range.
         farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
-        sdram_read(10'd32, 16'h0216, r);
+        sdram_read(10'd32, 16'h0226, r);
         if (r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 0-3 (LFSR yield)", r); end
         end
 
@@ -1335,37 +1359,37 @@ module project_obscurus_tb;
         // yield is 0-3 (LFSR, 0 = rare death roll), so SELL the ACTUAL
         // crop count to empty the barn, then assert E5. Expected cash
         // scales with yield. nc==0 (death) -> skip the sell leg.
-        sdram_read(10'd32, 16'h0216, r); nc = r;
+        sdram_read(10'd32, 16'h0226, r); nc = r;
         if (nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 0-3", nc); end
         want = 100;
         if (nc > 0) begin
-            farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
+            farm_cmd(8'h03, 8'd0, nc[7:0], 8'h00, r, ok);   // SELL crop0 qty nc
             if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
-            want = 100 + nc*10;
-            sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
+            want = 100 + nc*8;                              // wheat base price 8
+            sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r2);
             if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
-            sdram_read(10'd32, 16'h0212, r);
+            sdram_read(10'd32, 16'h0212, r);                // wheat SUPPLY
             if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
         end else $display("note: death roll at m1 harvest, sell leg skipped");
         // SELL with no crops -> E5
-        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
+        farm_cmd(8'h03, 8'd0, 8'd1, 8'h00, r, ok);
         if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
-        // BUYSEED 2 @ cost 3 -> CASH want-6, SEEDS 5
-        farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
+        // BUYSEED carrot x2 @ cost 4 -> CASH want-8, SEEDS[1] 5
+        farm_cmd(8'h04, 8'd1, 8'd2, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
-        want = want - 6;
-        sdram_read(10'd32, 16'h0213, r);
-        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", r, want); end
-        sdram_read(10'd32, 16'h0215, r);
-        if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
-        // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged
+        want = want - 8;
+        sdram_read(10'd32, 16'h0220, r);
+        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL post-buy CASH=%h want %0d", r, want[7:0]); end
+        sdram_read(10'd32, 16'h0223, r);
+        if (r!==8'h05) begin errors=errors+1; $display("FAIL SEEDS[1]=%h want 05", r); end
+        // BUYSEED overflow guard: force SEEDS[0]=254, buy 5 -> E7, unchanged
         // (tb-only direct poke: rig deliberately bypasses single-writer rule)
-        sdram_write(10'd32, 16'h0215, 8'd254);
-        farm_cmd(8'h04, 8'd5, 8'h00, 8'h00, r, ok);
+        sdram_write(10'd32, 16'h0222, 8'd254);
+        farm_cmd(8'h04, 8'd0, 8'd5, 8'h00, r, ok);
         if (r!==8'hE7) begin errors=errors+1; $display("FAIL seed-full r=%h want E7", r); end
-        sdram_read(10'd32, 16'h0215, r);
+        sdram_read(10'd32, 16'h0222, r);
         if (r!==8'd254) begin errors=errors+1; $display("FAIL SEEDS clobbered=%d", r); end
-        sdram_write(10'd32, 16'h0215, 8'd5);   // restore
+        sdram_write(10'd32, 16'h0222, 8'd5);   // restore wheat seeds
         // EV_PRICE drift: force SUPPLY=10 -> TGT=5. Supply decays while the
         // price walks (DECAYDIV=4), so the target RISES under it and the
         // price recovers - assert the MINIMUM seen, not the endpoint.
@@ -1384,9 +1408,11 @@ module project_obscurus_tb;
         begin : farm_evcount
         integer i; integer sawprice;
         sawprice = 0;
-        for (i=0; i<farm_nev; i=i+1) if (ev_type[i]===8'h02) sawprice = sawprice + 1;
-        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE got %0d", sawprice); end
-        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE", sawprice);
+        // v2 EVPRICE: p0=crop p1=price; assert crop==0 and count wheat events
+        for (i=0; i<farm_nev; i=i+1)
+            if (ev_type[i]===8'h02 && ev_p0[i]===8'h00) sawprice = sawprice + 1;
+        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE(crop0) got %0d", sawprice); end
+        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE(crop0,price=ev_p1)", sawprice);
         end
         end
 
@@ -1395,7 +1421,7 @@ module project_obscurus_tb;
         reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
         baseresync = farm_resyncs;
         // plant 70 plots (rows 5..8, cols 0..19 = 80 available; use 70)
-        sdram_write(10'd32, 16'h0215, 8'd255);          // plenty of seeds (tb poke)
+        sdram_write(10'd32, 16'h0222, 8'd255);          // plenty of wheat seeds (tb poke)
         for (i=0; i<70; i=i+1)
             farm_cmd(8'h01, i%20, 8'd5 + i/20, 8'h00, r, ok);
         // wait until the LAST-planted plot (9,8) ripens -> 70 EV_RIPE, ring lapped
