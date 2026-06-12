@@ -36,6 +36,20 @@ hardware:
   addr hi bytes are constant $02 - reviewer-verified). Next: increment 3 =
   WORKSHOP task (read spec quiesce invariant + EVLIB scratch param +
   CP_FSTAT restore_done rule FIRST).
+- **v2 increment 3 SHIPPED (branch farm-v2)**: WORKSHOP task — skill 3,
+  bank 33 ("WK"), blob 1240 B ORG $2000 (BRAM GREW 8->16 KB this increment:
+  task space $2000-$3FFF, NOT in cflash snapshots; NEEDS FPGA REFLASH).
+  12 recipes (values <=127), discovery roll < 40+SKILL/2-RARITY*16 (floor 0:
+  FEAST impossible at low skill), 2 stations, WEVDONE=5, RRUIN=$E8.
+  Farm-side OPWDRAW=5/OPADDC=6 (blob 1772/1792). PORTLIB.S + EVLIB scratch
+  param (byte-identical refactor). CVER=1 @ $0005 both banks. //e: W =
+  workshop screen, MIX 1-4 + RETURN craft, D deposit (debit-first), C 1/2
+  collect->OPADDC. QUIESCE rules now load-everything-stage-everything-ring-
+  last in tb AND FARM.S (CP_CALL's stage+ring split — it staged mailboxes
+  through the BRAM port after ring 0). Deploy: FLASH new bitstream, then
+  boot + BRUN (farm world survives if SDRAM kept power; else cold start).
+  Next: increment 4 = world events (FARMTASK has 20 B headroom — use the
+  37 B hi-byte reclaim first).
 - **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
   reset, cflash boot-restore owns coproc BRAM port B until restore_done —
   host loads during it are silently dropped, and a valid flash snapshot
