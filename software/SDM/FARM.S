@@ -42,10 +42,13 @@ CURX DS 1
 CURY DS 1
 CASHL DS 1
 CASHH DS 1
-SEEDS DS 1
-CROPS DS 1
-PRICE DS 1
-LASTPR DS 1
+SEED4 DS 4
+CROP4 DS 4
+PRICE4 DS 4
+LASTP4 DS 4
+SELCROP DS 1
+SCREEN DS 1
+HCROP DS 1
 RESCNT DS 1
 TMO DS 2
 T16 DS 2
@@ -145,10 +148,9 @@ GCCOL
  BNE GCROW
  RTS
 
-* === CLRMSG: row 20 cols 0-28 only ===
-* (CASH owns cols 29-39 - never wipe it)
+* === CLRMSG: row 21 all 40 cols ===
 CLRMSG
- LDX #20
+ LDX #21
  LDA GRLO,X
  STA LINEP
  LDA GRHI,X
@@ -158,21 +160,52 @@ CLRMSG
 CMLP
  STA (LINEP),Y
  INY
- CPY #29
+ CPY #40
  BNE CMLP
+ RTS
+
+* === CLRROW20: row 20 cols 0-28 ===
+* (CASH owns cols 29-39 - never wipe it)
+CLRROW20
+ LDX #20
+ LDA GRLO,X
+ STA LINEP
+ LDA GRHI,X
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+CR20LP
+ STA (LINEP),Y
+ INY
+ CPY #29
+ BNE CR20LP
  RTS
 
 * === STAGE COLOR TABLE ===
 STAGEC
  DFB $00,$08,$04,$0C,$0E,$09,$0D
+* crop ripe colors: wheat carrot berry pumpkn
+CROPC DFB $0D,$09,$03,$0C
 
-* === PLOTDRAW: X=px Y=py A=stage ->
-* solid 2x2 block, text line py,
-* cols 2*px and 2*px+1, byte = color*$11
+* === PLOTDRAW: X=px Y=py A=plot byte ->
+* 2x2 block; stage<6 STAGEC, ripe CROPC[crop]
 PLOTDRAW
  STX PLOTC
+ STA NTMP
+ AND #7
+ CMP #STRIPE
+ BEQ PDRIPE
  TAX
  LDA STAGEC,X
+ JMP PDCOL
+PDRIPE
+ LDA NTMP
+ LSR
+ LSR
+ LSR
+ TAX
+ LDA CROPC,X
+PDCOL
  STA T16
  ASL
  ASL
@@ -296,12 +329,41 @@ DECTL
 DECTH
  DFB $27,$03,$00,$00,$00
 
-* === HUDDRAW: rows 20-22 (layout rev 2) ===
-* row 20 cols 29+: CASH (msgs own 0-28)
-* row 21: BUY static / trend / SELL live
-* row 22: SEED / CROP. digit cols 6 and 34
+* === HUDDRAW: row 20 seed+cash ===
+* row 20 cols 0-28: SEED <name> <count>
+* row 20 cols 29+: CASH label + value
 HUDDRAW
-* row 20: CASH label col 29, value col 34
+* clear row 20 cols 0-28 first
+ JSR CLRROW20
+* SEED label col 0
+ LDA #<SSEED
+ STA MSGPTR
+ LDA #>SSEED
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #20
+ JSR PRSTR
+* crop name col 5
+ LDX SELCROP
+ LDA SNAML,X
+ STA MSGPTR
+ LDA SNAMH,X
+ STA MSGPTR+1
+ LDA #5
+ STA PRCOL
+ LDY #20
+ JSR PRSTR
+* seed count col 12
+ LDX SELCROP
+ LDA SEED4,X
+ STA T16
+ LDA #0
+ STA T16+1
+ LDX #12
+ LDY #20
+ JSR PRDEC
+* CASH label col 29, value col 34
  LDA #<SCASH
  STA MSGPTR
  LDA #>SCASH
@@ -317,90 +379,6 @@ HUDDRAW
  LDX #34
  LDY #20
  JSR PRDEC
-* row 21: BUY label col 0, SEEDCOST col 6
- LDA #<SBUY
- STA MSGPTR
- LDA #>SBUY
- STA MSGPTR+1
- LDA #0
- STA PRCOL
- LDY #21
- JSR PRSTR
- LDA #SEEDCOST
- STA T16
- LDA #0
- STA T16+1
- LDX #6
- LDY #21
- JSR PRDEC
-* trend glyph col 28, left of SELL label
- LDY #21
- LDA GRLO,Y
- STA LINEP
- LDA GRHI,Y
- STA LINEP+1
- LDY #28
- LDA PRICE
- CMP LASTPR
- BEQ TRFLAT
- BCC TRDN
- LDA #$AB ; '+'
- JMP TRPUT
-TRDN
- LDA #$AD ; '-'
- JMP TRPUT
-TRFLAT
- LDA #$BD ; '='
-TRPUT
- STA (LINEP),Y
-* SELL label col 29, PRICE col 34
- LDA #<SSELL
- STA MSGPTR
- LDA #>SSELL
- STA MSGPTR+1
- LDA #29
- STA PRCOL
- LDY #21
- JSR PRSTR
- LDA PRICE
- STA T16
- LDA #0
- STA T16+1
- LDX #34
- LDY #21
- JSR PRDEC
-* row 22: SEED label col 0, value col 6
- LDA #<SSEED
- STA MSGPTR
- LDA #>SSEED
- STA MSGPTR+1
- LDA #0
- STA PRCOL
- LDY #22
- JSR PRSTR
- LDA SEEDS
- STA T16
- LDA #0
- STA T16+1
- LDX #6
- LDY #22
- JSR PRDEC
-* CROP label col 29, value col 34
- LDA #<SCROP
- STA MSGPTR
- LDA #>SCROP
- STA MSGPTR+1
- LDA #29
- STA PRCOL
- LDY #22
- JSR PRSTR
- LDA CROPS
- STA T16
- LDA #0
- STA T16+1
- LDX #34
- LDY #22
- JSR PRDEC
  RTS
 
 * --- STRINGS (HI-ASCII, 0-TERM) ---
@@ -412,8 +390,6 @@ SSELL ASC "SELL "
  DFB 0
 SSEED ASC "SEED  "
  DFB 0
-SCROP ASC "CROP "
- DFB 0
 SYIELD ASC "YIELD "
  DFB 0
 * key letters inverse ($00-$1F = inverse
@@ -422,12 +398,11 @@ SHELP DFB $10
  ASC "LANT "
  DFB $08
  ASC "ARVEST "
- DFB $13
- ASC "ELL "
- DFB $02
- ASC "UY "
+ DFB $0D
+ ASC "ARKET "
  DFB $11
- ASC "UIT"
+ ASC "UIT "
+ ASC "1-4 SEED"
  DFB 0
 SDEAD ASC "WORLD DEAD - C COLDSTART"
  DFB 0
@@ -445,6 +420,17 @@ SERR ASC "ERR "
  DFB 0
 SQTY ASC "SELL QTY:"
  DFB 0
+* crop name strings + address tables
+SNAMW ASC "WHEAT"
+ DFB 0
+SNAMC ASC "CARROT"
+ DFB 0
+SNAMB ASC "BERRY"
+ DFB 0
+SNAMP ASC "PUMPKN"
+ DFB 0
+SNAML DFB <SNAMW,<SNAMC,<SNAMB,<SNAMP
+SNAMH DFB >SNAMW,>SNAMC,>SNAMB,>SNAMP
 
 * === FRD: read GBANK, A=lo Y=hi -> SDM_VAL ===
 FRD
@@ -547,10 +533,8 @@ SCRES
  CLC
  RTS
 
-* === RDMKT: refresh CASH/SEEDS/CROPS/PRICE
-* (16-bit field: re-read and compare BOTH
-* bytes - L-only guard misses the coproc
-* writing L then H between host reads) ===
+* === RDMKT: refresh CASH/PRICE4/SEED4/CROP4
+* cash tear-guard: re-read both bytes ===
 RDMKT
 RMAGN
  LDA #<FCASHL
@@ -575,21 +559,57 @@ RMAGN
  LDA SDM_VAL
  CMP CASHH
  BNE RMAGN
- LDA #<FPRICEL
- LDY #>FPRICEL
+* read 4 prices: FMKT+crop*3 (c*3=c+c*2)
+ LDX #0
+RMPRC
+ TXA
+ STA NTMP
+ ASL
+ CLC
+ ADC NTMP
+ CLC
+ ADC #<FMKT
+ LDY #>FMKT
  JSR FRD
  LDA SDM_VAL
- STA PRICE
- LDA #<FSEEDS
+ STA PRICE4,X
+ INX
+ CPX #4
+ BNE RMPRC
+* read 4 seed counts
+ LDX #0
+RMSEED
+ TXA
+ CLC
+ ADC #<FSEEDS
  LDY #>FSEEDS
  JSR FRD
  LDA SDM_VAL
- STA SEEDS
- LDA #<FCROPS
+ STA SEED4,X
+ INX
+ CPX #4
+ BNE RMSEED
+* read 4 crop counts
+ LDX #0
+RMCROP
+ TXA
+ CLC
+ ADC #<FCROPS
  LDY #>FCROPS
  JSR FRD
  LDA SDM_VAL
- STA CROPS
+ STA CROP4,X
+ INX
+ CPX #4
+ BNE RMCROP
+* sync LASTP4 on full resync
+ LDX #0
+RMLP4
+ LDA PRICE4,X
+ STA LASTP4,X
+ INX
+ CPX #4
+ BNE RMLP4
  RTS
 
 * === DRAIN: consume ring TAIL..HEAD ===
@@ -662,11 +682,17 @@ EVDISP
  LDA EVT
  CMP #EVRIPE
  BNE EVD2
+* ripe byte = (shadow AND $F8) OR STRIPE
+ JSR SHADGET
+ AND #$F8
+ ORA #STRIPE
+ PHA
  LDX EVA
  LDY EVB
- LDA #STRIPE
+ PLA
+ PHA
  JSR PLOTDRAW
- LDA #STRIPE
+ PLA
  JSR SHADSET
 * ripe plot under cursor? re-apply XOR
  LDA EVA
@@ -684,24 +710,23 @@ EVRMSG
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 EVD2
  CMP #EVPRICE
  BNE EVDONE
- LDA PRICE
- STA LASTPR
- LDA EVA
- STA PRICE
- JSR HUDDRAW
+ LDX EVA
+ LDA PRICE4,X
+ STA LASTP4,X
+ LDA EVB
+ STA PRICE4,X
 EVDONE
  RTS
 
-* === SHADSET: SHADOW[EVB*20+EVA] = A ===
-* same 16-bit y*16+y*4 shape as coproc PLOTADR
-SHADSET
- STA SHADV
+* === SHADADR: SHADP -> SHADOW[EVB*20+EVA] ===
+* clobbers T16, SHADP (ZP). EVA/EVB unchanged.
+SHADADR
  LDA EVB
  STA T16
  LDA #0
@@ -739,9 +764,22 @@ SHADSET
  LDA T16+1
  ADC #>SHADOW
  STA SHADP+1
+ RTS
+
+* === SHADSET: SHADOW[EVB*20+EVA] = A ===
+SHADSET
+ STA SHADV
+ JSR SHADADR
  LDY #0
  LDA SHADV
  STA (SHADP),Y
+ RTS
+
+* === SHADGET: A = SHADOW[EVB*20+EVA] ===
+SHADGET
+ JSR SHADADR
+ LDY #0
+ LDA (SHADP),Y
  RTS
 
 * === RESYNC: stable (SEQCTR,HEAD) pair, full
@@ -819,6 +857,9 @@ MRDY
  JSR GRINIT
  JSR GRON
  JSR GRCLR
+ LDA #0
+ STA SELCROP
+ STA SCREEN
 * SIG present?
  LDA #<FSIG0
  LDY #>FSIG0
@@ -869,7 +910,7 @@ PROBED
  JMP MLOOP
 
 COLDST
-* init GBANK (SIG LAST - after CP_CALL)
+* v2 market/inventory init (SIG LAST)
  LDA #0
  STA SDM_VAL
  LDA #<FSEQC
@@ -881,22 +922,73 @@ COLDST
  LDA #<FMFLAG
  LDY #>FMFLAG
  JSR FWR
- LDA #<FPRICEH
- LDY #>FPRICEH
+ LDA #$11
+ LDY #$02
  JSR FWR
- LDA #<FSUPPLY
- LDY #>FSUPPLY
+ LDA #$12
+ LDY #$02
+ JSR FWR
+ LDA #$14
+ LDY #$02
+ JSR FWR
+ LDA #$15
+ LDY #$02
+ JSR FWR
+ LDA #$17
+ LDY #$02
+ JSR FWR
+ LDA #$18
+ LDY #$02
+ JSR FWR
+ LDA #$1A
+ LDY #$02
+ JSR FWR
+ LDA #$1B
+ LDY #$02
  JSR FWR
  LDA #<FCASHH
  LDY #>FCASHH
  JSR FWR
- LDA #<FCROPS
- LDY #>FCROPS
+ LDA #$23
+ LDY #$02
  JSR FWR
- LDA #PBASE
+ LDA #$24
+ LDY #$02
+ JSR FWR
+ LDA #$25
+ LDY #$02
+ JSR FWR
+ LDA #$26
+ LDY #$02
+ JSR FWR
+ LDA #$27
+ LDY #$02
+ JSR FWR
+ LDA #$28
+ LDY #$02
+ JSR FWR
+ LDA #$29
+ LDY #$02
+ JSR FWR
+ LDA #8
  STA SDM_VAL
- LDA #<FPRICEL
- LDY #>FPRICEL
+ LDA #$10
+ LDY #$02
+ JSR FWR
+ LDA #14
+ STA SDM_VAL
+ LDA #$13
+ LDY #$02
+ JSR FWR
+ LDA #24
+ STA SDM_VAL
+ LDA #$16
+ LDY #$02
+ JSR FWR
+ LDA #40
+ STA SDM_VAL
+ LDA #$19
+ LDY #$02
  JSR FWR
  LDA #CASH0
  STA SDM_VAL
@@ -1018,24 +1110,24 @@ K5
  CMP #$D0 ; P
  BNE K6
  LDA #OPPLANT
- JSR DOCMDXY
+ JSR DOCMDXYC
  JMP MLOOP
 K6
  CMP #$C8 ; H
- BNE K7
+ BNE K8
  LDA #OPHARV
  JSR DOCMDXY
  JMP MLOOP
-K7
- CMP #$D3 ; S
- BNE K8
- JSR SELLQTY
- JMP MLOOP
+* keys 1-4: select crop (hi-bit set: $B1-$B4)
 K8
- CMP #$C2 ; B
- BNE K9
- LDA #OPBUY
- JSR DOCMD1
+ CMP #$B1 ; '1'
+ BCC K9
+ CMP #$B5 ; above '4'
+ BCS K9
+ SEC
+ SBC #$B1
+ STA SELCROP
+ JSR HUDDRAW
  JMP MLOOP
 K9
  CMP #$D1 ; Q
@@ -1057,6 +1149,16 @@ DOCMDXY
  LDA CURY
  STA CMDA1
  LDA #0
+ STA CMDA2
+ JMP DOCMD
+* === DOCMDXYC: like DOCMDXY + A2=SELCROP ===
+DOCMDXYC
+ STA CMDOP
+ LDA CURX
+ STA CMDA0
+ LDA CURY
+ STA CMDA1
+ LDA SELCROP
  STA CMDA2
  JMP DOCMD
 * === DOCMD1: A=op, qty=1 ===
@@ -1090,16 +1192,16 @@ DCMSG
  JSR CLRMSG
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 DCERR
  JSR CLRMSG
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
-* PRHEX: 2 hex digits at col 4, row 20
+* PRHEX: 2 hex digits at col 4, row 21
  LDA ERRCODE
  LSR
  LSR
@@ -1132,7 +1234,7 @@ SELLQTY
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  LDA #0
  STA QVAL
@@ -1152,9 +1254,9 @@ SQKEY
  LDX QDIG
  CPX #2
  BCS SQKEY
-* echo digit at row 20 col 10+QDIG
+* echo digit at row 21 col 10+QDIG
  PHA
- LDY #20
+ LDY #21
  LDA GRLO,Y
  STA LINEP
  LDA GRHI,Y
@@ -1202,17 +1304,34 @@ DCOK
  LDA CMDOP
  CMP #OPPLANT
  BNE DCH
- LDA #1
+* paint plot byte = SELCROP*8+1
+ LDA SELCROP
+ ASL
+ ASL
+ ASL
+ CLC
+ ADC #1
  JSR DCPAINT
  JMP DCMKT
 DCH
  CMP #OPHARV
  BNE DCMKT
+* read crop id from shadow before clear
+ LDA CURX
+ STA EVA
+ LDA CURY
+ STA EVB
+ JSR SHADGET
+ LSR
+ LSR
+ LSR
+ STA HCROP
  LDA #0
  JSR DCPAINT
 DCMKT
-* save pre-RDMKT CROPS for yield delta
- LDA CROPS
+* save pre-RDMKT crop count for yield delta
+ LDX HCROP
+ LDA CROP4,X
  STA OLDCROP
  JSR RDMKT
  JSR HUDDRAW
@@ -1222,7 +1341,8 @@ DCMKT
  LDA CMDOP
  CMP #OPHARV
  BNE DCOKM
- LDA CROPS
+ LDX HCROP
+ LDA CROP4,X
  SEC
  SBC OLDCROP
  BEQ DCDIED
@@ -1235,9 +1355,9 @@ DCMKT
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
-* digit + '!' at cols 6,7 (LINEP=row 20)
+* digit + '!' at cols 6,7 (LINEP=row 21)
  PLA
  ORA #$B0
  LDY #6
@@ -1253,7 +1373,7 @@ DCDIED
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 DCOKM
@@ -1263,7 +1383,7 @@ DCOKM
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 * === DCPAINT: A=stage -> plot+shadow at
@@ -1293,7 +1413,7 @@ MSGDEAD
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 
@@ -1426,7 +1546,7 @@ MSGRESP
  STA MSGPTR+1
  LDA #0
  STA PRCOL
- LDY #20
+ LDY #21
  JSR PRSTR
  RTS
 
