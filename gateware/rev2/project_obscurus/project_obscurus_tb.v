@@ -348,10 +348,10 @@ module project_obscurus_tb;
         sdram_write(10'd32, 16'h0003, 8'h00);          // HEAD
         sdram_write(10'd32, 16'h0200, 8'h00);          // MFLAG
         // v2 market array: 4 x (PRICE lo, PRICE hi, SUPPLY) at $0210+c*3
-        sdram_write(10'd32, 16'h0210, 8'd8);  sdram_write(10'd32, 16'h0211, 8'h00); sdram_write(10'd32, 16'h0212, 8'h00);
-        sdram_write(10'd32, 16'h0213, 8'd14); sdram_write(10'd32, 16'h0214, 8'h00); sdram_write(10'd32, 16'h0215, 8'h00);
-        sdram_write(10'd32, 16'h0216, 8'd24); sdram_write(10'd32, 16'h0217, 8'h00); sdram_write(10'd32, 16'h0218, 8'h00);
-        sdram_write(10'd32, 16'h0219, 8'd40); sdram_write(10'd32, 16'h021A, 8'h00); sdram_write(10'd32, 16'h021B, 8'h00);
+        sdram_write(10'd32, 16'h0210, 8'd8);  sdram_write(10'd32, 16'h0211, 8'h00); sdram_write(10'd32, 16'h0212, 8'h00); // crop0 wheat
+        sdram_write(10'd32, 16'h0213, 8'd14); sdram_write(10'd32, 16'h0214, 8'h00); sdram_write(10'd32, 16'h0215, 8'h00); // crop1 carrot
+        sdram_write(10'd32, 16'h0216, 8'd24); sdram_write(10'd32, 16'h0217, 8'h00); sdram_write(10'd32, 16'h0218, 8'h00); // crop2 berry
+        sdram_write(10'd32, 16'h0219, 8'd40); sdram_write(10'd32, 16'h021A, 8'h00); sdram_write(10'd32, 16'h021B, 8'h00); // crop3 pumpkin
         sdram_write(10'd32, 16'h0220, 8'd100);         // CASH lo
         sdram_write(10'd32, 16'h0221, 8'h00);          // CASH hi
         sdram_write(10'd32, 16'h0222, 8'd5);           // SEEDS wheat
@@ -359,9 +359,9 @@ module project_obscurus_tb;
         sdram_write(10'd32, 16'h0224, 8'd2);           // SEEDS berry
         sdram_write(10'd32, 16'h0225, 8'd1);           // SEEDS pumpkin
         sdram_write(10'd32, 16'h0226, 8'h00);          // CROPS wheat
-        sdram_write(10'd32, 16'h0227, 8'h00);
-        sdram_write(10'd32, 16'h0228, 8'h00);
-        sdram_write(10'd32, 16'h0229, 8'h00);
+        sdram_write(10'd32, 16'h0227, 8'h00);          // CROPS carrot
+        sdram_write(10'd32, 16'h0228, 8'h00);          // CROPS berry
+        sdram_write(10'd32, 16'h0229, 8'h00);          // CROPS pumpkin
         for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0300+i, 8'h00);
     end endtask
 
@@ -1303,6 +1303,12 @@ module project_obscurus_tb;
         end
         if (pv!==8'h06) begin errors=errors+1; $display("FAIL plot never ripened"); end
         end
+        // v2 divergence: pumpkin (mask $07) must NOT be ripe when wheat is;
+        // it advances at most stage 2 by now
+        sdram_read(10'd32, 16'h0369, r);
+        if (r < 8'h19 || r > 8'h1B) begin errors=errors+1;
+            $display("FAIL pumpkin diverge plot=%h want 19-1B", r); end
+        else $display("PASS pumpkin diverge: wheat ripe, pumpkin=%h", r);
         // drain-with-retry: DOGROW writes the plot byte (poll target) BEFORE
         // PUTEV finishes - a single drain can race the in-flight publish of
         // the LAST-scanned plot's event. Re-drain until both events land.
@@ -1321,12 +1327,6 @@ module project_obscurus_tb;
                 begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
             else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
         end
-        // v2 divergence: pumpkin (mask $07) must NOT be ripe when wheat is;
-        // it advances at most stage 2 by now
-        sdram_read(10'd32, 16'h0369, r);
-        if (r < 8'h19 || r > 8'h1B) begin errors=errors+1;
-            $display("FAIL pumpkin diverge plot=%h want 19-1B", r); end
-        else $display("PASS seeds diverge: wheat ripe, pumpkin=%h", r);
         // (c) HARVEST -> CROPS=0-3 (LFSR yield; 0 = rare crop-death roll),
         // plot 0. Yield is LFSR-phase-dependent: cycle-deterministic in
         // sim but fragile to tb edits, so assert the honest 0-3 range.
@@ -1378,8 +1378,8 @@ module project_obscurus_tb;
         farm_cmd(8'h04, 8'd1, 8'd2, 8'h00, r, ok);
         if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
         want = want - 8;
-        sdram_read(10'd32, 16'h0220, r);
-        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL post-buy CASH=%h want %0d", r, want[7:0]); end
+        sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r2);
+        if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL post-buy CASH=%d want %0d", {r2,r}, want); end
         sdram_read(10'd32, 16'h0223, r);
         if (r!==8'h05) begin errors=errors+1; $display("FAIL SEEDS[1]=%h want 05", r); end
         // BUYSEED overflow guard: force SEEDS[0]=254, buy 5 -> E7, unchanged
