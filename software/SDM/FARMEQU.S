@@ -90,6 +90,13 @@ MKTD2 = $00
 * 8 = slower supply drain - dumps depress
 * price ~2x longer (bench feedback)
 DECAYDIV = 8
+* EVLIB SCRATCH (FARM TASK INSTANCE)
+EVTYPE = $0E00
+EVP0 = $0E01
+EVP1 = $0E02
+EVHEAD = $0E03
+EVSEQ = $0E04
+EVRLO = $0E05
 * COPROC SDRAM PORTS
 SADDRLO = $E000
 SADDRHI = $E001

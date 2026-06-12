@@ -133,29 +133,8 @@ NRNO
 * (yield roll is an inline compare chain in
 * CHARV - see HVROOM)
 
-* === PORT HELPERS ===
-* RDB: read GBANK byte at addr A(lo) Y(hi) -> A
-RDB
- SEI
- STA RADDRLO
- STY RADDRHI
- LDA #GBANK
- STA RBANKR
- STA RTRIG
- LDA RDATA
- CLI
- RTS
-* WRB: write X to GBANK addr A(lo) Y(hi)
-WRB
- SEI
- STA SADDRLO
- STY SADDRHI
- LDA #GBANK
- STA SBANKR
- TXA
- STA SDATA
- CLI
- RTS
+* === PORT HELPERS (PORTLIB) ===
+ PUT PORTLIB
 
 * === DOMBOX: consume one command if flagged ===
 DOMBOX
