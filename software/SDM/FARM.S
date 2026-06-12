@@ -324,6 +324,35 @@ PDPRT
  BNE PDPRT
  RTS
 
+* === PRDEC3: 8-bit T16 -> 3 digits at
+* (X=col, Y=textrow); prints DECV[2..4] ===
+PRDEC3
+ TYA
+ PHA
+ TXA
+ PHA
+ JSR DIGITS
+ PLA
+ TAX
+ PLA
+ TAY
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+ TXA
+ TAY
+ LDX #2
+PD3PRT
+ LDA DECV,X
+ ORA #$B0
+ STA (LINEP),Y
+ INY
+ INX
+ CPX #5
+ BNE PD3PRT
+ RTS
+
 DECTL
  DFB $10,$E8,$64,$0A,$01
 DECTH
@@ -354,7 +383,7 @@ HUDDRAW
  STA PRCOL
  LDY #20
  JSR PRSTR
-* seed count col 12
+* seed count col 12 (3 digits, max 255)
  LDX SELCROP
  LDA SEED4,X
  STA T16
@@ -362,7 +391,7 @@ HUDDRAW
  STA T16+1
  LDX #12
  LDY #20
- JSR PRDEC
+ JSR PRDEC3
 * CASH label col 29, value col 34
  LDA #<SCASH
  STA MSGPTR
@@ -1301,10 +1330,11 @@ NIBA
  ADC #6
 NIBDONE
  RTS
-* === QTYPROMPT: modal 2-digit qty prompt ===
+* === QTYPROMPT: modal 3-digit qty prompt ===
 * caller sets CMDOP + MSGPTR before JSR.
 * SQGO: CMDA0=SELCROP CMDA1=qty JMP DOCMD.
-* ESC or qty 0 cancels. modal: no DRAIN.
+* ESC or qty 0 cancels. Clamps to 255.
+* modal: no DRAIN.
 QTYPROMPT
  JSR CLRMSG
  LDA #0
@@ -1319,7 +1349,9 @@ SQKEY
  BPL SQKEY
  STA KBDSTR
  CMP #$9B ; ESC
- BEQ SQCAN
+ BNE SQNOTESC
+ JMP SQCAN
+SQNOTESC
  CMP #$8D ; RETURN
  BEQ SQGO
  CMP #$B0 ; below '0'
@@ -1327,8 +1359,30 @@ SQKEY
  CMP #$BA ; above '9'
  BCS SQKEY
  LDX QDIG
- CPX #2
+ CPX #3
  BCS SQKEY
+* 3rd digit (QDIG==2): clamp to max 255
+ CPX #2
+ BNE SQNOCLMP
+ PHA ;save hi-ascii key
+ AND #$0F ;strip to digit value
+ STA NTMP
+ LDA QVAL
+ CMP #26
+ BCS SQCREJ ;QVAL>=26 -> 260+, reject
+ CMP #25
+ BNE SQCOK ;QVAL<25, allow any digit
+*QVAL==25: only digits 0-5 allowed
+ LDA NTMP
+ CMP #6
+ BCS SQCREJ ;digit>=6 -> 256+, reject
+SQCOK
+ PLA ;restore hi-ascii digit
+ JMP SQNOCLMP
+SQCREJ
+ PLA
+ JMP SQKEY
+SQNOCLMP
 * echo digit at row 21 col 10+QDIG
  PHA
  LDY #21
@@ -1365,7 +1419,9 @@ SQKEY
  JMP SQKEY
 SQGO
  LDA QVAL
- BEQ SQCAN
+ BNE SQGODO
+ JMP SQCAN
+SQGODO
  STA CMDA1
  LDA SELCROP
  STA CMDA0
@@ -1521,6 +1577,19 @@ DANC
  LDA DAY
  CMP #GROWSN
  BNE DAROW
+* clear row 23 before farm legend (no stale tail)
+ LDX #23
+ LDA GRLO,X
+ STA LINEP
+ LDA GRHI,X
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+DAR23LP
+ STA (LINEP),Y
+ INY
+ CPY #40
+ BNE DAR23LP
  LDA #<SHELP
  STA MSGPTR
  LDA #>SHELP
@@ -1562,6 +1631,10 @@ RSCOL2
  BEQ RSSAME
  LDA SDM_VAL
  STA (SHADP),Y
+* skip GR paint on market (text) screen
+ LDA SCREEN
+ BNE RSSAME
+ LDA SDM_VAL
  LDX DAX
  LDY DAY
  JSR PLOTDRAW
@@ -1751,7 +1824,7 @@ MKNOSEL
  STA PRCOL
  LDY EVT
  JSR PRSTR
-* BUY label col 10 + cost col 14
+* BUY col 10, cost col 14-16
  LDA #<SBUY
  STA MSGPTR
  LDA #>SBUY
@@ -1767,8 +1840,8 @@ MKNOSEL
  STA T16+1
  LDX #14
  LDY EVT
- JSR PRDEC
-* SELL label col 18 + price col 23
+ JSR PRDEC3
+* SELL col 18, price col 23-25
  LDA #<SSELL
  STA MSGPTR
  LDA #>SSELL
@@ -1784,8 +1857,8 @@ MKNOSEL
  STA T16+1
  LDX #23
  LDY EVT
- JSR PRDEC
-* PRSTR/PRDEC clobber LINEP - reload
+ JSR PRDEC3
+* PRSTR/PRDEC3 clobber LINEP - reload
  LDY EVT
  LDA GRLO,Y
  STA LINEP
@@ -1804,14 +1877,14 @@ MKTDN
 MKTFL
  LDA #$BD ; '='
 MKTPUT
- LDY #27
+ LDY #26
  STA (LINEP),Y
-* SD label col 29 + count col 32
+* SD col 28-29, value col 31-33
  LDA #<SSD
  STA MSGPTR
  LDA #>SSD
  STA MSGPTR+1
- LDA #29
+ LDA #28
  STA PRCOL
  LDY EVT
  JSR PRSTR
@@ -1820,10 +1893,10 @@ MKTPUT
  STA T16
  LDA #0
  STA T16+1
- LDX #32
+ LDX #31
  LDY EVT
- JSR PRDEC
-* CR label col 34 + count col 37
+ JSR PRDEC3
+* CR col 34-35, value col 37-39
  LDA #<SCR
  STA MSGPTR
  LDA #>SCR
@@ -1839,7 +1912,7 @@ MKTPUT
  STA T16+1
  LDX #37
  LDY EVT
- JSR PRDEC
+ JSR PRDEC3
  RTS
 * === MKDRAW: full market repaint ===
 * MKCLR + title + 4x MKDRAWROW + legend
@@ -1861,7 +1934,19 @@ MDRLP
  LDA NTMP
  CMP #4
  BNE MDRLP
-* legend row 23 + cash row 20
+* clear row 23, then market legend + cash
+ LDX #23
+ LDA GRLO,X
+ STA LINEP
+ LDA GRHI,X
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+MKR23LP
+ STA (LINEP),Y
+ INY
+ CPY #40
+ BNE MKR23LP
  LDA #<SMHELP
  STA MSGPTR
  LDA #>SMHELP
