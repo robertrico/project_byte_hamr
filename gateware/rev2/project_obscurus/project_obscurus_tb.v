@@ -1705,6 +1705,48 @@ module project_obscurus_tb;
         if ({r1,r} !== {h2,h1} + 16'd160) begin errors=errors+1;
             $display("FAIL cash %h%h want +160", r1, r); end
         else $display("PASS OPADDCASH credited");
+        // discovery roll path: skill FF, bit clear -> bounded retry loop
+        // (LFSR is cycle-deterministic; loop converges same way every run)
+        begin : wk_roll
+        reg [7:0] r, r1; reg ok; integer a; reg won;
+        wk_cmd(8'h04, 8'h00, 8'h00, 8'h00, 8'h00, r, r1, ok);  // OPMODE 0 (clear BOOM)
+        sdram_write(10'd33, 16'h0215, 8'h00);   // clear disc bits
+        sdram_write(10'd33, 16'h0214, 8'hFF);   // max skill
+        won = 0;
+        for (a = 0; a < 20 && !won; a = a + 1) begin
+            wk_cmd(8'h01, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // deposit 2 wheat
+            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD attempt
+            if (r === 8'h01) won = 1;
+            else if (r !== 8'hE8) begin errors=errors+1;
+                $display("FAIL roll attempt r=%h want 01/E8", r); won = 1; end
+        end
+        sdram_read(10'd33, 16'h0215, r);
+        if (!won || r[0] !== 1'b1) begin errors=errors+1;
+            $display("FAIL roll path: never discovered, disc=%h", r); end
+        else $display("PASS discovery roll converged, disc bit set");
+        // collect the cooking station so later phases see it idle
+        begin : wk_rollclean
+        reg [7:0] st; integer w;
+        st = 8'h01; w = 0;
+        while (st !== 8'h02 && w < 200) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd33, 16'h0220, st); w = w + 1;
+        end
+        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        end
+        // rarity-impossible: skill 0 + FEAST (rarity 3) -> always RUINED
+        sdram_write(10'd33, 16'h0214, 8'h00);   // skill 0
+        wk_cmd(8'h01, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 wheat
+        wk_cmd(8'h01, 8'd1, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 carrot
+        wk_cmd(8'h01, 8'd2, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 berry
+        wk_cmd(8'h01, 8'd3, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 pumpkin
+        wk_cmd(8'h02, 8'd0, 8'd1, 8'd2, 8'd3, r, r1, ok);    // FEAST
+        if (r !== 8'hE8) begin errors=errors+1;
+            $display("FAIL rarity floor r=%h want E8 (impossible at skill 0)", r); end
+        else $display("PASS rarity floor: FEAST impossible at skill 0");
+        // restore rig: downstream wk_reset asserts SKILL $FF survives reset
+        sdram_write(10'd33, 16'h0214, 8'hFF);
+        end
         end
 
         // ===== WORKSHOP+FARM dual reset recovery =====
@@ -1727,12 +1769,14 @@ module project_obscurus_tb;
         if (r!==8'h57 || r1!==8'h4B) begin errors=errors+1; $display("FAIL wk SIG lost"); end
         sdram_read(10'd33, 16'h0214, r);
         if (r!==8'hFF) begin errors=errors+1; $display("FAIL skill lost %h", r); end
-        // reload + respawn BOTH (quiesce path order)
+        // reload + respawn BOTH (quiesce path order:
+        // ALL host BRAM writes - blobs AND mailbox
+        // staging - before EITHER task is rung)
         farm_load;
         wk_load;
         stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
-        ring(2'd0);
         stage_mbox(2'd1, 8'd3, 8'd0, 8'd0);
+        ring(2'd0);
         ring(2'd1);
         farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL dual reset: farm respawn"); end

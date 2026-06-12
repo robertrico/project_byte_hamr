@@ -420,11 +420,12 @@ WCHIT
  JSR WDBIT
  AND MTMP
  BNE WCGO
-* roll: threshold = SKILL + DISCBASE - RARITY*16
-* SKILL saturates: if SKILL+DISCBASE > $FF -> $FF
+* roll: LFSR < DISCBASE + SKILL/2 - RARITY*16
+* (BCS guard kept: clamp $FF if sum carries)
  LDA #<WSKILL
  LDY #>WSKILL
  JSR RDB
+ LSR
  CLC
  ADC #DISCBASE
  BCS WCTHI
