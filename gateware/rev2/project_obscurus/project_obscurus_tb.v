@@ -115,6 +115,17 @@ module project_obscurus_tb;
                 if (farmimg[fi] !== 8'hxx) FARMLEN = fi + 1;
         end
     end
+    reg [7:0] wkimg [0:1023];
+    initial $readmemh("worktask.mem", wkimg);
+    integer WKLEN;
+    initial begin
+        #1; WKLEN = 0;
+        begin : wklen_scan
+            integer wi;
+            for (wi = 0; wi < 1024; wi = wi + 1)
+                if (wkimg[wi] !== 8'hxx) WKLEN = wi + 1;
+        end
+    end
     reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
     integer   bufsum, mvi;
 
@@ -382,6 +393,75 @@ module project_obscurus_tb;
         end
         if (ok) sdram_read(10'd32, 16'h0205, res);
         else $display("farm_cmd timeout op=%02X (FLAG never cleared)", op);
+    end endtask
+
+    task wk_load;
+        integer i;
+    begin
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);      // CP_LADDR = $0300
+        for (i=0; i<WKLEN; i=i+1) load_byte(wkimg[i]);
+        wr_reg(4'h9, 8'h06); wr_reg(4'hA, 8'h02);      // TABLE[3] @ $0206
+        load_byte(8'h00); load_byte(8'h03);            // vector = $0300
+    end endtask
+
+    // recipe entry poke: 8 bytes at $0300+idx*8 in bank 33
+    task wk_recipe(input [7:0] idx, input [7:0] i0, input [7:0] i1,
+                   input [7:0] i2, input [7:0] i3, input [7:0] tm,
+                   input [7:0] val, input [7:0] rar);
+        reg [15:0] a;
+    begin
+        a = 16'h0300 + idx*8;
+        sdram_write(10'd33, a+0, i0); sdram_write(10'd33, a+1, i1);
+        sdram_write(10'd33, a+2, i2); sdram_write(10'd33, a+3, i3);
+        sdram_write(10'd33, a+4, tm); sdram_write(10'd33, a+5, val);
+        sdram_write(10'd33, a+6, rar); sdram_write(10'd33, a+7, 8'h00);
+    end endtask
+
+    task wk_init;       // bank 33 cold seed (mirrors //e COLDST)
+        integer i;
+    begin
+        sdram_write(10'd33, 16'h0000, 8'h57);          // SIG 'W'
+        sdram_write(10'd33, 16'h0001, 8'h4B);          // SIG 'K'
+        sdram_write(10'd33, 16'h0002, 8'h00);          // SEQCTR
+        sdram_write(10'd33, 16'h0003, 8'h00);          // HEAD
+        sdram_write(10'd33, 16'h0004, 8'h00);          // WHBEAT
+        sdram_write(10'd33, 16'h0005, 8'h01);          // CVER
+        sdram_write(10'd33, 16'h0200, 8'h00);          // FLAG
+        for (i=0; i<4;  i=i+1) sdram_write(10'd33, 16'h0210+i, 8'h00); // pantry
+        sdram_write(10'd33, 16'h0214, 8'h00);          // SKILL
+        sdram_write(10'd33, 16'h0215, 8'h00);          // DISC lo
+        sdram_write(10'd33, 16'h0216, 8'h00);          // DISC hi
+        sdram_write(10'd33, 16'h0217, 8'h00);          // MODE
+        for (i=0; i<8;  i=i+1) sdram_write(10'd33, 16'h0220+i, 8'h00); // stations
+        // 3 recipes are enough for the tb (full book is //e content):
+        wk_recipe(8'd0, 8'd0, 8'd0, 8'hFF, 8'hFF, 8'd4, 8'd28, 8'd0); // BREAD
+        wk_recipe(8'd5, 8'd2, 8'd2, 8'hFF, 8'hFF, 8'd4, 8'd80, 8'd1); // JAM
+        wk_recipe(8'd11, 8'd0, 8'd1, 8'd2, 8'd3, 8'd20, 8'd127, 8'd3); // FEAST
+        // remaining entries = $FF terminator pattern
+        for (i=1; i<5;  i=i+1) wk_recipe(i[7:0], 8'hFE, 8'hFE, 8'hFE, 8'hFE, 8'd1, 8'd0, 8'd0);
+        for (i=6; i<11; i=i+1) wk_recipe(i[7:0], 8'hFE, 8'hFE, 8'hFE, 8'hFE, 8'd1, 8'd0, 8'd0);
+    end endtask
+
+    task wk_cmd(input [7:0] op, input [7:0] a0, input [7:0] a1,
+                input [7:0] a2, input [7:0] a3,
+                output [7:0] res, output [7:0] res1, output ok);
+        integer t; reg [7:0] f;
+    begin
+        sdram_write(10'd33, 16'h0201, op);
+        sdram_write(10'd33, 16'h0202, a0);
+        sdram_write(10'd33, 16'h0203, a1);
+        sdram_write(10'd33, 16'h0204, a2);
+        sdram_write(10'd33, 16'h0205, a3);
+        sdram_write(10'd33, 16'h0200, 8'h01);          // FLAG last
+        ok = 0; res = 8'hFF; res1 = 8'hFF;
+        for (t=0; t<5000 && !ok; t=t+1) begin
+            sdram_read(10'd33, 16'h0200, f);
+            if (f == 8'h00) ok = 1;
+        end
+        if (ok) begin
+            sdram_read(10'd33, 16'h0206, res);
+            sdram_read(10'd33, 16'h0207, res1);
+        end else $display("wk_cmd timeout op=%02X", op);
     end endtask
 
     // reader-rule drain: from farm_tail/farm_seq, dispatch into ev arrays
@@ -1493,6 +1573,153 @@ module project_obscurus_tb;
         farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL reset: respawn STATUS r=%h ok=%b", r, ok); end
         else $display("PASS soft-reset survival: SIG+grid intact, slots cleared, task respawned");
+        end
+
+        // ===== WORKSHOP: 2nd task, craft pipeline =====
+        begin : wk_m1
+        reg [7:0] r, r1; reg ok; reg [7:0] h1, h2; integer t;
+        $display("--- WORKSHOP task tests ---");
+        // (the farm reset phase just respawned farm into slot 0)
+        wk_init;
+        wk_load;
+        stage_mbox(2'd1, 8'd3, 8'd0, 8'd0);   // slot 1, skill 3
+        ring(2'd1);
+        wk_cmd(8'h00, 8'h00, 8'h00, 8'h00, 8'h00, r, r1, ok);   // OPSTAT
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wk STATUS r=%h ok=%b", r, ok); end
+        else $display("PASS wk STATUS (dual task live)");
+        // dual heartbeats advance
+        sdram_read(10'd33, 16'h0004, h1);
+        sdram_read(10'd32, 16'h0004, r);
+        begin : wkbeat
+        reg beat0, beat1;
+        beat0 = 0; beat1 = 0;
+        for (t = 0; t < 5 && !(beat0 && beat1); t = t + 1) begin
+            repeat (200000) @(posedge clk100);
+            sdram_read(10'd33, 16'h0004, h2);
+            if (h2 !== h1) beat1 = 1;
+            sdram_read(10'd32, 16'h0004, r1);
+            if (r1 !== r) beat0 = 1;
+        end
+        if (!beat1) begin errors=errors+1; $display("FAIL wk heartbeat stuck"); end
+        if (!beat0) begin errors=errors+1; $display("FAIL farm heartbeat stuck w/ 2 tasks"); end
+        if (beat0 && beat1) $display("PASS dual heartbeats");
+        end
+        // deposit via //e-bus pattern: poke farm crops, withdraw, deposit
+        sdram_write(10'd32, 16'h0226, 8'd10);            // wheat crops = 10 (rig poke)
+        farm_cmd(8'h05, 8'd0, 8'd4, 8'h00, r, ok);       // OPWITHDRAW wheat 4
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL withdraw r=%h", r); end
+        sdram_read(10'd32, 16'h0226, r);
+        if (r!==8'd6) begin errors=errors+1; $display("FAIL crops=%h want 06", r); end
+        wk_cmd(8'h01, 8'd0, 8'd4, 8'h00, 8'h00, r, r1, ok); // OPDEPOSIT wheat 4
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL deposit r=%h", r); end
+        sdram_read(10'd33, 16'h0210, r);
+        if (r!==8'd4) begin errors=errors+1; $display("FAIL pantry=%h want 04", r); end
+        else $display("PASS withdraw->deposit bus transfer");
+        // dud combo: (0,0,0,FF) not in table -> RUINED, consumes 3, skill 1
+        wk_cmd(8'h02, 8'd0, 8'd0, 8'd0, 8'hFF, r, r1, ok);
+        if (!ok || r!==8'hE8) begin errors=errors+1; $display("FAIL dud r=%h want E8", r); end
+        sdram_read(10'd33, 16'h0210, r);
+        if (r!==8'd1) begin errors=errors+1; $display("FAIL pantry post-dud=%h want 01", r); end
+        sdram_read(10'd33, 16'h0214, r);
+        if (r!==8'd1) begin errors=errors+1; $display("FAIL skill=%h want 01", r); end
+        else $display("PASS dud combo ruined + skill up");
+        // refill pantry, force discovery (SKILL=$FF -> threshold maxed)
+        wk_cmd(8'h01, 8'd0, 8'd3, 8'h00, 8'h00, r, r1, ok);  // deposit 3 more wheat (rig: no farm debit needed for unit test)
+        sdram_write(10'd33, 16'h0214, 8'hFF);                // rig: maxed skill
+        wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL craft r=%h", r); end
+        sdram_read(10'd33, 16'h0220, r);                     // station0 STATE
+        if (r!==8'h01) begin errors=errors+1; $display("FAIL station state=%h want 01", r); end
+        sdram_read(10'd33, 16'h0215, r);                     // DISC lo bit 0
+        if (r[0]!==1'b1) begin errors=errors+1; $display("FAIL disc bit=%h", r); end
+        else $display("PASS discovery + cooking");
+        // wait for WEVDONE (FSIM station divider is tiny)
+        begin : wkdone
+        reg [7:0] st; integer w;
+        st = 8'h01; w = 0;
+        while (st !== 8'h02 && w < 200) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd33, 16'h0220, st); w = w + 1;
+        end
+        if (st!==8'h02) begin errors=errors+1; $display("FAIL station never done"); end
+        end
+        // drain wk ring: expect WEVDONE type 5, p0=station0, p1=recipe0
+        begin : wkring
+        reg [7:0] h, rs, rt, rp0, rp1; integer g;
+        sdram_read(10'd33, 16'h0003, h);
+        if (h == 8'h00) begin errors=errors+1; $display("FAIL wk ring empty"); end
+        else begin
+            sdram_read(10'd33, 16'h0100, rs);
+            sdram_read(10'd33, 16'h0101, rt);
+            sdram_read(10'd33, 16'h0102, rp0);
+            sdram_read(10'd33, 16'h0103, rp1);
+            if (rt!==8'h05 || rp0!==8'h00 || rp1!==8'h00) begin errors=errors+1;
+                $display("FAIL WEVDONE %h %h %h", rt, rp0, rp1); end
+            else $display("PASS WEVDONE(station0, BREAD)");
+        end
+        end
+        // collect: value 28; then BOOM mode doubles JAM (80 -> 160)
+        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        if (!ok || r!==8'h01 || r1!==8'd28) begin errors=errors+1;
+            $display("FAIL collect r=%h r1=%h want 01,1C", r, r1); end
+        else $display("PASS collect BREAD value 28");
+        wk_cmd(8'h04, 8'h01, 8'h00, 8'h00, 8'h00, r, r1, ok);  // OPMODE BOOM
+        wk_cmd(8'h01, 8'd2, 8'd2, 8'h00, 8'h00, r, r1, ok);    // deposit 2 berries
+        wk_cmd(8'h02, 8'd2, 8'd2, 8'hFF, 8'hFF, r, r1, ok);    // JAM (skill FF)
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL jam craft r=%h", r); end
+        begin : wkdone2
+        reg [7:0] st; integer w;
+        st = 8'h01; w = 0;
+        while (st !== 8'h02 && w < 200) begin
+            repeat (10000) @(posedge clk100);
+            sdram_read(10'd33, 16'h0220, st); w = w + 1;
+        end
+        end
+        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        if (!ok || r1!==8'd160) begin errors=errors+1; $display("FAIL boom collect r1=%h want A0", r1); end
+        else $display("PASS BOOM collect 160");
+        // OPADDCASH lands on the farm side (//e bus credit leg)
+        sdram_read(10'd32, 16'h0220, h1); sdram_read(10'd32, 16'h0221, h2);
+        farm_cmd(8'h06, 8'd160, 8'd0, 8'h00, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL addcash r=%h", r); end
+        sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
+        if ({r1,r} !== {h2,h1} + 16'd160) begin errors=errors+1;
+            $display("FAIL cash %h%h want +160", r1, r); end
+        else $display("PASS OPADDCASH credited");
+        end
+
+        // ===== WORKSHOP+FARM dual reset recovery =====
+        begin : wk_reset
+        reg [7:0] r, r1; reg ok;
+        $display("--- DUAL-TASK reset recovery ---");
+        nRES_READ = 1'b0; #1000; nRES_READ = 1'b1;
+        wait (dut.ready);
+        repeat (2000) @(posedge clk100);
+        begin : wk_rstwait
+        integer t; reg [7:0] fs;
+        fs = 8'h00; t = 0;
+        while (!fs[1] && t < 20000) begin
+            rd_reg(4'hF, fs); t = t + 1;
+        end
+        if (!fs[1]) begin errors=errors+1; $display("FAIL wk reset: restore never done"); end
+        end
+        // both worlds survive
+        sdram_read(10'd33, 16'h0000, r); sdram_read(10'd33, 16'h0001, r1);
+        if (r!==8'h57 || r1!==8'h4B) begin errors=errors+1; $display("FAIL wk SIG lost"); end
+        sdram_read(10'd33, 16'h0214, r);
+        if (r!==8'hFF) begin errors=errors+1; $display("FAIL skill lost %h", r); end
+        // reload + respawn BOTH (quiesce path order)
+        farm_load;
+        wk_load;
+        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
+        ring(2'd0);
+        stage_mbox(2'd1, 8'd3, 8'd0, 8'd0);
+        ring(2'd1);
+        farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL dual reset: farm respawn"); end
+        wk_cmd(8'h00, 8'h00, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL dual reset: wk respawn"); end
+        else $display("PASS dual-task reset recovery");
         end
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
