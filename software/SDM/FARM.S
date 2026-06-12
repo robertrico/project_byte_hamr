@@ -482,6 +482,9 @@ HUDDRAW
  LDY #20
  JSR PRDEC3
 * CASH label col 29, value col 34
+* (HUDCASH: cash-only entry - workshop row
+* 20 shows cash without the farm SEED block)
+HUDCASH
  LDA #<SCASH
  STA MSGPTR
  LDA #>SCASH
@@ -590,8 +593,6 @@ SMIX ASC "MIX:"
 SUNKNOWN ASC "?????"
  DFB 0
 SWKLEG ASC "1-4 MIX RTN CRAFT D DEP C ESC"
- DFB 0
-SWKHINT ASC "1-4 MIX RTN CRAFT D DEP C ESC"
  DFB 0
 SCOOKING ASC "COOKING..."
  DFB 0
@@ -2529,15 +2530,8 @@ WKENTER
  LDA #2
  STA SCREEN
  STA TEXTSW
+* no hint print: row 23 legend covers it
  JSR CLRMSG
- LDA #<SWKHINT
- STA MSGPTR
- LDA #>SWKHINT
- STA MSGPTR+1
- LDA #0
- STA PRCOL
- LDY #21
- JSR PRSTR
  JSR WSYNC
  JSR WKDRAW
  RTS
@@ -2620,46 +2614,46 @@ WKR23LP
  LDA #$C3
  LDY #13
  STA (LINEP),Y
-* row 2: C count col 14
+* row 2: C count col 15
  LDA WPANT4+1
  STA T16
  LDA #0
  STA T16+1
- LDX #14
+ LDX #15
  LDY #2
  JSR PRDEC3
-* row 2: "B" col 18
+* row 2: "B" col 19
  LDY #2
  LDA GRLO,Y
  STA LINEP
  LDA GRHI,Y
  STA LINEP+1
  LDA #$C2
- LDY #18
+ LDY #19
  STA (LINEP),Y
-* row 2: B count col 19
+* row 2: B count col 21
  LDA WPANT4+2
  STA T16
  LDA #0
  STA T16+1
- LDX #19
+ LDX #21
  LDY #2
  JSR PRDEC3
-* row 2: "P" col 23
+* row 2: "P" col 25
  LDY #2
  LDA GRLO,Y
  STA LINEP
  LDA GRHI,Y
  STA LINEP+1
  LDA #$D0
- LDY #23
+ LDY #25
  STA (LINEP),Y
-* row 2: P count col 24
+* row 2: P count col 27
  LDA WPANT4+3
  STA T16
  LDA #0
  STA T16+1
- LDX #24
+ LDX #27
  LDY #2
  JSR PRDEC3
 * rows 4-5: stations
@@ -2668,6 +2662,23 @@ WKR23LP
  JSR WKDRAW_REC
 * row 19: MIX buffer
  JSR WKDRAW_MIX
+* row 20: cash only (farm SEED row is
+* stale context here - clear + HUDCASH)
+ JSR CLRROW20
+ JSR HUDCASH
+* row 23: clear (farm legend is longer)
+ LDX #23
+ LDA GRLO,X
+ STA LINEP
+ LDA GRHI,X
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+WKR23LP
+ STA (LINEP),Y
+ INY
+ CPY #40
+ BNE WKR23LP
 * row 23: legend
  LDA #<SWKLEG
  STA MSGPTR
@@ -3041,17 +3052,19 @@ WKMXBL
 * slots 0-3
  LDX #0
 WKMXLP
- LDA #$BF ; '_'
+ LDA #$DF ; '_'
  CPX MIXN
  BCS WKMXS
  LDY MIXBUF,X
  LDA CROPLETS,Y
 WKMXS
- LDY #0
+* keep char in A across col calc
+ PHA
  TXA
  CLC
  ADC #5
  TAY
+ PLA
  STA (LINEP),Y
  INX
  CPX #4
