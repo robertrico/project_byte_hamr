@@ -85,8 +85,6 @@ CMDA32 DS 1
 RECLO2 DS 1
 RSEQ2 DS 1
 RSTWT DS 2
-SEEDED DS 1
-
 * === GRON: UNDO ALL, LO-RES MIXED ===
 GRON
  STA S80VOFF
@@ -543,8 +541,6 @@ SRIPE ASC "RIPE!"
 SOK ASC "OK"
  DFB 0
 SLOST ASC "CROP DIED!"
- DFB 0
-SRESP ASC "TASK RESPAWNED"
  DFB 0
 SERR ASC "ERR "
  DFB 0
@@ -1193,6 +1189,8 @@ PRLOOP
  JSR CHKWK
  JSR LOADF
  JSR LOADW
+ JSR STAGEF
+ JSR STAGEW
  JSR RINGF
  BCS PRDEAD
  JSR RINGW
@@ -1249,6 +1247,8 @@ WKPFAIL
  JSR CHKWK
  JSR LOADF
  JSR LOADW
+ JSR STAGEF
+ JSR STAGEW
  JSR RINGF
  BCS PRDEAD
  JSR RINGW
@@ -1394,6 +1394,9 @@ CZLP
 * quiesce: all BRAM loads first
  JSR LOADF
  JSR LOADW
+* stage both mailboxes before any ring
+ JSR STAGEF
+ JSR STAGEW
 * then both rings
  JSR RINGF
  BCC CSPOK
@@ -2024,19 +2027,12 @@ LOADF
  STA CP_WDATA
  RTS
 
-* === RINGF: kernel-mailbox+ring farm task ===
-* C=0 ok, C=1 no free slot
+* === RINGF: raw ring slot 0 (farm task) ===
+* C=0 always; caller pre-confirmed CP_ACTIVE=0
 RINGF
- LDA #2
- LDX #0
- LDY #0
- JSR CP_CALL
- CMP #$FF
- BEQ RFFAIL
+ LDA #0
+ STA CP_RING
  CLC
- RTS
-RFFAIL
- SEC
  RTS
 
 * === LOADW: workshop blob $2000 + TABLE[3] ===
@@ -2052,19 +2048,42 @@ LOADW
  STA CP_WDATA
  RTS
 
-* === RINGW: kernel-mailbox+ring workshop task ===
-* C=0 ok, C=1 no free slot
+* === RINGW: raw ring slot 1 (workshop task) ===
+* C=0 always; caller pre-confirmed CP_ACTIVE=0
 RINGW
- LDA #3
- LDX #0
- LDY #0
- JSR CP_CALL
- CMP #$FF
- BEQ RWFAIL
+ LDA #1
+ STA CP_RING
  CLC
  RTS
-RWFAIL
- SEC
+
+* === STAGEF: stage slot 0 mailbox ===
+* skill 2, budget 0, arg0 0 (farm task)
+* mirrors CP_CALL layout: mbox=$0F80
+STAGEF
+ LDA #$80
+ STA CP_LADDRLO
+ LDA #$0F
+ STA CP_LADDRHI
+ LDA #2
+ STA CP_WDATA
+ LDA #0
+ STA CP_WDATA
+ STA CP_WDATA
+ RTS
+
+* === STAGEW: stage slot 1 mailbox ===
+* skill 3, budget 0, arg0 0 (workshop task)
+* mirrors CP_CALL layout: mbox=$0FA0
+STAGEW
+ LDA #$A0
+ STA CP_LADDRLO
+ LDA #$0F
+ STA CP_LADDRHI
+ LDA #3
+ STA CP_WDATA
+ LDA #0
+ STA CP_WDATA
+ STA CP_WDATA
  RTS
 
 * === LOADWBLOB: WSKILL -> coproc $2000 ===
@@ -3205,9 +3224,7 @@ WKCRAFT_TO
  JSR PRSTR
 WKCRAFT_UPD
  JSR WSYNC
- JSR WKDRAW_STA
- JSR WKDRAW_REC
- JSR WKDRAW_MIX
+ JSR WKDRAW
  RTS
 
 * === WKDEPOS: D key - deposit flow ===
