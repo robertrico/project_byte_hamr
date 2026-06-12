@@ -1408,11 +1408,11 @@ module project_obscurus_tb;
         begin : farm_evcount
         integer i; integer sawprice;
         sawprice = 0;
-        // v2 EVPRICE: p0=crop p1=price; assert crop==0 and count wheat events
+        // v2 EVPRICE: p0=crop p1=price lo; count crop0 events where p1 >= PFLOOR(2)
         for (i=0; i<farm_nev; i=i+1)
-            if (ev_type[i]===8'h02 && ev_p0[i]===8'h00) sawprice = sawprice + 1;
-        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE(crop0) got %0d", sawprice); end
-        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE(crop0,price=ev_p1)", sawprice);
+            if (ev_type[i]===8'h02 && ev_p0[i]===8'h00 && ev_p1[i] >= 8'd2) sawprice = sawprice + 1; // p1 = price lo, must be >= PFLOOR(2)
+        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE(crop0,p1>=PFLOOR) got %0d", sawprice); end
+        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE(crop0,p1>=PFLOOR(2))", sawprice);
         end
         end
 
