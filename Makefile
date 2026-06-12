@@ -570,7 +570,7 @@ $(FARMTASK_BIN): $(SDM_DIR)/FARMTASK.S $(SDM_DIR)/FARMEQU.S $(SDM_DIR)/EVLIB.S
 $(FARMTASKB_S): $(FARMTASK_BIN)
 	{ echo 'FSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'FSKEND'; echo 'FSKLEN = FSKEND-FSKILL'; } > $@
 
-farm: $(FARMTASKB_S)
+farm: $(FARMTASKB_S) $(WORKTASKB_S)
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARM.S
 
 # WORKTASK sim blob (FSIM=1 tiny dividers) -> worktask.mem for the tb.
