@@ -404,6 +404,19 @@ SHELP DFB $10
  ASC "UIT "
  ASC "1-4 SEED"
  DFB 0
+SMKT ASC "MARKET"
+ DFB 0
+SSD ASC "SD"
+ DFB 0
+SCR ASC "CR"
+ DFB 0
+SEEDCT DFB 2,4,7,12
+SMHELP DFB $02
+ ASC "UY "
+ DFB $13
+ ASC "ELL "
+ ASC "1-4 SEED ESC FARM"
+ DFB 0
 SDEAD ASC "WORLD DEAD - C COLDSTART"
  DFB 0
 SNORESP ASC "COPROC NOT RESPONDING"
@@ -418,7 +431,9 @@ SRESP ASC "TASK RESPAWNED"
  DFB 0
 SERR ASC "ERR "
  DFB 0
-SQTY ASC "SELL QTY:"
+SQTYS ASC "SELL QTY:"
+ DFB 0
+SQTYB ASC "BUY QTY:"
  DFB 0
 * crop name strings + address tables
 SNAMW ASC "WHEAT"
@@ -682,18 +697,20 @@ EVDISP
  LDA EVT
  CMP #EVRIPE
  BNE EVD2
-* ripe byte = (shadow AND $F8) OR STRIPE
+* shadow update always (both screens)
  JSR SHADGET
  AND #$F8
  ORA #STRIPE
- PHA
+ STA SHADV
+ JSR SHADSET
+* skip screen paint while in text mode
+ LDA SCREEN
+ BNE EVRMSG
+* paint on GR screen
+ LDA SHADV
  LDX EVA
  LDY EVB
- PLA
- PHA
  JSR PLOTDRAW
- PLA
- JSR SHADSET
 * ripe plot under cursor? re-apply XOR
  LDA EVA
  CMP CURX
@@ -721,6 +738,9 @@ EVD2
  STA LASTP4,X
  LDA EVB
  STA PRICE4,X
+ LDA SCREEN
+ BEQ EVDONE
+ JSR MKDRAW
 EVDONE
  RTS
 
@@ -1061,6 +1081,10 @@ MNOST
  LDA KBD
  BPL MLOOP
  STA KBDSTR
+ LDX SCREEN
+ BEQ KFARM
+ JMP MKKEY
+KFARM
 * arrow handlers: CURSDRAW (XOR undo at old
 * pos) BEFORE mutate, CURSDRAW (apply) at KDONE
  CMP #$88 ; left
@@ -1123,11 +1147,16 @@ K8
  CMP #$B1 ; '1'
  BCC K9
  CMP #$B5 ; above '4'
- BCS K9
+ BCS KM
  SEC
  SBC #$B1
  STA SELCROP
  JSR HUDDRAW
+ JMP MLOOP
+KM
+ CMP #$CD ; M
+ BNE K9
+ JSR MKENTER
  JMP MLOOP
 K9
  CMP #$D1 ; Q
@@ -1139,6 +1168,51 @@ KNONE
  JMP MLOOP
 KDONE
  JSR CURSDRAW
+ JMP MLOOP
+
+* === MKKEY: market screen keys ===
+MKKEY
+ CMP #$9B ; ESC
+ BNE MK1
+ JSR MKEXIT
+ JMP MLOOP
+MK1
+ CMP #$B1 ; '1'-'4' select
+ BCC MK2
+ CMP #$B5
+ BCS MK2
+ SEC
+ SBC #$B1
+ STA SELCROP
+ JSR MKDRAW
+ JMP MLOOP
+MK2
+ CMP #$C2 ; B buy
+ BNE MK3
+ LDA #OPBUY
+ STA CMDOP
+ LDA #<SQTYB
+ STA MSGPTR
+ LDA #>SQTYB
+ STA MSGPTR+1
+ JSR QTYPROMPT
+ JSR RDMKT
+ JSR MKDRAW
+ JMP MLOOP
+MK3
+ CMP #$D3 ; S sell
+ BNE MKNONE
+ LDA #OPSELL
+ STA CMDOP
+ LDA #<SQTYS
+ STA MSGPTR
+ LDA #>SQTYS
+ STA MSGPTR+1
+ JSR QTYPROMPT
+ JSR RDMKT
+ JSR MKDRAW
+ JMP MLOOP
+MKNONE
  JMP MLOOP
 
 * === DOCMDXY: A=op, args = cursor pos ===
@@ -1222,16 +1296,12 @@ NIBA
  ADC #6
 NIBDONE
  RTS
-* === SELLQTY: modal 2-digit sell prompt ===
-* digits echo col 10+, RETURN sends OPSELL
-* qty, ESC or qty 0 cancels. modal: no DRAIN
-* while open (ring holds 64, prompt is short)
-SELLQTY
+* === QTYPROMPT: modal 2-digit qty prompt ===
+* caller sets CMDOP + MSGPTR before JSR.
+* SQGO: CMDA0=SELCROP CMDA1=qty JMP DOCMD.
+* ESC or qty 0 cancels. modal: no DRAIN.
+QTYPROMPT
  JSR CLRMSG
- LDA #<SQTY
- STA MSGPTR
- LDA #>SQTY
- STA MSGPTR+1
  LDA #0
  STA PRCOL
  LDY #21
@@ -1291,12 +1361,11 @@ SQKEY
 SQGO
  LDA QVAL
  BEQ SQCAN
+ STA CMDA1
+ LDA SELCROP
  STA CMDA0
  LDA #0
- STA CMDA1
  STA CMDA2
- LDA #OPSELL
- STA CMDOP
  JMP DOCMD
 SQCAN
  JMP CLRMSG
@@ -1582,5 +1651,209 @@ LBDEC
  ORA CNT
  BNE LBLP
  RTS
+
+* === MKENTER: -> text mode market screen ===
+MKENTER
+ LDA #1
+ STA SCREEN
+ STA TEXTSW
+ JSR MKDRAW
+ RTS
+* === MKEXIT: -> GR farm screen ===
+MKEXIT
+ LDA #0
+ STA SCREEN
+ STA GRAPH
+ JSR DRAWALL
+ JSR HUDDRAW
+ JSR CURSDRAW
+ RTS
+* === MKCLR: blank text rows 0-19 ===
+MKCLR
+ LDY #0
+MKCROW
+ TYA
+ PHA
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+ LDA #$A0
+ LDY #0
+MKCCOL
+ STA (LINEP),Y
+ INY
+ CPY #40
+ BNE MKCCOL
+ PLA
+ TAY
+ INY
+ CPY #20
+ BNE MKCROW
+ RTS
+* === MKDRAW: full market repaint ===
+* row 1 title; rows 4/7/10/13 = crop rows:
+*  col 0 sel star, col 1 key, col 3 name,
+*  col 10 BUY, col 14 cost, col 18 SELL,
+*  col 23 price, col 27 trend, col 29 SD,
+*  col 32 sd-count, col 34 CR, col 37 cr-count
+* row 20 cash via HUDDRAW; row 23 legend
+MKDRAW
+ JSR MKCLR
+ LDA #<SMKT
+ STA MSGPTR
+ LDA #>SMKT
+ STA MSGPTR+1
+ LDA #15
+ STA PRCOL
+ LDY #1
+ JSR PRSTR
+ LDA #0
+ STA NTMP
+MKROW
+* row Y = 4 + crop*3
+ LDA NTMP
+ ASL
+ CLC
+ ADC NTMP
+ CLC
+ ADC #4
+ TAY
+ STY EVT
+* set LINEP for direct (LINEP),Y stores
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+* selection star col 0
+ LDX NTMP
+ CPX SELCROP
+ BNE MKNOSEL
+ LDA #$AA ; '*' hi-bit
+ LDY #0
+ STA (LINEP),Y
+MKNOSEL
+* key digit col 1
+ LDA NTMP
+ CLC
+ ADC #$B1
+ LDY #1
+ STA (LINEP),Y
+* name col 3
+ LDX NTMP
+ LDA SNAML,X
+ STA MSGPTR
+ LDA SNAMH,X
+ STA MSGPTR+1
+ LDA #3
+ STA PRCOL
+ LDY EVT
+ JSR PRSTR
+* BUY label col 10 + cost col 14
+ LDA #<SBUY
+ STA MSGPTR
+ LDA #>SBUY
+ STA MSGPTR+1
+ LDA #10
+ STA PRCOL
+ LDY EVT
+ JSR PRSTR
+ LDX NTMP
+ LDA SEEDCT,X
+ STA T16
+ LDA #0
+ STA T16+1
+ LDX #14
+ LDY EVT
+ JSR PRDEC
+* SELL label col 18 + price col 23
+ LDA #<SSELL
+ STA MSGPTR
+ LDA #>SSELL
+ STA MSGPTR+1
+ LDA #18
+ STA PRCOL
+ LDY EVT
+ JSR PRSTR
+ LDX NTMP
+ LDA PRICE4,X
+ STA T16
+ LDA #0
+ STA T16+1
+ LDX #23
+ LDY EVT
+ JSR PRDEC
+* trend glyph col 27
+ LDY EVT
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+ LDX NTMP
+ LDA PRICE4,X
+ CMP LASTP4,X
+ BEQ MKTFL
+ BCC MKTDN
+ LDA #$AB ; '+'
+ JMP MKTPUT
+MKTDN
+ LDA #$AD ; '-'
+ JMP MKTPUT
+MKTFL
+ LDA #$BD ; '='
+MKTPUT
+ LDY #27
+ STA (LINEP),Y
+* SD label col 29 + count col 32
+ LDA #<SSD
+ STA MSGPTR
+ LDA #>SSD
+ STA MSGPTR+1
+ LDA #29
+ STA PRCOL
+ LDY EVT
+ JSR PRSTR
+ LDX NTMP
+ LDA SEED4,X
+ STA T16
+ LDA #0
+ STA T16+1
+ LDX #32
+ LDY EVT
+ JSR PRDEC
+* CR label col 34 + count col 37
+ LDA #<SCR
+ STA MSGPTR
+ LDA #>SCR
+ STA MSGPTR+1
+ LDA #34
+ STA PRCOL
+ LDY EVT
+ JSR PRSTR
+ LDX NTMP
+ LDA CROP4,X
+ STA T16
+ LDA #0
+ STA T16+1
+ LDX #37
+ LDY EVT
+ JSR PRDEC
+ INC NTMP
+ LDA NTMP
+ CMP #4
+ BNE MKJROW
+* legend row 23 + cash row 20
+ LDA #<SMHELP
+ STA MSGPTR
+ LDA #>SMHELP
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #23
+ JSR PRSTR
+ JSR HUDDRAW
+ RTS
+MKJROW
+ JMP MKROW
 
  PUT FARMTASKB
