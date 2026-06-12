@@ -15,6 +15,25 @@ hardware:
   world preserved — also the blob-upgrade path: soft reset reloads from disk)
 - Memory file `project_farm_event_game.md` has every address/gotcha. Plans in
   `docs/superpowers/plans/2026-06-10-farm-*.md`.
+- **v2 increment 1 SHIPPED (branch farm-v2)**: heartbeat (FHBEAT $0004,
+  task increments every pass; HBV scratch $0E2D, blob now 1312 B) +
+  sell-qty modal prompt (S -> "SELL QTY:" row 20, 2 digits, RETURN sends
+  OPSELL qty, ESC/0 cancels). Spec (READ before increment 2):
+  `docs/superpowers/specs/2026-06-11-farm-v2-sidework-design.md` — 3 review
+  rounds: quiesce invariant, EVLIB scratch param, farm-bank v2 map. Plan:
+  `docs/superpowers/plans/2026-06-11-farm-v2-inc1-sellqty-heartbeat.md`.
+  Next: increment 2 = screen manager + market screen + seeds
+  (FARMTASK_MAXLEN raise to 1792 lands there).
+- **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
+  reset, cflash boot-restore owns coproc BRAM port B until restore_done —
+  host loads during it are silently dropped, and a valid flash snapshot
+  replays stale TABLE/code over $0200-$0FFF. The suite's cflash phases left
+  such a snapshot; the farm reset phase then spawned a stale $0340 stub
+  instead of FARMTASK ("FLAG never cleared", farmonly green / full suite
+  red). HOST RULE: poll CP_FSTAT ($C0CF) bit 1 (restore_done) after reset
+  before any BRAM load. tb farm_reset now waits; FARM.S quiesce reload
+  (increment 3) must do the same. //e exposure today ~nil (ProDOS reboot
+  seconds >> restore ms — why bench never saw it).
 
 ## Working facts (cost of ignoring these: hours)
 

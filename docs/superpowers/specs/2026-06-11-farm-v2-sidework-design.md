@@ -129,6 +129,17 @@ Consequences:
   gateware change + sim proof for something the software invariant gets free.
 - v1 carries a latent low-probability version (tick ISR pushes idle-stack
   frames during LOADBLOB); the sim collision assertion below covers both.
+- **Second port-B owner (found 2026-06-11 debugging the full-suite gate):**
+  after EVERY reset, the cflash boot-restore owns BRAM port B
+  (`restore_busy = ~restore_done` in project_obscurus_top.v) and replays any
+  valid flash snapshot over $0200-$0FFF; host loads during restore are
+  SILENTLY DROPPED. The full suite's cflash phases left a valid snapshot
+  whose stale TABLE[2] stub then got spawned instead of the reloaded
+  FARMTASK. Host rule: **after reset, poll CP_FSTAT ($C0CF) bit 1
+  (restore_done) before any BRAM load.** The tb farm_reset phase now does
+  this. //e exposure today is ~nil (ProDOS reboot takes seconds vs ms of
+  restore), but FARM.S's quiesce-path reload (increment 3) must include the
+  same poll.
 
 ## Components
 

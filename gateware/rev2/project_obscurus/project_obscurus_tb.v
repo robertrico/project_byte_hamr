@@ -1444,6 +1444,22 @@ module project_obscurus_tb;
         if (r[3:0]!==4'h0) begin errors=errors+1; $display("FAIL reset: slots not cleared %h", r); end
         sdram_read(10'd32, 16'h03A9, r);   // plot (9,8) ripe from lap phase
         if (r!==8'h06) begin errors=errors+1; $display("FAIL reset: grid lost %h", r); end
+        // HOST RULE: after reset the cflash boot-restore owns BRAM port B
+        // (restore_busy = ~restore_done) and replays any valid flash
+        // snapshot over $0200-$0FFF; host loads during restore are
+        // SILENTLY DROPPED. Wait CP_FSTAT bit1 (restore_done) before
+        // reloading - exactly what a //e host must do. (Caught here when
+        // the suite's earlier cflash phases left a valid snapshot whose
+        // stale TABLE[2]=$0340 stub got spawned instead of FARMTASK.)
+        begin : rst_restore_wait
+        integer t; reg [7:0] fs;
+        fs = 8'h00; t = 0;
+        while (!fs[1] && t < 20000) begin
+            rd_reg(4'hF, fs); t = t + 1;
+        end
+        if (!fs[1]) begin errors=errors+1;
+            $display("FAIL reset: restore never done FSTAT=%h", fs); end
+        end
         // respawn exactly as FARM.S SPAWNT does: reload blob+table, ring
         farm_load;
         stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
