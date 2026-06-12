@@ -49,7 +49,7 @@ Farm game footprint:
 
 | Region        | Use                                              |
 |---------------|--------------------------------------------------|
-| $0300-$05FF   | WORKSHOP code (skill 3, 768 B Makefile cap)      |
+| $0300-$05FF   | WORKSHOP code (skill 3, 768 B Makefile cap)      | (2026-06-12: BRAM grown to 16 KB; WORKSHOP code now ORG $2000 cap 4 KB at $2000-$2FFF; $3000-$3FFF spare task space; $2000+ is NOT covered by cflash snapshots.) |
 | $0600-$0CFF   | FARMTASK code (skill 2, cap raised 1536→1792 B)  |
 | $0D00-$0DFF   | workshop scratch (temps only; state is in SDRAM) |
 | $0E00-$0E2C   | FARMTASK scratch incl. its EVLIB scratch         |

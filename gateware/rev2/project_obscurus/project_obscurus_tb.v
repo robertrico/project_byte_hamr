@@ -115,14 +115,14 @@ module project_obscurus_tb;
                 if (farmimg[fi] !== 8'hxx) FARMLEN = fi + 1;
         end
     end
-    reg [7:0] wkimg [0:1023];
+    reg [7:0] wkimg [0:4095];
     initial $readmemh("worktask.mem", wkimg);
     integer WKLEN;
     initial begin
         #1; WKLEN = 0;
         begin : wklen_scan
             integer wi;
-            for (wi = 0; wi < 1024; wi = wi + 1)
+            for (wi = 0; wi < 4096; wi = wi + 1)
                 if (wkimg[wi] !== 8'hxx) WKLEN = wi + 1;
         end
     end
@@ -171,13 +171,13 @@ module project_obscurus_tb;
 
     reg [7:0] krn_before, tbl_before;
     task load_byte(input [7:0] d); begin wr_reg(4'hB, d); end endtask  // CP_WDATA (auto-inc)
-    task cp_read(input [12:0] a, output [7:0] d); begin
+    task cp_read(input [13:0] a, output [7:0] d); begin
         // CP_RDATA reads auto-increment m_laddr (top.v line 304) AND the coproc's
         // port-B ldata_out continuously tracks bram[m_laddr] (registered, 1 cyc).
         // So once CP_LADDR is set, ldata_out already = bram[a]; the FIRST read
         // returns it. A second read would over-advance (returns bram[a+1]).
         // Re-arm the address before reading so the latch reflects exactly `a`.
-        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {3'b0, a[12:8]});
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {2'b0, a[13:8]});
         rd_reg(4'hC, d);    // ldata_out already settled to bram[a]
     end endtask
 
@@ -398,10 +398,10 @@ module project_obscurus_tb;
     task wk_load;
         integer i;
     begin
-        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);      // CP_LADDR = $0300
+        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h20);      // CP_LADDR = $2000
         for (i=0; i<WKLEN; i=i+1) load_byte(wkimg[i]);
         wr_reg(4'h9, 8'h06); wr_reg(4'hA, 8'h02);      // TABLE[3] @ $0206
-        load_byte(8'h00); load_byte(8'h03);            // vector = $0300
+        load_byte(8'h00); load_byte(8'h20);            // vector = $2000
     end endtask
 
     // recipe entry poke: 8 bytes at $0300+idx*8 in bank 33
