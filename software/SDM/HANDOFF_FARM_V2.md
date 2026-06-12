@@ -24,6 +24,18 @@ hardware:
   `docs/superpowers/plans/2026-06-11-farm-v2-inc1-sellqty-heartbeat.md`.
   Next: increment 2 = screen manager + market screen + seeds
   (FARMTASK_MAXLEN raise to 1792 lands there).
+- **v2 increment 2 SHIPPED (branch farm-v2)**: 4 crops (WHEAT/CARROT/BERRY/
+  PUMPKN, plot byte = crop*8+stage, mask growth off GTICK, per-crop market
+  $0210+c*3, cash $0220, SEEDS[4] $0222, CROPS[4] $0226, EVPRICE=(crop,price),
+  OPPLANT +crop / OPSELL/OPBUY=(crop,qty), FARMTASK_MAXLEN now 1792, blob
+  ~1617 B / 175 B headroom - see inc-4 note) + //e screen manager (M=market
+  text screen, ESC=farm, 1-4 select seed, B/S qty prompts on market; EVPRICE
+  repaints one row, no flash; farm rows: 20 seed+cash, 21 messages, 23
+  legend). COLD START REQUIRED after deploy (bank map moved). Inc-4 budget
+  note: ~37 B reclaimable in FARMTASK via LDY #>page immediates (per-crop
+  addr hi bytes are constant $02 - reviewer-verified). Next: increment 3 =
+  WORKSHOP task (read spec quiesce invariant + EVLIB scratch param +
+  CP_FSTAT restore_done rule FIRST).
 - **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
   reset, cflash boot-restore owns coproc BRAM port B until restore_done —
   host loads during it are silently dropped, and a valid flash snapshot
