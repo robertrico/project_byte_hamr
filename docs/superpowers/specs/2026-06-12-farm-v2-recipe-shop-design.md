@@ -15,23 +15,38 @@ ingredients with an identical "RUINED!" message. The player cannot tell
 cash/crops to zero with nothing learned. Morrowind's equivalent works only
 because ingredients leak information; ours leaks none.
 
-## Design: two roads to every recipe
+## Design: two roads, different shapes
 
-### Road 1 — the shop (deterministic)
+The shop is a **ladder** (guaranteed, in price order). Discovery is the only
+way to get a recipe **out of order** (random, free on success). They are not
+two random-access paths to the same thing — that distinction is the design.
+
+### Road 1 — the shop (deterministic ladder)
 
 - The market screen gains a recipe row. **R buys the LOWEST unowned recipe**
-  in the fixed 12-recipe list (BREAD → FEAST order, by rarity/value).
-- Purchase gates: `skill >= SKILLREQ[rarity]` AND `cash >= price`.
-  - SKILLREQ by rarity tier: r0=0, r1=25, r2=75, r3=150.
-  - Price per recipe = 2 x product value (BREAD 56 ... FEAST 254; 16-bit
-    math //e-side, prices held in a FARM.S table RPRICE 12 x 2 bytes —
-    values may exceed 255 if retuned later).
-- Market row display: `RECIPE BREAD 56  R BUY` when buyable;
-  `RECIPE BREAD 56  NEED SKILL 25` when skill-gated;
+  in the fixed 12-recipe list (BREAD → FEAST order, by rarity/value). You
+  cannot target a specific recipe here — that is what discovery is for.
+- Purchase gate: `cash >= price` ONLY. No skill gate on purchase — the price
+  ladder paces progression, and crafting the cheap rungs builds the skill
+  that tames the expensive rungs' failure curves (self-pacing). A skill gate
+  here would double-gate and invert the safe/gamble ordering (the gamble is
+  always available at any skill; the ladder should be too, just costly).
+- **The displayed number is the PRICE.** Price = 2 x product value
+  (BREAD value 28 → price 56 ... FEAST value 127 → price 254). Held in a
+  FARM.S table RPRICE 12 x 2 bytes (16-bit; current max 254 fits a byte but
+  the table is 16-bit for headroom). Cross-check: RPRICE[i] must equal
+  2 x RECTAB[i].VALUE — same VALUEs as the base spec's recipe table.
+- Market row display: `RECIPE BREAD 56  R BUY` when affordable;
+  `RECIPE BREAD 56  NEED CASH` when too poor;
   `RECIPES: ALL OWNED` when complete.
-- Flow (//e-as-bus, debit first): farm `OPSPEND(value lo/hi)` → on ROK,
-  workshop `WOPLEARN(idx)`. A crash between legs loses the cash, never
-  dupes a recipe (consistent with the spec's transfer rule).
+- Flow (//e-as-bus, debit first, **refund on reject**): farm
+  `OPSPEND(price lo/hi)` → on ROK, workshop `WOPLEARN(idx)` → if WOPLEARN
+  returns RERRBAD (recipe already owned — possible if discovery set the bit
+  between the last WSYNC and the R press, leaving the //e's WDISCV mirror
+  stale), the //e REFUNDS via farm `OPADDC(price lo/hi)`. A crash strictly
+  between the two legs loses the cash (never dupes) — accepted, as for all
+  //e-bus transfers. Before R, the //e re-reads WDISCV (WSYNC-lite) to
+  minimize the stale-mirror window; the refund covers the residual race.
 
 ### Road 2 — discovery (the gamble, unchanged stakes)
 
@@ -74,7 +89,15 @@ farm world untouched).
   (LFSR < failChance → consume + skill++ + RFAIL; else consume + skill++ +
   cook). If bit clear → existing discovery path (success sets bit + cooks;
   failure consumes + skill++ + RRUIN).
-- FAILBASE[4] + FAILFLOOR as blob tables (hot-ish, tiny).
+- **LFSR polarity warning (impl footgun):** both rolls compare the SAME LFSR
+  byte but with OPPOSITE meaning — discovery is `LFSR < threshold = SUCCESS`,
+  known-craft is `LFSR < failChance = FAILURE`. They sit a few lines apart in
+  WCRAFT. Each comparison MUST carry an explicit `; <REL> = WIN/LOSE` comment;
+  do not factor them into a shared helper (the polarity difference makes that
+  a trap).
+- FAILBASE[4] + FAILFLOOR as blob tables (hot-ish, tiny). failChance =
+  FAILBASE[rarity] − skill/2, clamped at FAILFLOOR (8-bit: the subtract
+  borrows when skill/2 > FAILBASE → take the floor).
 - New op `WOPLEARN = $05` (I0 = recipe idx): validates idx < NRECIP and
   DISC bit clear → set bit, ROK; else RERRBAD. NO skill/cash validation in
   the task (the //e gates skill and pays first; task only guards
@@ -91,16 +114,20 @@ farm world untouched).
 
 ### //e (FARM.S)
 
-- RPRICE table (12 x 16-bit) + SKILLREQ table (4 bytes) — display + gating
-  //e-side.
+- RPRICE table (12 x 16-bit) — display + cash gate //e-side. No SKILLREQ
+  table (skill gate dropped).
 - Market screen: recipe row (placement at the implementer's discretion —
-  rows 16-18 are free) + R key handler: find lowest unowned bit (needs
-  WDISCV mirror, already synced by WSYNC), check skill (WSKILLV) + cash,
-  OPSPEND → WOPLEARN → refresh + `LEARNED <name>!` message; error paths
-  `NEED SKILL nnn` / `NEED CASH nnn` / coproc errors as usual.
+  rows 16-18 are free; verify R ($D2) is unbound on the market screen first)
+  + R key handler: find lowest unowned bit (WDISCV mirror, synced by WSYNC;
+  re-sync just before), check cash >= RPRICE[idx], OPSPEND(price) →
+  WOPLEARN(idx) → on ROK refresh + `LEARNED <name>!`; on WOPLEARN RERRBAD
+  → OPADDC(price) refund + re-sync + redraw (silent or `ALREADY KNOWN`);
+  too poor → `NEED CASH`; all owned → no-op.
 - Workshop craft result dispatch adds `$E9 → CRAFT FAILED`; `$E8` message
   stays `RUINED!`.
-- CVERNUM = 2.
+- CVERNUM = 2. **Destructive on deploy:** CVER bump forces a bank-33 re-seed
+  → pantry, skill, and owned recipes all reset to zero. No migration. Farm
+  world (bank 32) untouched. Acceptable for bench iteration.
 - Recipe book rendering unchanged (bitmap-driven; bought and discovered
   recipes look identical — both "known").
 
@@ -109,34 +136,46 @@ farm world untouched).
 | Code | Meaning |
 |---|---|
 | $01 ROK | ok / cooking |
+| $E4 RERRCASH | OPSPEND insufficient funds |
 | $E5 RERRCROP | not enough crops/ingredients |
 | $E6 RERRBAD | bad args / double-learn / unknown op |
 | $E7 RERRFULL | stations full / inventory full |
 | $E8 RRUIN | unowned attempt failed (dud OR discovery miss) |
 | $E9 RFAIL | KNOWN recipe craft failed |
-| $E4 RERRCASH | OPSPEND insufficient funds |
 
 ### Testbench
 
 - WOPLEARN: learn lowest (BREAD idx 0) → bit set; double-learn → RERRBAD.
-- OPSPEND: exact-funds success + insufficient → RERRCASH + cash unchanged.
-- Known-recipe fail curve: skill 0 + owned BREAD → loop attempts, expect a
-  mix of ROK and $E9 (assert only those two codes appear, ingredients
-  consumed either way); skill $FF → failChance floor → near-always ROK
-  (assert first attempt ROK at FAILFLOOR=8: cycle-deterministic, verify
-  empirically and pin whichever outcome the LFSR gives, commented).
-- Discovery path asserts from increment 3 remain valid (unowned combos).
+- OPSPEND: exact-funds success (cash → 0) + insufficient → RERRCASH + cash
+  unchanged.
+- Known-recipe fail curve (distribution, NOT pin-to-observed): seed the LFSR
+  deterministically (wk_init already seeds it), own BREAD, loop ~30 attempts
+  at skill 0 refilling pantry each time. Assert: every result is ROK or $E9
+  (no other code), pantry is debited on every attempt regardless, AND both
+  ROK and $E9 occur at least once across the run (proves the roll is live,
+  not stuck). At skill $FF, failChance = FAILFLOOR(8/256): assert the
+  observed fail RATE over ~30 attempts is low (e.g. < 6 of 30) rather than
+  pinning a single attempt.
+- Discovery path asserts from increment 3 remain valid (unowned combos →
+  $E8 on dud, roll on real-unowned).
 - wk_init seeds DISC=0 and CVER=2.
 
 ## Tuning knobs (all data)
 
 | Knob | Value | Where |
 |---|---|---|
-| SKILLREQ | 0/25/75/150 | FARM.S table (//e gate) |
-| Price | 2 x value | FARM.S RPRICE |
+| Price | 2 x value | FARM.S RPRICE (cash gate only) |
 | FAILBASE | 48/80/112/144 | WORKTASK table |
 | FAILFLOOR | 8 | WORKTASK equate |
 | Discovery curve | 40 + skill/2 − 16 x rarity | unchanged |
+
+## Accepted trade-offs (noted, not fixed)
+
+- **Dud-spam skill grind:** skill++ on every attempt incl. duds means a
+  player can cheaply grind skill toward $FF (ingredient cost is the only
+  brake), eventually flooring all craft failure at ~3%. Accepted — the
+  ingredient cost and the ladder price still pace the early game; endgame
+  mastery is a fine reward. Revisit only if bench shows it trivializes.
 
 ## Out of scope
 
