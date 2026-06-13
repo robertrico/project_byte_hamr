@@ -36,8 +36,9 @@ two random-access paths to the same thing — that distinction is the design.
   FARM.S table RPRICE 12 x 2 bytes (16-bit; current max 254 fits a byte but
   the table is 16-bit for headroom). Cross-check: RPRICE[i] must equal
   2 x RECTAB[i].VALUE — same VALUEs as the base spec's recipe table.
-- Market row display: `RECIPE BREAD 56  R BUY` when affordable;
-  `RECIPE BREAD 56  NEED CASH` when too poor;
+- Market row display (the number is the PRICE — label it `$` or `BUY 56` so
+  the player doesn't read it as the product value): `RECIPE BREAD BUY 56`
+  when affordable; `RECIPE BREAD NEED CASH` when too poor;
   `RECIPES: ALL OWNED` when complete.
 - Flow (//e-as-bus, debit first, **refund on reject**): farm
   `OPSPEND(price lo/hi)` → on ROK, workshop `WOPLEARN(idx)` → if WOPLEARN
@@ -95,6 +96,17 @@ farm world untouched).
   WCRAFT. Each comparison MUST carry an explicit `; <REL> = WIN/LOSE` comment;
   do not factor them into a shared helper (the polarity difference makes that
   a trap).
+- **WCGO shared-label mandate (code-verified trap):** in shipped WORKTASK.S,
+  `WCGO` (~line 485) is the COOK entry reached by BOTH the bit-set branch
+  (`BNE WCGO` ~line 422, already-known) AND the fresh-discovery-success jump
+  (`JMP WCGO` ~line 480). The known-fail roll MUST be inserted on the
+  bit-set branch ONLY — between the `BNE WCGO` test and the cook — so that a
+  fresh discovery that just passed its discovery roll cooks GUARANTEED (the
+  "success learns free AND starts cooking" promise). DO NOT add the fail roll
+  at WCGO itself, or fresh discoveries get double-jeopardy'd (pass discovery,
+  then craft-fail on the same attempt). Restructure: the bit-set branch
+  targets a NEW label (e.g. WKNOWN) that does the fail roll, falling through
+  to WCGO on success; WCGO stays the shared guaranteed-cook tail.
 - FAILBASE[4] + FAILFLOOR as blob tables (hot-ish, tiny). failChance =
   FAILBASE[rarity] − skill/2, clamped at FAILFLOOR (8-bit: the subtract
   borrows when skill/2 > FAILBASE → take the floor).
@@ -106,11 +118,15 @@ farm world untouched).
 ### FARMTASK changes
 
 - New op `OPSPEND = $07` (TA0 = lo, TA1 = hi): cash >= amount → subtract,
-  ROK; else RERRCASH. 16-bit compare-then-subtract (CBUY precedent).
-- Blob at 1772/1792: apply the 37 B hi-byte reclaim (reviewer-verified:
-  per-crop addr hi bytes are constant $02; replace the
-  `LDA #0 / ADC #>tbl / STA tmp` + `LDY tmp` patterns with `LDY #>tbl`
-  immediates in CPLANT/CBUY/CHARV/CSELL) BEFORE adding OPSPEND (~50 B).
+  ROK; else RERRCASH ($E4, FARMTASK-returned). 16-bit compare-then-subtract
+  (CBUY precedent).
+- Blob is at **1772 / 1792 = 20 B headroom** (verified 2026-06-12, post
+  inc-3 — it already carries OPWITHDRAW/OPADDCASH). OPSPEND is ~50 B, so the
+  37 B hi-byte reclaim is a REAL prerequisite, not optional: per-crop addr
+  hi bytes are constant $02; replace the `LDA #0 / ADC #>tbl / STA tmp` +
+  `LDY tmp` patterns with `LDY #>tbl` immediates in CPLANT/CBUY/CHARV/CSELL,
+  THEN add OPSPEND. Net must stay < 1792 (report the size; if still tight,
+  the reclaim has more sites).
 
 ### //e (FARM.S)
 
