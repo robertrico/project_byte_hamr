@@ -17,9 +17,18 @@ because ingredients leak information; ours leaks none.
 
 ## Design: two roads, different shapes
 
-The shop is a **ladder** (guaranteed, in price order). Discovery is the only
-way to get a recipe **out of order** (random, free on success). They are not
-two random-access paths to the same thing — that distinction is the design.
+The shop is a **ladder** (guaranteed ownership, in price order). Discovery is
+the only way to get a recipe **out of order** (random, free on success). They
+are not two random-access paths to the same thing — that distinction is the
+design.
+
+**"Deterministic" means deterministic to OWNERSHIP, not to a successful
+craft.** Buying a recipe guarantees you OWN it; the first (and every) craft
+of it still rolls the known-fail curve (`FAILBASE[rarity] − skill/2`). So a
+freshly-bought r3 FEAST recipe (price 254) still has ~27% chance its first
+craft burns the ingredients at skill 150. Intended: the shop removes the
+discovery gamble, not the crafting gamble. The market row should not imply
+guaranteed product.
 
 ### Road 1 — the shop (deterministic ladder)
 
@@ -123,10 +132,13 @@ farm world untouched).
 - Blob is at **1772 / 1792 = 20 B headroom** (verified 2026-06-12, post
   inc-3 — it already carries OPWITHDRAW/OPADDCASH). OPSPEND is ~50 B, so the
   37 B hi-byte reclaim is a REAL prerequisite, not optional: per-crop addr
-  hi bytes are constant $02; replace the `LDA #0 / ADC #>tbl / STA tmp` +
-  `LDY tmp` patterns with `LDY #>tbl` immediates in CPLANT/CBUY/CHARV/CSELL,
-  THEN add OPSPEND. Net must stay < 1792 (report the size; if still tight,
-  the reclaim has more sites).
+  hi bytes are constant $02 (FSEEDS=$0222, FCROPS=$0226, NCROPS=4 → max +3 =
+  $0225/$0229, low-byte ADC never carries → hi byte provably $02). Replace
+  the `LDA #0 / ADC #>tbl / STA tmp` + `LDY tmp` patterns with `LDY #>tbl`
+  immediates in CPLANT/CBUY/CHARV/CSELL, THEN add OPSPEND. Add a comment at
+  each site: `; hi const $02 - breaks if FSEEDS/FCROPS cross a page`. Net
+  must stay < 1792 (report the size; if still tight, the reclaim has more
+  sites — the EVLIB/PORTLIB calls use the same pattern elsewhere).
 
 ### //e (FARM.S)
 
