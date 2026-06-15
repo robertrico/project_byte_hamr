@@ -415,7 +415,7 @@ BYCROK
  LDA #RERRBAD
  JMP MBFIN
 CBUYQ
-* seeds slot addr -> PADRL/H (free here)
+* seeds slot addr -> PADRL (free here)
  LDA TA0
  CLC
  ADC #<FSEEDS
@@ -672,8 +672,7 @@ MKADR
  CLC
  ADC #<FMKT
  STA MKAL
- LDA #0
- ADC #>FMKT
+ LDA #>FMKT ; hi const $02 - breaks if FMKT crosses a page
  STA MKAH
  RTS
 
