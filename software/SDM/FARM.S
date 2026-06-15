@@ -482,6 +482,29 @@ HUDDRAW
  LDX #12
  LDY #20
  JSR PRDEC3
+* row 20 cols 23-26: workshop widget W:xx
+* x per station: . idle, * cooking, ! done
+ LDY #20
+ LDA GRLO,Y
+ STA LINEP
+ LDA GRHI,Y
+ STA LINEP+1
+ LDA #$D7 ; 'W'
+ LDY #23
+ STA (LINEP),Y
+ LDA #$BA ; ':'
+ LDY #24
+ STA (LINEP),Y
+* station 0 glyph col 25
+ LDX #0
+ JSR WGGLYPH
+ LDY #25
+ STA (LINEP),Y
+* station 1 glyph col 26
+ LDX #4
+ JSR WGGLYPH
+ LDY #26
+ STA (LINEP),Y
 * CASH label col 29, value col 34
 * (HUDCASH: cash-only entry - workshop row
 * 20 shows cash without the farm SEED block)
@@ -501,6 +524,23 @@ HUDCASH
  LDX #34
  LDY #20
  JSR PRDEC
+ RTS
+
+* === WGGLYPH: X=STREC offset -> A glyph
+* 0=idle '.', 1=cooking '*', 2=done '!'
+WGGLYPH
+ LDA STREC,X
+ CMP #1
+ BEQ WGGCK
+ CMP #2
+ BEQ WGGDN
+ LDA #$AE ; '.'
+ RTS
+WGGCK
+ LDA #$AA ; '*'
+ RTS
+WGGDN
+ LDA #$A1 ; '!'
  RTS
 
 * --- STRINGS (HI-ASCII, 0-TERM) ---
@@ -2437,6 +2477,12 @@ WEVDISP
  STA PRCOL
  LDY #21
  JSR PRSTR
+* farm screen: refresh widget + bell
+ LDA SCREEN
+ BNE WEVDRT
+ JSR $FBDD ; BELL
+ JSR HUDDRAW
+WEVDRT
  RTS
 WEVSCR
  JSR WKDRAW_STA
