@@ -459,6 +459,8 @@ WCHIT
 * discovered? DISC bit RIDX
  JSR WDBIT
  AND MTMP
+* ~107B fwd branch (127 limit) - do NOT grow
+* the discovery roll below or this overflows
  BNE WKNOWN
 * roll: LFSR < DISCBASE + SKILL/2 - RARITY*16
 * (BCS guard kept: clamp $FF if sum carries)
@@ -553,6 +555,7 @@ WKNOWN
  BCC WKNFL      ; underflow: use floor
  CMP #FAILFLOOR
  BCS WKNRL      ; result >= floor: keep it
+* A < FAILFLOOR here -> clamp up to floor
 WKNFL
  LDA #FAILFLOOR ; clamp to floor
 WKNRL
@@ -604,6 +607,8 @@ WCGO
 * === WDBIT: MTMP=bit mask, A=disc byte ===
 * RIDX<8 -> reads WDISCL, else WDISCH
 * mask = 1 << (RIDX AND 7)
+* CLOBBERS MTMP (mask); not preserved across
+* WCONSUM (which reuses MTMP as loop counter)
 WDBIT
  LDA RIDX
  AND #7
