@@ -425,7 +425,7 @@ module project_obscurus_tb;
         sdram_write(10'd33, 16'h0002, 8'h00);          // SEQCTR
         sdram_write(10'd33, 16'h0003, 8'h00);          // HEAD
         sdram_write(10'd33, 16'h0004, 8'h00);          // WHBEAT
-        sdram_write(10'd33, 16'h0005, 8'h01);          // CVER
+        sdram_write(10'd33, 16'h0005, 8'h02);          // CVER (v2 recipe-shop re-seed)
         sdram_write(10'd33, 16'h0200, 8'h00);          // FLAG
         for (i=0; i<4;  i=i+1) sdram_write(10'd33, 16'h0210+i, 8'h00); // pantry
         sdram_write(10'd33, 16'h0214, 8'h00);          // SKILL
@@ -1705,6 +1705,24 @@ module project_obscurus_tb;
         if ({r1,r} !== {h2,h1} + 16'd160) begin errors=errors+1;
             $display("FAIL cash %h%h want +160", r1, r); end
         else $display("PASS OPADDCASH credited");
+        // OPSPEND: debit farm cash; insufficient -> RERRCASH ($E4).
+        // Poke cash to a known 200 for determinism — prior balance is
+        // LFSR-yield-dependent; poke guarantees cash > 50 for the test.
+        sdram_write(10'd32, 16'h0220, 8'd200);
+        sdram_write(10'd32, 16'h0221, 8'h00);
+        sdram_read(10'd32, 16'h0220, h1); sdram_read(10'd32, 16'h0221, h2);
+        farm_cmd(8'h07, 8'd50, 8'd0, 8'h00, r, ok);   // spend 50
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL spend r=%h", r); end
+        sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
+        if ({r1,r} !== {h2,h1} - 16'd50) begin errors=errors+1;
+            $display("FAIL post-spend cash %h%h", r1, r); end
+        // overspend: ask for 60000 -> RERRCASH, cash unchanged
+        sdram_read(10'd32, 16'h0220, h1); sdram_read(10'd32, 16'h0221, h2);
+        farm_cmd(8'h07, 8'h60, 8'hEA, 8'h00, r, ok);  // 60000
+        if (r!==8'hE4) begin errors=errors+1; $display("FAIL overspend r=%h want E4", r); end
+        sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
+        if ({r1,r} !== {h2,h1}) begin errors=errors+1; $display("FAIL overspend mutated cash"); end
+        else $display("PASS OPSPEND + insufficient guard");
         // discovery roll path: skill FF, bit clear -> bounded retry loop
         // (LFSR is cycle-deterministic; loop converges same way every run)
         begin : wk_roll
@@ -1745,6 +1763,68 @@ module project_obscurus_tb;
             $display("FAIL rarity floor r=%h want E8 (impossible at skill 0)", r); end
         else $display("PASS rarity floor: FEAST impossible at skill 0");
         // restore rig: downstream wk_reset asserts SKILL $FF survives reset
+        sdram_write(10'd33, 16'h0214, 8'hFF);
+        end
+        // ===== recipe shop: WOPLEARN (op 5) =====
+        begin : wk_learn
+        reg [7:0] r, r1; reg ok;
+        // clear DISC, learn BREAD (idx 0) -> bit 0 set
+        sdram_write(10'd33, 16'h0215, 8'h00);
+        sdram_write(10'd33, 16'h0216, 8'h00);
+        wk_cmd(8'h05, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);   // WOPLEARN 0
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL learn r=%h", r); end
+        sdram_read(10'd33, 16'h0215, r);
+        if (r[0]!==1'b1) begin errors=errors+1; $display("FAIL learn bit=%h", r); end
+        // double-learn -> RERRBAD
+        wk_cmd(8'h05, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL double-learn r=%h want E6", r); end
+        else $display("PASS WOPLEARN + double-learn guard");
+        // learn idx 9 (>7 -> hi byte, bit 1 of $0216)
+        wk_cmd(8'h05, 8'd9, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        sdram_read(10'd33, 16'h0216, r);
+        if (r[1]!==1'b1) begin errors=errors+1; $display("FAIL learn hi bit=%h", r); end
+        else $display("PASS WOPLEARN hi byte (idx 9)");
+        // out-of-range idx (12 >= NRECIP=12) -> RERRBAD
+        wk_cmd(8'h05, 8'd12, 8'h00, 8'h00, 8'h00, r, r1, ok);
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL learn-12 r=%h want E6", r); end
+        end
+        // ===== known-recipe failure curve (distribution test) =====
+        // skill 0, BREAD owned, 30 attempts: assert both ROK and $E9 occur,
+        // and that pantry drops by exactly 2 on every attempt (consumed either way).
+        begin : wk_kfail
+        reg [7:0] r, r1, pantry_before; reg ok; integer a, nok, nfail;
+        // own BREAD (idx 0, combo 0,0), skill 0 -> FAILBASE[0]=48/256 ~19%
+        sdram_write(10'd33, 16'h0215, 8'h01);   // DISC bit 0 (BREAD known)
+        sdram_write(10'd33, 16'h0216, 8'h00);
+        sdram_write(10'd33, 16'h0214, 8'h00);   // skill 0
+        nok = 0; nfail = 0;
+        for (a = 0; a < 30; a = a + 1) begin
+            wk_cmd(8'h01, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok); // deposit 2 wheat
+            sdram_read(10'd33, 16'h0210, pantry_before);          // capture pantry before craft
+            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok); // craft BREAD
+            if (r === 8'h01) nok = nok + 1;
+            else if (r === 8'hE9) nfail = nfail + 1;
+            else begin errors=errors+1; $display("FAIL kfail unexpected r=%h", r); end
+            sdram_read(10'd33, 16'h0210, r1);                     // pantry after craft
+            // pantry must drop by exactly 2 on every attempt (success or fail)
+            if (r1 !== pantry_before - 8'd2) begin errors=errors+1;
+                $display("FAIL kfail pantry not consumed: before=%0d after=%0d",
+                         pantry_before, r1); end
+            // wait for station to finish cooking, then collect to keep slot free
+            begin : kf_clear
+            integer w; reg [7:0] st;
+            st = 8'h01; w = 0;
+            while (st === 8'h01 && w < 200) begin
+                repeat (4000) @(posedge clk100);
+                sdram_read(10'd33, 16'h0220, st); w = w + 1;
+            end
+            wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok); // collect sta0 if done
+            end
+        end
+        if (nok == 0 || nfail == 0) begin errors=errors+1;
+            $display("FAIL kfail no spread: ok=%0d fail=%0d", nok, nfail); end
+        else $display("PASS known-fail curve ok=%0d fail=%0d (both occur)", nok, nfail);
+        // restore rig: wk_reset asserts SKILL $FF survives reset
         sdram_write(10'd33, 16'h0214, 8'hFF);
         end
         end
