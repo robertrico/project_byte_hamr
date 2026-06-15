@@ -182,6 +182,8 @@ WMGO
  BEQ WJCOLL
  CMP #WOPMODE
  BEQ WJMODE
+ CMP #WOPLEARN
+ BEQ WJLEARN
  LDA #RERRBAD
  JMP WMFIN
 WJDEP
@@ -192,6 +194,8 @@ WJCOLL
  JMP WCOLL
 WJMODE
  JMP WCMODE
+WJLEARN
+ JMP WCLEARN
 WCSTAT
  LDA #ROK
  JMP WMFIN
@@ -242,6 +246,42 @@ WCMODE
  LDX TI0
  LDA #<WMODE
  LDY #>WMODE
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+
+* --- LEARN TI0=recipe idx ---
+* idx<NRECIP and DISC bit clear -> set, ROK
+* else RERRBAD (dup / bad idx)
+WCLEARN
+ LDA TI0
+ CMP #NRECIP
+ BCC WLOK
+ LDA #RERRBAD
+ JMP WMFIN
+WLOK
+ LDA TI0
+ STA RIDX
+ JSR WDBIT
+ AND MTMP
+ BEQ WLSET
+ LDA #RERRBAD
+ JMP WMFIN
+WLSET
+ JSR WDBIT
+ ORA MTMP
+ TAX
+ LDA RIDX
+ CMP #8
+ BCS WLHI
+ LDA #<WDISCL
+ LDY #>WDISCL
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+WLHI
+ LDA #<WDISCH
+ LDY #>WDISCH
  JSR WRB
  LDA #ROK
  JMP WMFIN
@@ -419,7 +459,7 @@ WCHIT
 * discovered? DISC bit RIDX
  JSR WDBIT
  AND MTMP
- BNE WCGO
+ BNE WKNOWN
 * roll: LFSR < DISCBASE + SKILL/2 - RARITY*16
 * (BCS guard kept: clamp $FF if sum carries)
  LDA #<WSKILL
@@ -482,6 +522,50 @@ WCDH
  LDA #<WDISCH
  LDY #>WDISCH
  JSR WRB
+ JMP WCGO
+* known recipe: failure roll. failChance =
+* FAILBASE[rarity] - SKILL/2, floor FAILFLOOR.
+* LFSR < failChance = FAIL (OPPOSITE polarity
+* to discovery roll: LFSR < thresh = SUCCESS).
+WKNOWN
+* rarity at entry+6 -> X
+ LDA RIDX
+ JSR RECADR
+ LDA RADL
+ CLC
+ ADC #6
+ STA RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ TAX
+ LDA FAILBASE,X
+ STA MVAL
+* MVAL -= SKILL/2
+ LDA #<WSKILL
+ LDY #>WSKILL
+ JSR RDB
+ LSR
+ STA MTMP
+ LDA MVAL
+ SEC
+ SBC MTMP
+ BCC WKNFL      ; underflow: use floor
+ CMP #FAILFLOOR
+ BCS WKNRL      ; result >= floor: keep it
+WKNFL
+ LDA #FAILFLOOR ; clamp to floor
+WKNRL
+ STA MVAL
+ LDA LFSRL
+ CMP MVAL
+* WIN: LFSR >= failChance -> SUCCESS, cook
+ BCS WCGO
+* LOSE: LFSR < failChance -> FAIL
+ JSR WCONSUM
+ JSR WSKUP
+ LDA #RFAIL
+ JMP WMFIN
 WCGO
 * consume + skill++ + start station
  JSR WCONSUM
@@ -586,6 +670,9 @@ WSKUP
  JSR WRB
 WSKDN
  RTS
+
+* known-craft failChance base per rarity /256
+FAILBASE DFB 48,80,112,144
 
  PUT PORTLIB
  PUT EVLIB
