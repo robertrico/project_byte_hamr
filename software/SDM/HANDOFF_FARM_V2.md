@@ -50,6 +50,21 @@ hardware:
   boot + BRUN (farm world survives if SDRAM kept power; else cold start).
   Next: increment 4 = world events (FARMTASK has 20 B headroom — use the
   37 B hi-byte reclaim first).
+- **v2 recipe-shop SHIPPED (branch farm-v2)**: dual-road crafting -
+  market R buys lowest-unowned recipe (price=2xvalue 56..254, debit-first
+  OPSPEND=7 + refund-on-WOPLEARN-reject via OPADDC, guarded SENDCMD);
+  discovery gamble unchanged (RUINED on fail); KNOWN recipes now roll a
+  fail curve (FAILBASE[r]=48/80/112/144 - skill/2, floor 8, RFAIL=$E9
+  'CRAFT FAILED', pinned to WKNOWN branch NOT shared WCGO). New ops
+  WOPLEARN=5 (workshop, double-learn guard). CVER=2 (re-seeds bank 33 on
+  deploy: pantry/skill/recipes reset). PORTLIB extract done inc-3.
+  FARMTASK 1780/1792 (MKADR+4-site addr-hi reclaim + WRCASH helper);
+  **only ~10 B headroom - inc-4 world events MUST find another mechanism
+  (overflow PUT-include, host-side, or 2nd op-handler region) - see
+  RS T3 quality review**. Polish: deposit DEP 1-4? crop-picker (QPCROP,
+  kills hidden-SELCROP bug), farm-screen workshop widget (W:.. station
+  glyphs + done BELL). Deploy: ctrl-reset + BRUN, farm world (bank 32)
+  survives, workshop (bank 33) re-seeds. Next: increment 4 = world events.
 - **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
   reset, cflash boot-restore owns coproc BRAM port B until restore_done —
   host loads during it are silently dropped, and a valid flash snapshot
