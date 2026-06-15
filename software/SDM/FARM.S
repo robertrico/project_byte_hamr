@@ -565,6 +565,8 @@ SNAML DFB <SNAMW,<SNAMC,<SNAMB,<SNAMP
 SNAMH DFB >SNAMW,>SNAMC,>SNAMB,>SNAMP
 SQTYWD ASC "DEP QTY:"
  DFB 0
+SDEPC ASC "DEP 1-4? (CROP)"
+ DFB 0
 SWKSHP ASC "WORKSHOP"
  DFB 0
 SSKILL ASC "SKILL"
@@ -686,6 +688,7 @@ CMDA2 DS 1
 ERRCODE DS 1
 QVAL DS 1
 QDIG DS 1
+QPCROP DS 1
 SENDCMD
 * never write while FLAG=1
  LDA #0
@@ -1584,6 +1587,8 @@ MK2
  STA MSGPTR
  LDA #>SQTYB
  STA MSGPTR+1
+ LDA SELCROP
+ STA QPCROP
  JSR QTYPROMPT
 * re-read after op feeds MKDRAW
  JSR RDMKT
@@ -1598,6 +1603,8 @@ MK3
  STA MSGPTR
  LDA #>SQTYS
  STA MSGPTR+1
+ LDA SELCROP
+ STA QPCROP
  JSR QTYPROMPT
 * re-read after op feeds MKDRAW
  JSR RDMKT
@@ -1700,8 +1707,8 @@ NIBA
 NIBDONE
  RTS
 * === QTYPROMPT: modal 3-digit qty prompt ===
-* caller sets CMDOP + MSGPTR before JSR.
-* SQGO: CMDA0=SELCROP CMDA1=qty JMP DOCMD.
+* caller sets CMDOP + MSGPTR + QPCROP before JSR.
+* SQGO: CMDA0=QPCROP CMDA1=qty JMP DOCMD.
 * ESC or qty 0 cancels. Clamps to 255.
 * modal: no DRAIN.
 QTYPROMPT
@@ -1792,7 +1799,7 @@ SQGO
  JMP SQCAN
 SQGODO
  STA CMDA1
- LDA SELCROP
+ LDA QPCROP
  STA CMDA0
  LDA #0
  STA CMDA2
@@ -3262,8 +3269,31 @@ WKCRAFT_UPD
  JSR WKDRAW
  RTS
 
-* === WKDEPOS: D key - deposit flow ===
+* === WKDEPOS: D key - pick crop then qty ===
 WKDEPOS
+ JSR CLRMSG
+ LDA #<SDEPC
+ STA MSGPTR
+ LDA #>SDEPC
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #21
+ JSR PRSTR
+WKDPK
+ LDA KBD
+ BPL WKDPK
+ STA KBDSTR
+ CMP #$9B ; ESC cancel
+ BEQ WKDPX
+ CMP #$B1 ; below '1'
+ BCC WKDPK
+ CMP #$B5 ; above '4'
+ BCS WKDPK
+ SEC
+ SBC #$B1
+ STA QPCROP
+* crop picked - run qty prompt
  LDA #OPWDRAW
  STA CMDOP
  LDA #<SQTYWD
@@ -3271,8 +3301,10 @@ WKDEPOS
  LDA #>SQTYWD
  STA MSGPTR+1
  JSR QTYPROMPT
-* DOCMD returned (farm withdraw done or cancel)
-* workshop deposit handled in WKDEPOK via DCOK
+* DOCMD returned; WKDEPOK handles success
+ RTS
+WKDPX
+ JSR CLRMSG
  RTS
 
 * === WKCOLLECT: C key - wait next key 1/2 ===
