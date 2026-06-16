@@ -111,17 +111,41 @@ WTKLP
  JSR WRB
  PLA
  BNE WTKNX
-* done: state=2, WEVDONE(station, recipe)
- LDX #2
- LDA STAL
- LDY #>WSTA
- JSR WRB
+* done: GOODS[recipe]++ (clamp), station IDLE,
+* WEVDONE(station, recipe) for the //e notice
  LDA STAL
  CLC
  ADC #1
  LDY #>WSTA
  JSR RDB
  STA EVP1
+ STA MTMP
+* GOODS[recipe]++ clamp 255
+ LDA MTMP
+ CLC
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP #$FF
+ BEQ WTKGFULL
+ CLC
+ ADC #1
+WTKGFULL
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* station -> IDLE
+ LDX #0
+ LDA STAL
+ LDY #>WSTA
+ JSR WRB
+* WEVDONE(station, recipe)
  LDA #WEVDONE
  STA EVTYPE
  LDA STI
@@ -131,7 +155,9 @@ WTKNX
  INC STI
  LDA STI
  CMP #NSLOTS
- BNE WTKLP
+ BEQ WTKDONE
+ JMP WTKLP
+WTKDONE
  RTS
 
 * === STADR: STAL = <WSTA + STI*4 ===
@@ -174,8 +200,6 @@ WMGO
  STA TI3
  LDA TOP
  BEQ WCSTAT
- CMP #WOPDEP
- BEQ WJDEP
  CMP #WOPCRAFT
  BEQ WJCRAFT
  CMP #WOPCOLL
@@ -186,12 +210,10 @@ WMGO
  BEQ WJLEARN
  LDA #RERRBAD
  JMP WMFIN
-WJDEP
- JMP WCDEP
 WJCRAFT
  JMP WCRAFT
 WJCOLL
- JMP WCOLL
+ JMP WSELL
 WJMODE
  JMP WCMODE
 WJLEARN
@@ -212,34 +234,6 @@ WMFIN
  JSR WRB
  RTS
 
-* --- DEPOSIT TI0=crop TI1=qty ---
-WCDEP
- LDA TI0
- CMP #4
- BCS WDBAD
- LDA TI1
- BEQ WDBAD
- LDA TI0
- CLC
- ADC #<WPANT
- STA MVAL
- LDA MVAL
- LDY #>WPANT
- JSR RDB
- CLC
- ADC TI1
- BCC WDNC
- LDA #$FF
-WDNC
- TAX
- LDA MVAL
- LDY #>WPANT
- JSR WRB
- LDA #ROK
- JMP WMFIN
-WDBAD
- LDA #RERRBAD
- JMP WMFIN
 
 * --- MODE TI0=flags ---
 WCMODE
@@ -286,26 +280,45 @@ WLHI
  LDA #ROK
  JMP WMFIN
 
-* --- COLLECT TI0=station ---
-WCOLL
+* --- SELL TI0=product TI1=qty ---
+* goods>=qty -> dec by qty, return PER-UNIT
+* value (BOOM x2) in WRES1. //e does qty*unit
+* + credits cash. WMFIN writes the result code
+* to WRES, so the value MUST go in WRES1 (one
+* byte, <=254); the mailbox has no room for a
+* 16-bit total, hence per-unit + //e multiply.
+WSELL
  LDA TI0
- CMP #NSLOTS
- BCS WCLBAD
- STA STI
- JSR STADR
- LDA STAL
- LDY #>WSTA
- JSR RDB
- CMP #2
- BNE WCLBAD
-* recipe idx at STAL+1
- LDA STAL
+ CMP #NRECIP
+ BCS WSLBAD
+ LDA TI1
+ BEQ WSLBAD
+* goods slot addr -> RADL/H
+ LDA TI0
  CLC
- ADC #1
- LDY #>WSTA
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
  JSR RDB
+ CMP TI1
+ BCS WSLOK
+ LDA #RERRCROP
+ JMP WMFIN
+WSLOK
+* goods -= qty
+ SEC
+ SBC TI1
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* per-unit value = RECIPE[product] + 5
+ LDA TI0
  JSR RECADR
-* value at entry+5
  LDA RADL
  CLC
  ADC #5
@@ -314,31 +327,23 @@ WCOLL
  LDY RADH
  JSR RDB
  STA MVAL
-* BOOM? value *2 clamp $FF
+* BOOM? per-unit *2 (max 127*2=254, no clamp
+* needed - fits a byte)
  LDA #<WMODE
  LDY #>WMODE
  JSR RDB
  AND #1
- BEQ WCLNB
- LDA MVAL
- ASL
- BCC WCLST
- LDA #$FF
-WCLST
- STA MVAL
-WCLNB
+ BEQ WSLNB
+ ASL MVAL
+WSLNB
+* WRES1 = per-unit value; WMFIN sets WRES=ROK
  LDX MVAL
  LDA #<WRES1
  LDY #>WRES1
  JSR WRB
-* station idle
- LDX #0
- LDA STAL
- LDY #>WSTA
- JSR WRB
  LDA #ROK
  JMP WMFIN
-WCLBAD
+WSLBAD
  LDA #RERRBAD
  JMP WMFIN
 
@@ -364,47 +369,15 @@ WCRAFT
  LDA STAL
  LDY #>WSTA
  JSR RDB
- BEQ WCRSL
+ BEQ WCSCAN
  LDA #1
  STA STI
  JSR STADR
  LDA STAL
  LDY #>WSTA
  JSR RDB
- BEQ WCRSL
+ BEQ WCSCAN
  LDA #RERRFULL
- JMP WMFIN
-WCRSL
-* per-crop need counts
- LDA #0
- STA NEED0
- STA NEED1
- STA NEED2
- STA NEED3
- LDX TI0
- JSR WNEED
- LDX TI1
- JSR WNEED
- LDX TI2
- JSR WNEED
- LDX TI3
- JSR WNEED
-* pantry covers needs?
- LDX #0
-WCPCK
- TXA
- CLC
- ADC #<WPANT
- LDY #>WPANT
- JSR RDB
- CMP NEED0,X
- BCC WCPOOR
- INX
- CPX #4
- BNE WCPCK
- JMP WCSCAN
-WCPOOR
- LDA #RERRCROP
  JMP WMFIN
 * table scan for combo
 WCSCAN
@@ -433,8 +406,7 @@ WCSNX
  LDA RIDX
  CMP #NRECIP
  BNE WCSLP
-* no match: consume + skill++ + RUIN
- JSR WCONSUM
+* no match: skill++ + RUIN
  JSR WSKUP
  LDA #RRUIN
  JMP WMFIN
@@ -445,13 +417,6 @@ RNEXT
  LDA RADL
  LDY RADH
  JSR RDB
- RTS
-
-WNEED
- CPX #4
- BCS WNDONE
- INC NEED0,X
-WNDONE
  RTS
 
 * === WCHIT: recipe match found in RIDX ===
@@ -502,8 +467,7 @@ WCROLL
  LDA LFSRL
  CMP MVAL
  BCC WCDISC
-* failed roll: consume + skill++ + RUIN
- JSR WCONSUM
+* failed roll: skill++ + RUIN
  JSR WSKUP
  LDA #RRUIN
  JMP WMFIN
@@ -565,13 +529,11 @@ WKNRL
 * WIN: LFSR >= failChance -> SUCCESS, cook
  BCS WCGO
 * LOSE: LFSR < failChance -> FAIL
- JSR WCONSUM
  JSR WSKUP
  LDA #RFAIL
  JMP WMFIN
 WCGO
-* consume + skill++ + start station
- JSR WCONSUM
+* skill++ + start station
  JSR WSKUP
 * station STATE=1 (cooking)
  LDX #1
@@ -608,7 +570,7 @@ WCGO
 * RIDX<8 -> reads WDISCL, else WDISCH
 * mask = 1 << (RIDX AND 7)
 * CLOBBERS MTMP (mask); not preserved across
-* WCONSUM (which reuses MTMP as loop counter)
+* subroutines that also use MTMP
 WDBIT
  LDA RIDX
  AND #7
@@ -635,30 +597,6 @@ WDBH
  JSR RDB
  RTS
 
-* === WCONSUM: pantry -= NEED0..3 ===
-* clean rewrite: MTMP=loop ctr, MVAL=addr
-WCONSUM
- LDA #0
- STA MTMP
-WCONLP
- LDA MTMP
- CLC
- ADC #<WPANT
- STA MVAL
- LDY #>WPANT
- JSR RDB
- LDX MTMP
- SEC
- SBC NEED0,X
- TAX
- LDA MVAL
- LDY #>WPANT
- JSR WRB
- INC MTMP
- LDA MTMP
- CMP #4
- BNE WCONLP
- RTS
 
 * === WSKUP: SKILL++ clamp $FF ===
 WSKUP
