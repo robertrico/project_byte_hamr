@@ -97,7 +97,10 @@ GOODS[product] by qty; compute value = qty × RECIPE[product].VALUE, doubled
 if MODE bit0 (BOOM) set, clamped to $FFFF (16-bit result in RES/RES1);
 return ROK with the value. The //e then credits farm cash via OPADDC.
 (Value is read from the recipe table's VALUE byte; goods stored at face,
-priced at sell time — BOOM applies here, not at craft.)
+priced at sell time — BOOM applies here, not at craft.) **Known silent cap:**
+the 16-bit value clamps at $FFFF; a very large qty × value × BOOM can hit the
+cap and lose the overflow with no warning. Acceptable (requires hundreds of a
+high-value good); not worth a guard now.
 
 Blob: WORKTASK currently 1402/4096. Removing pantry/WCONSUM offsets adding
 GOODS handling + WOPSELL; net expected ≈ flat, well under cap.
@@ -119,6 +122,11 @@ changes.
   (debit-first — all needs pre-validated so no partial debit), then
   OPCRAFT(sorted MIX) to the workshop. Result → `COOKING` / `RUINED!` /
   `CRAFT FAILED` as today.
+- **Failed crafts do NOT refund.** RUINED (dud or discovery miss) and CRAFT
+  FAILED (known-recipe roll fail) keep the crops already withdrawn — failed
+  crafting wastes the ingredients, intentionally. This differs from the old
+  pantry model only in that the crops come straight from the farm now; the
+  consume-on-failure behavior is the same.
 - Removed: WKDEPOS (D-key), WKDEPOK, OPDEPOSIT staging, the workshop pantry
   strip, the WPANT4 mirror, the C1/C2 collect handler (WKCOLLECT), and the
   station DONE-PRESS-C rendering.
@@ -128,25 +136,45 @@ only — auto-clearing), recipe book, MIX row, legend (`1-4 MIX RTN CRAFT
 I INV ESC`). No pantry, no deposit, no collect.
 
 **New INVENTORY screen (SCREEN=3, key `I`** from farm/market/workshop;
-ESC → farm):
-- Section SEEDS: 4 rows `WHEAT nnn` … from the SEED4 mirror (bank 32). Shown
-  for reference, **not selectable / not sellable**.
-- Section CROPS: 4 rows from the CROP4 mirror. Sellable at **market price**
-  (PRICE4 mirror) via OPSELL(crop, qty).
-- Section GOODS: 12 rows `BREAD nnn` … from a new WGOODS mirror (bank 33).
-  Sellable at **fixed value** (recipe VALUE) via WOPSELL(product, qty).
-- Selection: a cursor (up/down arrows) over the **sellable** items only
-  (4 crops + 12 goods = 16 entries); the seeds section renders but the
-  cursor skips it. Selected row marked `*`.
-- Sell: `S` → qty prompt (1-255, the existing QTYPROMPT) → route by selected
-  type: crop → OPSELL(crop, qty) then read cash (crop sale credits farm cash
-  inside FARMTASK as today); good → WOPSELL(product, qty) then OPADDC(value)
-  to farm. Message `SOLD <name> +nnn`. Refresh holdings + cash after.
-- A cash line is shown (HUDCASH) so sales reflect immediately.
+ESC → returns to the screen it was entered from — see PREVSCR below).
+
+**Scalable by design (N items).** Items, crops, and goods WILL grow (more
+recipes, more crop types with future multi-plot). The screen must not assume
+a fixed count that fits on one page. It is **paged + scrolling**:
+
+- **Three category pages: SEEDS / CROPS / GOODS.** One page visible at a
+  time. A key cycles pages (`TAB`/`P` → next page; wraps). The page name +
+  index shown in the header (e.g. `INVENTORY  GOODS  (3/3)`).
+- Each page is a **scrolling viewport** of `VROWS` rows (target ~16). The
+  page holds `N` entries (SEEDS 4, CROPS 4, GOODS 12 today; any N later). A
+  cursor moves with up/down; when it reaches a viewport edge the list scrolls
+  (window offset advances). `>` marks the cursor row; a `^`/`v` hint shows
+  when more rows exist above/below. This works identically for 4 or 400
+  entries — no layout rewrite when counts grow.
+- Row format per page: `<name> <count>` and, for sellable pages, the unit
+  price (CROPS: market price; GOODS: value). SEEDS rows show count only.
+- **SEEDS page is read-only** (no cursor-select, no sell) — included so
+  "what do I have" is complete, but it costs only one page, not competing
+  rows. CROPS and GOODS pages are sellable.
+- Header line + a cash line (HUDCASH) + a legend line frame the viewport, so
+  the budget is: 1 header + VROWS viewport + 1 cash + 1 legend ≈ 19-20 of 24
+  rows, independent of N.
+
+**Sell:** on a CROPS or GOODS page, `S` → qty prompt (1-255, existing
+QTYPROMPT) on the cursor's entry → route by page:
+- CROPS → OPSELL(crop, qty); FARMTASK debits the crop and credits cash
+  atomically in bank 32 (as today). Sells at current market price.
+- GOODS → WOPSELL(product, qty) returns the value; //e then OPADDC(value) to
+  farm cash. Debit-first (goods down in bank 33, then cash up in bank 32).
+- Message `SOLD <name> +nnn`. Refresh holdings + cash after.
 
 **Mirrors:** WSYNC (bank 33) extended to read GOODS[12] into WGOODS (12
 bytes of //e RAM). SEED4/CROP4/PRICE4 mirrors already exist (RDMKT). The
 inventory screen calls RDMKT + WSYNC on entry and after each sale.
+
+**PREVSCR:** a 1-byte var records the screen `I` was entered from (0 farm /
+1 market / 2 workshop). ESC restores it. (Return-to-origin, not always-farm —
+entering inventory from the workshop and landing on the farm is jarring.)
 
 **Cross-bank sale ordering:**
 - Good sale: WOPSELL debits goods (bank 33) and returns value; //e then
@@ -154,9 +182,22 @@ inventory screen calls RDMKT + WSYNC on entry and after each sale.
 - Crop sale: OPSELL (FARMTASK) debits crops and credits cash atomically
   within bank 32 — no cross-bank step, as today.
 
-**CVER → 3** (bank-33 layout changed: GOODS added, pantry retired). Re-seed
-on mismatch zeros GOODS (and the retired pantry bytes). Deploy = ctrl-reset
-+ BRUN; farm world (bank 32) survives, workshop (bank 33) re-seeds.
+**CVER → 3 with a SELECTIVE migration (must not wipe progress).** The
+layout bump must NOT erase discovered recipes (DISC) or craft SKILL — the
+recipe-shop grind is the whole point of the workshop, and a full reseed on
+every deploy would nuke it. Two distinct bank-33 init paths:
+
+- **Cold start** (invalid SIG, e.g. power-cycle): full seed as today —
+  SIG, SEQ/HEAD, SKILL=0, DISC=0, MODE=0, stations=0, GOODS=0, pantry
+  bytes=0, recipe table written, CVER=3. Everything fresh.
+- **Version migration** (valid SIG, CVER ≠ 3): zero ONLY the new/changed
+  region — **GOODS[12] and the retired pantry bytes ($0210-13)** — set
+  CVER=3, and **preserve DISC, SKILL, MODE, STATIONS, and the recipe
+  table.** Players keep every learned recipe and their skill level across
+  this deploy.
+
+Deploy = ctrl-reset + BRUN; farm world (bank 32) survives; workshop keeps
+discovered recipes + skill, gains an initialized (empty) GOODS inventory.
 
 ## Testbench
 
@@ -171,6 +212,20 @@ on mismatch zeros GOODS (and the retired pantry bytes). Deploy = ctrl-reset
 - Discovery + known-fail rolls unchanged (recipe-shop asserts still pass).
 - Crop debit-for-craft: OPWITHDRAW(crop, qty) reduces FCROPS (already
   covered by recipe-shop tb; reuse).
+- **End-to-end good sale (integration):** seed GOODS[p]=N, WOPSELL(p, M),
+  then OPADDC the returned value; assert farm CASH increased by exactly the
+  value AND GOODS[p]==N−M. Covers the cross-bank WOPSELL→OPADDC path incl.
+  the BOOM-doubled value.
+- **Migration preserves progress:** set bank-33 DISC and SKILL nonzero +
+  CVER=2 + GOODS garbage, run the migration path, assert CVER==3, GOODS==0,
+  pantry bytes==0, and **DISC + SKILL + recipe table UNCHANGED**. Plus a
+  cold-start case asserting a full fresh seed (DISC=0, SKILL=0).
+- **Stale-op safety:** assert the WOPCOLL op slot now performs WOPSELL
+  semantics (no old collect-and-auto-sell behavior survives); no caller
+  issues the old op. Keep the blob byte-currency check (`grep -c DFB
+  WORKTASKB.S` == `wc -c WORKTASK.bin`, and WORKTASK.bin size reflects the
+  source change — per the stale-embed lesson; the "blob ≈ flat" estimate is
+  unverified until measured).
 - wk_init seeds GOODS=0, CVER=3, pantry bytes 0.
 
 ## Out of scope
@@ -180,9 +235,17 @@ on mismatch zeros GOODS (and the retired pantry bytes). Deploy = ctrl-reset
   not now.
 - World events (increment 4) — this is the pre-events cleanup.
 
-## Open items for the plan
+## Resolved (were open items)
 
-- Exact INVENTORY screen row layout (24 text rows: seeds 4 + crops 4 +
-  goods 12 = 20 rows + headers; may need a compact 2-column goods layout or
-  scrolling — resolve in the plan against the row budget).
-- Cursor navigation keys (up/down vs paging) given 16 selectable entries.
+- **Row budget / N-scalability:** solved by paged + scrolling viewport (one
+  category page at a time, cursor scrolls a VROWS window). Independent of
+  item count — no rework when recipes/crops grow with multi-plot.
+- **Cursor navigation:** up/down moves the cursor and scrolls the viewport at
+  its edges; TAB/P cycles category pages. Single-column linear list per page.
+
+## Plan-time detail (not blocking)
+
+- Pick `VROWS` (≈16) and the exact header/cash/legend row assignments
+  against the 24-row screen; confirm the `^`/`v` more-rows hints fit.
+- WORKTASK blob size MUST be measured post-build (build + `wc -c` vs
+  `grep -c DFB`), not assumed flat.
