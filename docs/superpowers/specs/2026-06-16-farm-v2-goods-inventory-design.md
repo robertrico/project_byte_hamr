@@ -97,7 +97,16 @@ GOODS[product] by qty; compute value = qty × RECIPE[product].VALUE, doubled
 if MODE bit0 (BOOM) set, clamped to $FFFF (16-bit result in RES/RES1);
 return ROK with the value. The //e then credits farm cash via OPADDC.
 (Value is read from the recipe table's VALUE byte; goods stored at face,
-priced at sell time — BOOM applies here, not at craft.) **Known silent cap:**
+priced at sell time — BOOM applies here, not at craft.)
+
+**RECIPE.VALUE is pre-existing — migration-safe.** The recipe table entry
+is `I0,I1,I2,I3,TIME,VALUE,RARITY,pad` (VALUE at offset +5), shipped and
+correct in the recipe-shop increment: it already drove `RPRICE = 2×value`
+and the old collect-sale (which read +5). WOPSELL reads the same offset.
+The table layout/contents do NOT change this increment, so the selective
+migration's "preserve recipe table" is correct — migrated players price
+goods from the same correct VALUE bytes as cold-start players. No table
+rewrite needed. **Known silent cap:**
 the 16-bit value clamps at $FFFF; a very large qty × value × BOOM can hit the
 cap and lose the overflow with no warning. Acceptable (requires hundreds of a
 high-value good); not worth a guard now.
@@ -155,7 +164,13 @@ a fixed count that fits on one page. It is **paged + scrolling**:
   price (CROPS: market price; GOODS: value). SEEDS rows show count only.
 - **SEEDS page is read-only** (no cursor-select, no sell) — included so
   "what do I have" is complete, but it costs only one page, not competing
-  rows. CROPS and GOODS pages are sellable.
+  rows. CROPS and GOODS pages are sellable. `S` on the SEEDS page is inert
+  (no-op). (Today's 4 seed types fit within VROWS without scrolling; if seed
+  types ever exceed VROWS with multi-plot, add a read-only scroll path —
+  out of scope now.)
+- **Page-switch resets to top:** cycling pages (TAB/P) sets the cursor to
+  row 0 and the window offset to 0 for the new page (no per-page cursor
+  memory — simplest, predictable).
 - Header line + a cash line (HUDCASH) + a legend line frame the viewport, so
   the budget is: 1 header + VROWS viewport + 1 cash + 1 legend ≈ 19-20 of 24
   rows, independent of N.
