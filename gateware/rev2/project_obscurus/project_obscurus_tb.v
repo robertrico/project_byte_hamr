@@ -425,9 +425,10 @@ module project_obscurus_tb;
         sdram_write(10'd33, 16'h0002, 8'h00);          // SEQCTR
         sdram_write(10'd33, 16'h0003, 8'h00);          // HEAD
         sdram_write(10'd33, 16'h0004, 8'h00);          // WHBEAT
-        sdram_write(10'd33, 16'h0005, 8'h02);          // CVER (v2 recipe-shop re-seed)
+        sdram_write(10'd33, 16'h0005, 8'h03);          // CVER v3
         sdram_write(10'd33, 16'h0200, 8'h00);          // FLAG
-        for (i=0; i<4;  i=i+1) sdram_write(10'd33, 16'h0210+i, 8'h00); // pantry
+        for (i=0; i<4;  i=i+1) sdram_write(10'd33, 16'h0210+i, 8'h00); // retired pantry
+        for (i=0; i<12; i=i+1) sdram_write(10'd33, 16'h0228+i, 8'h00); // GOODS
         sdram_write(10'd33, 16'h0214, 8'h00);          // SKILL
         sdram_write(10'd33, 16'h0215, 8'h00);          // DISC lo
         sdram_write(10'd33, 16'h0216, 8'h00);          // DISC hi
@@ -1827,6 +1828,67 @@ module project_obscurus_tb;
         // restore rig: wk_reset asserts SKILL $FF survives reset
         sdram_write(10'd33, 16'h0214, 8'hFF);
         end
+
+        // ===== craft auto-stores a good + frees station =====
+        begin : wk_autostore
+        reg [7:0] r, r1; reg ok; integer w; reg [7:0] st, g;
+        // own BREAD (idx0, combo 0,0) at high skill so the known-roll cooks
+        sdram_write(10'd33, 16'h0215, 8'h01);   // DISC bit0 (BREAD owned)
+        sdram_write(10'd33, 16'h0214, 8'hFF);   // skill FF -> low fail
+        sdram_write(10'd33, 16'h0228, 8'h00);   // GOODS[0]=0
+        wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // craft BREAD
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL autostore craft r=%h", r); end
+        // wait the station to finish (FSIM tiny divider)
+        st = 8'h01; w = 0;
+        while (st !== 8'h00 && w < 400) begin
+            repeat (4000) @(posedge clk100);
+            sdram_read(10'd33, 16'h0220, st); w = w + 1;   // station0 STATE
+        end
+        if (st!==8'h00) begin errors=errors+1; $display("FAIL station not idle after cook st=%h", st); end
+        sdram_read(10'd33, 16'h0228, g);                   // GOODS[0]
+        if (g!==8'h01) begin errors=errors+1; $display("FAIL GOODS[0]=%h want 01", g); end
+        else $display("PASS craft auto-stores good + frees station");
+        end
+
+        // ===== WOPSELL: sell goods at value, e2e to farm cash =====
+        begin : wk_sell
+        reg [7:0] r, r1; reg ok; reg [7:0] c0l, c0h;
+        sdram_write(10'd33, 16'h0228, 8'd5);    // GOODS[0]=5 (BREAD value 28)
+        sdram_write(10'd33, 16'h0217, 8'h00);   // MODE: no BOOM
+        // sell 2 BREAD -> value 56, GOODS[0]=3
+        wk_cmd(8'h03, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // WOPSELL(prod0, qty2)
+        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wopsell r=%h", r); end
+        if (r!==8'd56) begin errors=errors+1; $display("FAIL sell value=%d want 56", r); end  // WRES=value lo ($0206); WRES1=$0207 hi
+        sdram_read(10'd33, 16'h0228, r);
+        if (r!==8'd3) begin errors=errors+1; $display("FAIL GOODS[0]=%d want 3", r); end
+        // oversell -> RERRCROP, goods unchanged
+        wk_cmd(8'h03, 8'd0, 8'd9, 8'h00, 8'h00, r, r1, ok);
+        if (r!==8'hE5) begin errors=errors+1; $display("FAIL oversell r=%h want E5", r); end
+        sdram_read(10'd33, 16'h0228, r);
+        if (r!==8'd3) begin errors=errors+1; $display("FAIL oversell mutated goods=%d", r); end
+        // BOOM doubles: MODE bit0, sell 1 -> value 56
+        sdram_write(10'd33, 16'h0217, 8'h01);
+        wk_cmd(8'h03, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);
+        if (r!==8'd56) begin errors=errors+1; $display("FAIL boom sell=%d want 56", r); end  // value lo (WRES)
+        // e2e cash credit: poke farm cash, OPADDC the value, assert
+        sdram_read(10'd32, 16'h0220, c0l); sdram_read(10'd32, 16'h0221, c0h);
+        farm_cmd(8'h06, 8'd56, 8'd0, 8'h00, r, ok);   // OPADDC 56
+        sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
+        if ({r1,r} !== {c0h,c0l} + 16'd56) begin errors=errors+1; $display("FAIL e2e cash"); end
+        else $display("PASS WOPSELL value + oversell + BOOM + e2e cash");
+        end
+
+        // ===== stale-op: WOPDEP removed -> RERRBAD, no mutation =====
+        begin : wk_staleop
+        reg [7:0] r, r1; reg ok;
+        sdram_write(10'd33, 16'h0210, 8'h00);
+        wk_cmd(8'h01, 8'd0, 8'd5, 8'h00, 8'h00, r, r1, ok);  // old WOPDEP
+        if (r!==8'hE6) begin errors=errors+1; $display("FAIL stale WOPDEP r=%h want E6", r); end
+        sdram_read(10'd33, 16'h0210, r);
+        if (r!==8'h00) begin errors=errors+1; $display("FAIL stale WOPDEP mutated %h", r); end
+        else $display("PASS WOPDEP removed (RERRBAD, no-op)");
+        end
+
         end
 
         // ===== WORKSHOP+FARM dual reset recovery =====
