@@ -84,10 +84,13 @@
         reg [7:0] r, r1; reg ok; reg [7:0] c0l, c0h;
         sdram_write(10'd33, 16'h0228, 8'd5);    // GOODS[0]=5 (BREAD value 28)
         sdram_write(10'd33, 16'h0217, 8'h00);   // MODE: no BOOM
-        // sell 2 BREAD -> value 56, GOODS[0]=3
+        // WOPSELL returns ROK in r (WRES) + PER-UNIT value in r1 (WRES1);
+        // WMFIN writes the result code to WRES, so value lives in WRES1
+        // (one byte, <=254). The //e multiplies per-unit * qty (16-bit).
+        // sell 2 BREAD -> goods 5->3, per-unit r1==28
         wk_cmd(8'h03, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // WOPSELL(prod0, qty2)
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wopsell r=%h", r); end
-        if (r!==8'd56) begin errors=errors+1; $display("FAIL sell value=%d want 56", r); end  // WRES=value lo ($0206); WRES1=$0207 hi
+        if (r1!==8'd28) begin errors=errors+1; $display("FAIL per-unit=%d want 28", r1); end
         sdram_read(10'd33, 16'h0228, r);
         if (r!==8'd3) begin errors=errors+1; $display("FAIL GOODS[0]=%d want 3", r); end
         // oversell -> RERRCROP, goods unchanged
@@ -95,16 +98,16 @@
         if (r!==8'hE5) begin errors=errors+1; $display("FAIL oversell r=%h want E5", r); end
         sdram_read(10'd33, 16'h0228, r);
         if (r!==8'd3) begin errors=errors+1; $display("FAIL oversell mutated goods=%d", r); end
-        // BOOM doubles: MODE bit0, sell 1 -> value 56
+        // BOOM doubles per-unit: MODE bit0, sell 1 -> r1==56
         sdram_write(10'd33, 16'h0217, 8'h01);
         wk_cmd(8'h03, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);
-        if (r!==8'd56) begin errors=errors+1; $display("FAIL boom sell=%d want 56", r); end  // value lo (WRES)
-        // e2e cash credit: poke farm cash, OPADDC the value, assert
+        if (r1!==8'd56) begin errors=errors+1; $display("FAIL boom per-unit=%d want 56", r1); end
+        // e2e cash: //e computes total = qty(2)*per-unit(28)=56, OPADDC it
         sdram_read(10'd32, 16'h0220, c0l); sdram_read(10'd32, 16'h0221, c0h);
         farm_cmd(8'h06, 8'd56, 8'd0, 8'h00, r, ok);   // OPADDC 56
         sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
         if ({r1,r} !== {c0h,c0l} + 16'd56) begin errors=errors+1; $display("FAIL e2e cash"); end
-        else $display("PASS WOPSELL value + oversell + BOOM + e2e cash");
+        else $display("PASS WOPSELL per-unit + oversell + BOOM + e2e cash");
         end
 ```
 
@@ -191,8 +194,12 @@ WTKGFULL
 - [ ] **Step 3: WCOLL → WSELL.** Replace the entire WCOLL handler with a sell handler (TI0=product, TI1=qty):
 ```
 * --- SELL TI0=product TI1=qty ---
-* goods>=qty -> dec, value=qty*VALUE (BOOM x2
-* clamp $FFFF) in RES/RES1. //e credits cash.
+* goods>=qty -> dec by qty, return PER-UNIT
+* value (BOOM x2) in WRES1. //e does qty*unit
+* + credits cash. WMFIN writes the result code
+* to WRES, so the value MUST go in WRES1 (one
+* byte, <=254); the mailbox has no room for a
+* 16-bit total, hence per-unit + //e multiply.
 WSELL
  LDA TI0
  CMP #NRECIP
@@ -215,13 +222,14 @@ WSELL
  LDA #RERRCROP
  JMP WMFIN
 WSLOK
+* goods -= qty
  SEC
  SBC TI1
  TAX
  LDA RADL
  LDY RADH
  JSR WRB
-* value = qty * RECIPE[product].VALUE (16-bit)
+* per-unit value = RECIPE[product] + 5
  LDA TI0
  JSR RECADR
  LDA RADL
@@ -232,76 +240,17 @@ WSLOK
  LDY RADH
  JSR RDB
  STA MVAL
- LDA #0
- STA MVAL+1
- LDA TI1
- STA STI
-WSLMUL
- LDA MVAL
- CLC
- ADC MVAL
- STA MVAL
- LDA MVAL+1
- ADC MVAL+1
- STA MVAL+1
- DEC STI
- BNE WSLMUL
-```
-WAIT — that doubles per loop (wrong). Correct multiply value×qty by repeated ADD of VALUE qty times:
-```
-WSLOK
- SEC
- SBC TI1
- TAX
- LDA RADL
- LDY RADH
- JSR WRB
-* VALUE -> PRC
- LDA TI0
- JSR RECADR
- LDA RADL
- CLC
- ADC #5
- STA RADL
- LDA RADL
- LDY RADH
- JSR RDB
- STA PRC
-* MVAL(16) = 0; add PRC qty times
- LDA #0
- STA MVAL
- STA MVAL+1
- LDA TI1
- STA STI
-WSLMUL
- LDA MVAL
- CLC
- ADC PRC
- STA MVAL
- LDA MVAL+1
- ADC #0
- STA MVAL+1
- DEC STI
- BNE WSLMUL
-* BOOM? MVAL *= 2 clamp $FFFF
+* BOOM? per-unit *2 (max 127*2=254, no clamp
+* needed - fits a byte)
  LDA #<WMODE
  LDY #>WMODE
  JSR RDB
  AND #1
  BEQ WSLNB
  ASL MVAL
- ROL MVAL+1
- BCC WSLNB
- LDA #$FF
- STA MVAL
- STA MVAL+1
 WSLNB
-* RES=MVAL lo, RES1=MVAL hi
+* WRES1 = per-unit value; WMFIN sets WRES=ROK
  LDX MVAL
- LDA #<WRES
- LDY #>WRES
- JSR WRB
- LDX MVAL+1
  LDA #<WRES1
  LDY #>WRES1
  JSR WRB
@@ -311,7 +260,17 @@ WSLBAD
  LDA #RERRBAD
  JMP WMFIN
 ```
-VALUE CONTRACT (settled — Task 1 tb already matches this): WOPSELL returns the 16-bit total as **WRES = value lo ($0206), WRES1 = value hi ($0207)**. The Task 1 asserts read `r` (=WRES, lo) and expect 56 — correct, no later reconcile needed. The //e goods-sell (Task 6) reads WRES lo + WRES1 hi and passes both to OPADDC. Scratch: this needs `MVAL` as 2 bytes (`MVAL`/`MVAL+1`), plus `PRC` and `STI`. Verify these exist in the WORKTASK $0D-page scratch equates; if `MVAL+1`/`PRC` are absent, add scratch bytes (room in $0D). Confirm RDB/WRB don't clobber `STI`/`PRC`/`MVAL` (they touch A/X/Y only — memory scratch survives). Max real value = 127×255×2 = 64770 < $FFFF, so the BOOM clamp (ASL/ROL + $FFFF) can never actually fire — keep it as a cheap guard but don't expect it to trigger (the spec's "silent cap" concern is moot).
+VALUE CONTRACT (settled): WMFIN writes the result code to WRES ($0206), so
+the value CANNOT live there. WOPSELL returns the **PER-UNIT** value (already
+BOOM-doubled, ≤254) in **WRES1 ($0207)** — which WMFIN leaves untouched —
+with WRES=ROK. The //e (Task 6) reads WRES1 and computes `total = qty ×
+WRES1` (16-bit) then OPADDC. This is exactly the old WKCOLLECT read pattern
+(value in WRES1) plus a //e-side qty multiply, and it fits the 8-byte
+mailbox (a 16-bit total would not). Task 1 tb asserts `r1` (=WRES1) == 28
+(BREAD per-unit) / 56 (BOOM). Scratch: needs `MVAL` (one byte is enough now)
+— verify it exists in WORKTASK $0D scratch; RDB/WRB touch only A/X/Y so MVAL
+(memory) survives. No 16-bit MVAL, no PRC, no STI needed (the multiply moved
+to the //e). BOOM ×2 of a ≤127 value ≤254 — fits a byte, no clamp.
 
 - [ ] **Step 4: dispatch — WOPSELL replaces WOPCOLL, remove WOPDEP.** In WMGO: keep `CMP #WOPCOLL / BEQ WJCOLL` but rename the trampoline target; remove the `CMP #WOPDEP / BEQ WJDEP` line and the `WJDEP / JMP WCDEP` trampoline. Point WJCOLL→WSELL:
 ```
@@ -713,7 +672,10 @@ INVKNONE
  JMP MLOOP
 ```
 - `INVUP`: if INVCUR>0 dec INVCUR; else if INVOFF>0 dec INVOFF. `INVDOWN`: abs=INVOFF+INVCUR; if abs+1<count: if INVCUR<VROWS-1 inc INVCUR else inc INVOFF. (Standard cursor-scroll clamp against INVCNT.)
-- `INVSELLIT`: abs index = INVOFF+INVCUR. Set QPCROP/selected = abs. `S` → QTYPROMPT path: stage CMDOP per page (CROPS → OPSELL, GOODS → WOPSELL via WSENDCMD). Reuse QTYPROMPT for the qty entry; on confirm, page 1 → `OPSELL(abs, qty)` (SENDCMD, farm credits cash); page 2 → `WOPSELL(abs, qty)` (WSENDCMD) → take WRES/WRES1 (16-bit value) → `OPADDC(lo,hi)` (SENDCMD). Then message `SOLD <name> +nnn`, JSR RDMKT + WSYNC + INVDRAW.
+- `INVSELLIT`: abs index = INVOFF+INVCUR. `S` → qty entry (inventory-local modal loop, below) → branch by page:
+  - page 1 (CROPS) → `OPSELL(abs, qty)` (SENDCMD); FARMTASK debits the crop + credits cash atomically in bank 32 (market price). No //e multiply.
+  - page 2 (GOODS) → `WOPSELL(abs, qty)` (WSENDCMD) → WRES1V holds the **per-unit** value → compute `total16 = qty × WRES1V` (16-bit: loop add WRES1V qty times into a 2-byte accumulator, or shift-add) → `OPADDC(total lo, total hi)` (SENDCMD). The //e owns the qty multiply.
+  - Then message `SOLD <name> +<total>`, JSR RDMKT + WSYNC + INVDRAW.
   - QTYPROMPT currently JMPs to DOCMD (farm mailbox). For GOODS sell the op goes to the WORKSHOP mailbox (WSENDCMD), so the goods path can't reuse QTYPROMPT's DOCMD tail directly. **Implement a small inventory-local qty entry** (mirror QTYPROMPT's modal digit loop, ~20 lines) that returns the qty in A/var, then branch to the correct op by page. Don't force QTYPROMPT's farm-mailbox tail onto the goods path.
 
 - [ ] **Step 5: MLOOP dispatch.** In MLOOP screen dispatch add SCREEN==3 → INVKEY:
@@ -788,7 +750,7 @@ git commit -m "docs(farm): handoff - goods inventory shipped"
 ## Self-review notes
 
 - Spec coverage: GOODS array + auto-store ✓ (T2 S2), station auto-idle ✓, WEVDONE kept ✓, WOPSELL @value+BOOM ✓ (T2 S3), pantry/deposit/WCONSUM removed ✓ (T2 S4-5), craft-from-crops debit-first ✓ (T5 S1), no-refund-on-fail ✓ (WCONSUM removal means crops debited by //e stay spent), INVENTORY paged/scrolling/N-scalable ✓ (T6), 3 sections w/ seeds read-only ✓, sell routing crop=price/good=value ✓ (T6 S4), PREVSCR ✓ (T6 S2), CVER=3 selective migration preserve DISC/SKILL/recipes ✓ (T4 S4), cold vs migrate split ✓, RECIPE.VALUE pre-existing ✓ (RVALUE table mirrors RECTAB+5), tb e2e sale + migration-note + stale-op ✓ (T1), measured blob size ✓ (T7 S1).
-- Riskiest: T2 S3 WOPSELL 16-bit value vs tb byte assert (reconcile: //e reads WRES lo + WRES1 hi; tb asserts the low byte) — flagged inline. T6 S4 goods-sell can't reuse QTYPROMPT's farm-mailbox tail — inventory-local qty entry required (flagged). T5 S1 need/debit polarity (flagged). Branch ranges across T6 (invert+JMP).
+- Riskiest: T2 WSELL value return — WMFIN clobbers WRES with the result code and the 8-byte mailbox can't hold a 16-bit total, so WOPSELL returns the PER-UNIT value (BOOM-doubled, ≤254) in WRES1 and the //e multiplies by qty (settled in the plan; tb asserts r1=per-unit). T6 goods-sell needs an inventory-local qty entry (can't reuse QTYPROMPT's farm-mailbox DOCMD tail) AND the qty×per-unit 16-bit multiply before OPADDC. T5 station-precheck-before-debit (the debit-first crop-loss fix) + need/crop compare polarity. Branch ranges across T6 (invert+JMP).
 - Migration is //e-side (FARM.S), not sim-reachable; tb covers blob ops, migration verified at bench (noted T1 S4).
 - Type consistency: WGOODS/WBGOODS/WSELL/WOPSELL/MIGRATE33/INVENTER/INVEXIT/INVDRAW/INVKEY/INVCNT/INVROW/INVUP/INVDOWN/INVSELLIT/INVPAGE/INVCUR/INVOFF/PREVSCR/NEEDW-P/RVALUE used consistently.
 - Plan-time: pick exact columns in INVROW/INVDRAW against 40-col rows; confirm VROWS=16 leaves room (header 0-1, viewport 2-17, hint 22, cash 20, legend 23).
