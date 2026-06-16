@@ -17,10 +17,6 @@ TI3 = $0D17
 HBV = $0D18
 LFSRL = $0D19
 LFSRH = $0D1A
-NEED0 = $0D1B
-NEED1 = $0D1C
-NEED2 = $0D1D
-NEED3 = $0D1E
 RIDX = $0D1F
 RADL = $0D20
 RADH = $0D21
@@ -203,7 +199,7 @@ WMGO
  CMP #WOPCRAFT
  BEQ WJCRAFT
  CMP #WOPCOLL
- BEQ WJCOLL
+ BEQ WJSELL
  CMP #WOPMODE
  BEQ WJMODE
  CMP #WOPLEARN
@@ -212,7 +208,7 @@ WMGO
  JMP WMFIN
 WJCRAFT
  JMP WCRAFT
-WJCOLL
+WJSELL
  JMP WSELL
 WJMODE
  JMP WCMODE
@@ -334,6 +330,9 @@ WSLOK
  JSR RDB
  AND #1
  BEQ WSLNB
+* BOOM? per-unit *2 (max 127*2=254, no clamp
+* needed - fits a byte). recipe values capped
+* <=127 by recipe-shop layer (else ASL truncates)
  ASL MVAL
 WSLNB
 * WRES1 = per-unit value; WMFIN sets WRES=ROK

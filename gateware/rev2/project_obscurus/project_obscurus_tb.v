@@ -1645,7 +1645,7 @@ module project_obscurus_tb;
             sdram_read(10'd33, 16'h0220, st); w = w + 1;
         end
         end
-        // allow coproc to complete PUTEV after STATE=2 write (timing gap)
+        // allow coproc to complete PUTEV after IDLE (STATE=0) write (timing gap)
         repeat (2000) @(posedge clk100);
         // drain wk ring: expect WEVDONE type 5, p0=station0, p1=recipe0
         begin : wkring
