@@ -1858,7 +1858,7 @@ module project_obscurus_tb;
         // sell 2 BREAD -> value 56, GOODS[0]=3
         wk_cmd(8'h03, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // WOPSELL(prod0, qty2)
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wopsell r=%h", r); end
-        if (r!==8'd56) begin errors=errors+1; $display("FAIL sell value=%d want 56", r); end  // WRES=value lo ($0206); WRES1=$0207 hi
+        if (r1!==8'd28) begin errors=errors+1; $display("FAIL per-unit=%d want 28", r1); end
         sdram_read(10'd33, 16'h0228, r);
         if (r!==8'd3) begin errors=errors+1; $display("FAIL GOODS[0]=%d want 3", r); end
         // oversell -> RERRCROP, goods unchanged
@@ -1869,13 +1869,13 @@ module project_obscurus_tb;
         // BOOM doubles: MODE bit0, sell 1 -> value 56
         sdram_write(10'd33, 16'h0217, 8'h01);
         wk_cmd(8'h03, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);
-        if (r!==8'd56) begin errors=errors+1; $display("FAIL boom sell=%d want 56", r); end  // value lo (WRES)
+        if (r1!==8'd56) begin errors=errors+1; $display("FAIL boom per-unit=%d want 56", r1); end
         // e2e cash credit: poke farm cash, OPADDC the value, assert
         sdram_read(10'd32, 16'h0220, c0l); sdram_read(10'd32, 16'h0221, c0h);
         farm_cmd(8'h06, 8'd56, 8'd0, 8'h00, r, ok);   // OPADDC 56
         sdram_read(10'd32, 16'h0220, r); sdram_read(10'd32, 16'h0221, r1);
         if ({r1,r} !== {c0h,c0l} + 16'd56) begin errors=errors+1; $display("FAIL e2e cash"); end
-        else $display("PASS WOPSELL value + oversell + BOOM + e2e cash");
+        else $display("PASS WOPSELL per-unit + oversell + BOOM + e2e cash");
         end
 
         // ===== stale-op: WOPDEP removed -> RERRBAD, no mutation =====
