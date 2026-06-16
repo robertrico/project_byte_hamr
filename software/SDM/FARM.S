@@ -3479,6 +3479,10 @@ WKCOLL_OK
  JSR PRDEC3
  JSR WSYNC
  JSR RDMKT
+* repaint row-20 cash (was stale till screen
+* switch); row 21 SOLD msg untouched
+ JSR CLRROW20
+ JSR HUDCASH
  JSR WKDRAW_STA
  JSR WKDRAW_REC
  RTS
