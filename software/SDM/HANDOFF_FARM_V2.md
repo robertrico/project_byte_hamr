@@ -65,6 +65,27 @@ hardware:
   kills hidden-SELCROP bug), farm-screen workshop widget (W:.. station
   glyphs + done BELL). Deploy: ctrl-reset + BRUN, farm world (bank 32)
   survives, workshop (bank 33) re-seeds. Next: increment 4 = world events.
+- **v2 goods-inventory SHIPPED (branch farm-v2)**: PANTRY/DEPOSIT DELETED -
+  craft pulls crops straight from the farm (//e prechecks a free STATION
+  via STREC then OPWITHDRAW-debits crops, then OPCRAFT cooks w/o consuming;
+  station-precheck-before-debit avoids RERRFULL crop-loss). Finished crafts
+  AUTO-STORE to GOODS[12] (bank 33 $0228), station auto-idles (no STATE 2,
+  no collect), WEVDONE still fires. WOPCOLL slot ($03) repurposed to SELL:
+  WOPSELL returns PER-UNIT value in WRES1 (WMFIN owns WRES; mailbox too
+  narrow for a 16-bit total), //e multiplies by qty + OPADDC. New paged,
+  SCROLLING INVENTORY screen (key I, PREVSCR return-to-origin, VROWS=16):
+  SEEDS(read-only) / CROPS(sell @ market price OPSELL) / GOODS(sell @ value
+  WOPSELL); TAB pages, up/dn scroll - N-scalable for future multi-plot.
+  CVER=3 SELECTIVE migration (MIGRATE33): preserves DISC/SKILL/recipes,
+  zeros only GOODS + retired pantry. RVALUE table in FARM.S is goods-price
+  DISPLAY only (MUST track RECTAB+5 = the cash authority). Deploy:
+  ctrl-reset + BRUN. **//e FARM.bin now ~12.56 KB of ~13.8 KB ceiling
+  (~1.3 KB headroom) - inc-4 //e additions risk overflow; consider an
+  EXEC/screen split before large new //e features.** Minor deferred:
+  INVDRAW calls INVCLRBOT then CLRROW20 (row 20 cleared twice, harmless);
+  inventory scroll machinery unexercised until a page exceeds 16 items.
+  Tb migrated to no-pantry model (dropped deposit/collect/pantry asserts).
+  Next: increment 4 = world events.
 - **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
   reset, cflash boot-restore owns coproc BRAM port B until restore_done —
   host loads during it are silently dropped, and a valid flash snapshot
