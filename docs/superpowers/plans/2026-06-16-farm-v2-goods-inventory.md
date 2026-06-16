@@ -25,7 +25,7 @@
 - WCRAFT (~line 359): free-station check (RERRFULL); WNEED ×4 → NEED0-3; pantry-cover check WCPCK (RERRCROP); WCSCAN table match; WCHIT (discovery/known roll); WCONSUM on every consume path. **Remove WNEED/NEED/WCPCK/WCONSUM; keep free-station + scan + rolls + cook.**
 - WCDEP (~line 216) = deposit handler; WJDEP dispatch (~line 189). **Remove both.**
 - FARMTASK: OPWITHDRAW=5, OPADDC=6 exist. No FARMTASK change this increment.
-- //e FARM.S: WKCRAFT (~3188) sorts MIXBUF + sends OPCRAFT; WKKEY (~3140) has D (WKK3→WKDEPOS) and C (WKK4→WKCOLLECT); MLOOP dispatch (~1512) routes SCREEN 0→farm, 2→WKKEY, else MKKEY; WSYNC (~2325) reads bank-33 mirrors; CVERNUM (FARMEQU)=3 ALREADY?? — verify, recipe-shop set it to 2; this increment sets 3. WSENDCMD stages CMDOP2/CMDA02-32 → A=result + WRES1V. CROP4/SEED4/PRICE4 mirrors exist (RDMKT). MKDRAW/WKDRAW/WKDRAW_STA are the rendering patterns to mirror.
+- //e FARM.S: WKCRAFT (~3188) sorts MIXBUF + sends OPCRAFT; WKKEY (~3140) has D (WKK3→WKDEPOS) and C (WKK4→WKCOLLECT); MLOOP dispatch (~1512) routes SCREEN 0→farm, 2→WKKEY, else MKKEY; WSYNC (~2325) reads bank-33 mirrors; CVERNUM (FARMEQU) = 2 today (recipe-shop) → this increment sets 3 (verified). WSENDCMD stages CMDOP2/CMDA02-32 → A=result + WRES1V. CROP4/SEED4/PRICE4 mirrors exist (RDMKT). MKDRAW/WKDRAW/WKDRAW_STA are the rendering patterns to mirror.
 
 ---
 
@@ -87,7 +87,7 @@
         // sell 2 BREAD -> value 56, GOODS[0]=3
         wk_cmd(8'h03, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // WOPSELL(prod0, qty2)
         if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL wopsell r=%h", r); end
-        if (r1!==8'd56) begin errors=errors+1; $display("FAIL sell value=%d want 56", r1); end
+        if (r!==8'd56) begin errors=errors+1; $display("FAIL sell value=%d want 56", r); end  // WRES=value lo ($0206); WRES1=$0207 hi
         sdram_read(10'd33, 16'h0228, r);
         if (r!==8'd3) begin errors=errors+1; $display("FAIL GOODS[0]=%d want 3", r); end
         // oversell -> RERRCROP, goods unchanged
@@ -98,7 +98,7 @@
         // BOOM doubles: MODE bit0, sell 1 -> value 56
         sdram_write(10'd33, 16'h0217, 8'h01);
         wk_cmd(8'h03, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);
-        if (r1!==8'd56) begin errors=errors+1; $display("FAIL boom sell=%d want 56", r1); end
+        if (r!==8'd56) begin errors=errors+1; $display("FAIL boom sell=%d want 56", r); end  // value lo (WRES)
         // e2e cash credit: poke farm cash, OPADDC the value, assert
         sdram_read(10'd32, 16'h0220, c0l); sdram_read(10'd32, 16'h0221, c0h);
         farm_cmd(8'h06, 8'd56, 8'd0, 8'h00, r, ok);   // OPADDC 56
@@ -311,7 +311,7 @@ WSLBAD
  LDA #RERRBAD
  JMP WMFIN
 ```
-NOTE: this needs scratch `MVAL+1`, `PRC`, `STI` — `PRC` and `STI` exist in WORKTASK scratch? Check the WORKTASK scratch equates; if PRC/MVAL+1 absent, add scratch bytes (there's room in the $0D page). The implementer must verify/add scratch vars and confirm MVAL is 2 bytes. The tb expects RES1 (the value) == 56 for 2×BREAD(28) — that's the LOW byte; values ≤ a few hundred fit, so for the tb's small values RES1 carries the whole value when <256. **Re-examine:** the tb reads `r1` = WRES1 (byte at $0207) and expects 56. But my code puts value LO in WRES ($0206) and HI in WRES1 ($0207). For value 56, lo=56 hi=0 → WRES1=0, not 56. **Conflict with the tb.** Resolve: the old WCOLL returned the value in WRES1 (single byte). Keep that contract for ≤255 values: put the 16-bit value's LOW byte in WRES1 (matching tb + old collect), and document the ≤255 assumption, OR make the //e read both WRES(lo)/WRES1(hi). **Decision: //e reads WRES=lo, WRES1=hi (16-bit), and the tb Step 3 must assert WRES (lo)=56.** Fix the tb in Task 1 Step 3 to read $0206 for the value low byte. Flag this to reconcile: the value is 16-bit (WRES lo / WRES1 hi); update the tb assert to read the low byte. (The implementer reconciles tb+blob so both agree; the 16-bit return is correct for large stacks.)
+VALUE CONTRACT (settled — Task 1 tb already matches this): WOPSELL returns the 16-bit total as **WRES = value lo ($0206), WRES1 = value hi ($0207)**. The Task 1 asserts read `r` (=WRES, lo) and expect 56 — correct, no later reconcile needed. The //e goods-sell (Task 6) reads WRES lo + WRES1 hi and passes both to OPADDC. Scratch: this needs `MVAL` as 2 bytes (`MVAL`/`MVAL+1`), plus `PRC` and `STI`. Verify these exist in the WORKTASK $0D-page scratch equates; if `MVAL+1`/`PRC` are absent, add scratch bytes (room in $0D). Confirm RDB/WRB don't clobber `STI`/`PRC`/`MVAL` (they touch A/X/Y only — memory scratch survives). Max real value = 127×255×2 = 64770 < $FFFF, so the BOOM clamp (ASL/ROL + $FFFF) can never actually fire — keep it as a cheap guard but don't expect it to trigger (the spec's "silent cap" concern is moot).
 
 - [ ] **Step 4: dispatch — WOPSELL replaces WOPCOLL, remove WOPDEP.** In WMGO: keep `CMP #WOPCOLL / BEQ WJCOLL` but rename the trampoline target; remove the `CMP #WOPDEP / BEQ WJDEP` line and the `WJDEP / JMP WCDEP` trampoline. Point WJCOLL→WSELL:
 ```
@@ -427,9 +427,34 @@ git commit -m "feat(farm): bank-33 CVER=3 selective migration + GOODS mirror (pr
 
 **Files:** Modify `software/SDM/FARM.S`
 
-- [ ] **Step 1: WKCRAFT debits crops before OPCRAFT.** After the MIXBUF sort+pad (at WKISDN, before staging OPCRAFT), insert a crop-need check + debit. Compute per-crop needs from MIXBUF (counts of crop ids 0-3, ignoring $FF), check CROP4 mirror covers each, OPWITHDRAW each:
+- [ ] **Step 1: WKCRAFT prechecks a free STATION (debit-first fix), then debits crops, then OPCRAFT.** After the MIXBUF sort+pad (at WKISDN, before staging OPCRAFT), FIRST precheck a free station, THEN the crop-need check + debit. **Why station-first: OPWITHDRAW debits crops before OPCRAFT; if WORKTASK then returns RERRFULL (both stations busy) the crops are already gone with nothing cooked — a debit-first violation.** The //e is the ONLY thing that fills stations (WTICK only frees them, autonomously 1→0), so a station the //e sees free in STREC stays free until the //e fills it — a precheck is race-free, no refund needed. STREC is the station mirror (STATE at STREC+0 for station 0, STREC+4 for station 1; 0=idle), filled by WSYNC. Insert:
 ```
 WKISDN
+* refresh STREC first so a just-freed station
+* (WEVDONE not yet drained) isn't seen busy
+ JSR WSYNC_STA
+* precheck a free station (STREC+0, STREC+4)
+* before debiting crops - else RERRFULL after
+* OPWITHDRAW loses the crops (debit-first)
+ LDA STREC+0
+ BEQ WKHAVST
+ LDA STREC+4
+ BEQ WKHAVST
+* both busy -> STATIONS FULL, no debit
+ LDA #0
+ STA MIXN
+ JSR CLRMSG
+ LDA #<SFULL
+ STA MSGPTR
+ LDA #>SFULL
+ STA MSGPTR+1
+ LDA #0
+ STA PRCOL
+ LDY #21
+ JSR PRSTR
+ JSR WKDRAW
+ RTS
+WKHAVST
 * per-crop needs from MIXBUF (0-3; $FF pad)
  LDA #0
  STA NEEDW
@@ -494,7 +519,7 @@ WKNOCROP
  JSR WKDRAW
  RTS
 ```
-New vars: `NEEDW DS 1 / NEEDC DS 1 / NEEDB DS 1 / NEEDP DS 1` (4 contiguous, indexed as NEEDW,X). `SNEEDS` string exists (recipe-shop "NEED CROPS"? verify — if it's "NEED SEEDS" reuse/rename; add `SNEEDC2 ASC "NEED CROPS"` if needed). The existing OPCRAFT staging (LDA #WOPCRAFT ... JSR WSENDCMD) follows unchanged. NOTE: `CMP CROP4,X / BEQ / BCS WKNOCROP` — need == is ok (have exactly enough); BCS on need>crop. Verify the compare polarity (need > have → fail): `LDA need / CMP have` → carry set if need≥have; need==have ok, need>have fail. Use `BEQ ok / BCS fail` after CMP. (The code above does BEQ WKCKNX then BCS WKNOCROP — correct.)
+New vars: `NEEDW DS 1 / NEEDC DS 1 / NEEDB DS 1 / NEEDP DS 1` (4 contiguous, indexed as NEEDW,X). `SNEEDS` string exists (recipe-shop "NEED CROPS"? verify — if it's "NEED SEEDS" reuse/rename; add `SNEEDC2 ASC "NEED CROPS"` if needed). `SFULL` ("STATIONS FULL") exists from recipe-shop — the station precheck (above) reuses it. Use the equate `OPWDRAW` (= $05), not the prose "OPWITHDRAW". The existing OPCRAFT staging (LDA #WOPCRAFT ... JSR WSENDCMD) follows unchanged. NOTE: `CMP CROP4,X / BEQ / BCS WKNOCROP` — need == is ok (have exactly enough); BCS on need>crop. Verify the compare polarity (need > have → fail): `LDA need / CMP have` → carry set if need≥have; need==have ok, need>have fail. Use `BEQ ok / BCS fail` after CMP. (The code above does BEQ WKCKNX then BCS WKNOCROP — correct.)
 
 - [ ] **Step 2: remove D and C from WKKEY.** Delete WKK3 (D→WKDEPOS) and WKK4 (C→WKCOLLECT) branches. WKK2 (RETURN→craft) now falls to WKKNONE for any other key. Delete the WKDEPOS, WKDEPOK, WKCOLLECT, WKCOLL_OK routines entirely (and WKCOLL_TE etc.). Remove the `CMP #OPWDRAW / JMP WKDEPOK` hook in DCOK (deposit no longer routes through DOCMD — WKCRAFT calls SENDCMD directly).
 
@@ -564,9 +589,14 @@ INVX2
 ```
 
 - [ ] **Step 3: INVDRAW (paged + scrolling).** Renders header + the current page's VROWS window. Page item count: SEEDS=4, CROPS=4, GOODS=12 (use a helper INVCNT returning A=count for INVPAGE). Each visible row index = INVOFF + i; render name + count (+ price for crops/goods); mark cursor row `>`; show `^`/`v` if INVOFF>0 / INVOFF+VROWS<count. Full code:
+(MKCLR clears rows 0-19 only; INVDRAW also writes rows 20/22/23 and the sell
+message lands on 21 — so clear rows 20-23 full-width too, or stale glyphs from
+the prior screen remain on the no-hint row 22 and message row 21. Add a small
+`INVCLRBOT` loop clearing rows 20-23 cols 0-39 right after MKCLR.)
 ```
 INVDRAW
  JSR MKCLR             ; blank rows 0-19 (reuse)
+ JSR INVCLRBOT         ; blank rows 20-23 (cash/msg/hint/legend area)
 * row 0: title + page name + cash
  LDA #<SINVT
  STA MSGPTR
@@ -635,7 +665,7 @@ INVDDN
 Helpers the implementer writes (mirror existing render code):
 - `INVCNT`: A = 4 (page 0/1) or 12 (page 2).
 - `INVPGNAME`: prints SPSEED/SPCROP/SPGOOD at row 0 col 12 by INVPAGE.
-- `INVROW` (EVA=abs index, EVB=row): page 0 → crop name (SNAML/SNAMH,EVA) + SEED4[EVA]; page 1 → crop name + CROP4[EVA] + PRICE4[EVA] (PRDEC3 at a price column); page 2 → good name (RNAML/RNAMH,EVA) + WGOODS[EVA] + RECIPE value (the //e has no value table — read from... use a //e RVALUE table = the RPRICEL/2, OR add a small RVALUE DFB 28,36,... mirroring RECTAB+5). **Add `RVALUE DFB 28,36,48,56,76,80,80,92,100,105,110,127`** for the goods price column. Counts via PRDEC3.
+- `INVROW` (EVA=abs index, EVB=row): page 0 → crop name (SNAML/SNAMH,EVA) + SEED4[EVA]; page 1 → crop name + CROP4[EVA] + PRICE4[EVA] (PRDEC3 at a price column); page 2 → good name (RNAML/RNAMH,EVA) + WGOODS[EVA] + RECIPE value (the //e has no value table — read from... use a //e RVALUE table = the RPRICEL/2, OR add a small RVALUE DFB 28,36,... mirroring RECTAB+5). **Add `RVALUE DFB 28,36,48,56,76,80,80,92,100,105,110,127`** for the goods price column — with a comment `* MUST track RECTAB+5 (WORKTASK sells at RECTAB+5; this is display only)`. This is a second copy of the recipe values: WORKTASK computes the actual cash from RECTAB+5, RVALUE only labels the inventory row. If recipe values ever change, BOTH must change together or the displayed price and the cash received diverge silently. Counts via PRDEC3.
 - `INVHINTS`: if INVOFF>0 print `^` at row 1 col 0; if INVOFF+VROWS<count print `v` at row 22 col 0.
 
 - [ ] **Step 4: INVKEY (cursor/scroll/page/sell).**
