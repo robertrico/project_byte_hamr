@@ -1073,6 +1073,9 @@ EVDISP
  BNE EVRMSG
  JSR CURSDRAW
 EVRMSG
+ LDA SCREEN
+ CMP #3
+ BEQ EVDONE
  JSR CLRMSG
  LDA #<SRIPE
  STA MSGPTR
@@ -2559,6 +2562,8 @@ WEVDISP
  LDA SCREEN
  CMP #2
  BEQ WEVSCR
+ CMP #3
+ BEQ WEVDRT
 * not workshop: show CRAFT DONE row 21
  JSR CLRMSG
  LDA #<SCRAFTD
@@ -4312,7 +4317,7 @@ ISQWERR
  STA (LINEP),Y
  RTS
 ISQGOOD
-* goods sell: WOPSELL(abs,qty) -> per-unit
+* goods sell: WOPCOLL(abs,qty) -> per-unit
 * in WRES1V; //e multiplies then OPADDC
  LDA INVSELL
  STA CMDA02
