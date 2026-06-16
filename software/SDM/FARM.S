@@ -574,7 +574,8 @@ SMHELP DFB $02
  ASC "UY "
  DFB $13
  ASC "ELL "
- ASC "1-4 SEED ESC FARM"
+ DFB $12
+ ASC "ECIPE 1-4 ESC"
  DFB 0
 SDEAD ASC "DEAD-C COLDSTART/CTRL-RESET"
  DFB 0
@@ -3547,6 +3548,7 @@ CAFNO
 * === SHOPBUY: buy lowest unowned recipe.
 * debit-first refund on WOPLEARN reject ===
 SHOPBUY
+ JSR RDMKT
  JSR WSYNC
  JSR SHOPLOW
  STA SHOPIDX
