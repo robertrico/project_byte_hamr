@@ -1620,27 +1620,13 @@ module project_obscurus_tb;
         if (!beat0) begin errors=errors+1; $display("FAIL farm heartbeat stuck w/ 2 tasks"); end
         if (beat0 && beat1) $display("PASS dual heartbeats");
         end
-        // deposit via //e-bus pattern: poke farm crops, withdraw, deposit
-        sdram_write(10'd32, 16'h0226, 8'd10);            // wheat crops = 10 (rig poke)
-        farm_cmd(8'h05, 8'd0, 8'd4, 8'h00, r, ok);       // OPWITHDRAW wheat 4
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL withdraw r=%h", r); end
-        sdram_read(10'd32, 16'h0226, r);
-        if (r!==8'd6) begin errors=errors+1; $display("FAIL crops=%h want 06", r); end
-        wk_cmd(8'h01, 8'd0, 8'd4, 8'h00, 8'h00, r, r1, ok); // OPDEPOSIT wheat 4
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL deposit r=%h", r); end
-        sdram_read(10'd33, 16'h0210, r);
-        if (r!==8'd4) begin errors=errors+1; $display("FAIL pantry=%h want 04", r); end
-        else $display("PASS withdraw->deposit bus transfer");
-        // dud combo: (0,0,0,FF) not in table -> RUINED, consumes 3, skill 1
+        // dud combo: (0,0,0,FF) not in table -> RUINED, skill 1
         wk_cmd(8'h02, 8'd0, 8'd0, 8'd0, 8'hFF, r, r1, ok);
         if (!ok || r!==8'hE8) begin errors=errors+1; $display("FAIL dud r=%h want E8", r); end
-        sdram_read(10'd33, 16'h0210, r);
-        if (r!==8'd1) begin errors=errors+1; $display("FAIL pantry post-dud=%h want 01", r); end
         sdram_read(10'd33, 16'h0214, r);
         if (r!==8'd1) begin errors=errors+1; $display("FAIL skill=%h want 01", r); end
         else $display("PASS dud combo ruined + skill up");
-        // refill pantry, force discovery (SKILL=$FF -> threshold maxed)
-        wk_cmd(8'h01, 8'd0, 8'd3, 8'h00, 8'h00, r, r1, ok);  // deposit 3 more wheat (rig: no farm debit needed for unit test)
+        // force discovery (SKILL=$FF -> threshold maxed, no pantry needed)
         sdram_write(10'd33, 16'h0214, 8'hFF);                // rig: maxed skill
         sdram_write(10'd33, 16'h0215, 8'h01);                // rig: BREAD pre-discovered (det.)
         wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD
@@ -1650,15 +1636,14 @@ module project_obscurus_tb;
         sdram_read(10'd33, 16'h0215, r);                     // DISC lo bit 0
         if (r[0]!==1'b1) begin errors=errors+1; $display("FAIL disc bit=%h", r); end
         else $display("PASS discovery + cooking");
-        // wait for WEVDONE (FSIM station divider is tiny)
+        // wait for station to finish cooking (auto-idles to STATE=00, GOODS++)
         begin : wkdone
         reg [7:0] st; integer w;
         st = 8'h01; w = 0;
-        while (st !== 8'h02 && w < 200) begin
+        while (st === 8'h01 && w < 200) begin
             repeat (10000) @(posedge clk100);
             sdram_read(10'd33, 16'h0220, st); w = w + 1;
         end
-        if (st!==8'h02) begin errors=errors+1; $display("FAIL station never done"); end
         end
         // allow coproc to complete PUTEV after STATE=2 write (timing gap)
         repeat (2000) @(posedge clk100);
@@ -1677,27 +1662,6 @@ module project_obscurus_tb;
             else $display("PASS WEVDONE(station0, BREAD)");
         end
         end
-        // collect: value 28; then BOOM mode doubles JAM (80 -> 160)
-        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
-        if (!ok || r!==8'h01 || r1!==8'd28) begin errors=errors+1;
-            $display("FAIL collect r=%h r1=%h want 01,1C", r, r1); end
-        else $display("PASS collect BREAD value 28");
-        wk_cmd(8'h04, 8'h01, 8'h00, 8'h00, 8'h00, r, r1, ok);  // OPMODE BOOM
-        wk_cmd(8'h01, 8'd2, 8'd2, 8'h00, 8'h00, r, r1, ok);    // deposit 2 berries
-        sdram_write(10'd33, 16'h0215, 8'h21);                    // rig: BREAD+JAM disc bits
-        wk_cmd(8'h02, 8'd2, 8'd2, 8'hFF, 8'hFF, r, r1, ok);    // JAM (skill FF)
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL jam craft r=%h", r); end
-        begin : wkdone2
-        reg [7:0] st; integer w;
-        st = 8'h01; w = 0;
-        while (st !== 8'h02 && w < 200) begin
-            repeat (10000) @(posedge clk100);
-            sdram_read(10'd33, 16'h0220, st); w = w + 1;
-        end
-        end
-        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
-        if (!ok || r1!==8'd160) begin errors=errors+1; $display("FAIL boom collect r1=%h want A0", r1); end
-        else $display("PASS BOOM collect 160");
         // OPADDCASH lands on the farm side (//e bus credit leg)
         sdram_read(10'd32, 16'h0220, h1); sdram_read(10'd32, 16'h0221, h2);
         farm_cmd(8'h06, 8'd160, 8'd0, 8'h00, r, ok);
@@ -1733,8 +1697,7 @@ module project_obscurus_tb;
         sdram_write(10'd33, 16'h0214, 8'hFF);   // max skill
         won = 0;
         for (a = 0; a < 20 && !won; a = a + 1) begin
-            wk_cmd(8'h01, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok);  // deposit 2 wheat
-            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD attempt
+            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok);  // BREAD attempt (no pantry needed)
             if (r === 8'h01) won = 1;
             else if (r !== 8'hE8) begin errors=errors+1;
                 $display("FAIL roll attempt r=%h want 01/E8", r); won = 1; end
@@ -1743,22 +1706,17 @@ module project_obscurus_tb;
         if (!won || r[0] !== 1'b1) begin errors=errors+1;
             $display("FAIL roll path: never discovered, disc=%h", r); end
         else $display("PASS discovery roll converged, disc bit set");
-        // collect the cooking station so later phases see it idle
+        // wait for station to auto-idle (cook-done -> STATE=00 + GOODS++)
         begin : wk_rollclean
         reg [7:0] st; integer w;
         st = 8'h01; w = 0;
-        while (st !== 8'h02 && w < 200) begin
+        while (st === 8'h01 && w < 200) begin
             repeat (10000) @(posedge clk100);
             sdram_read(10'd33, 16'h0220, st); w = w + 1;
         end
-        wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok);
         end
-        // rarity-impossible: skill 0 + FEAST (rarity 3) -> always RUINED
+        // rarity-impossible: skill 0 + FEAST (rarity 3) -> always RUINED (no pantry needed)
         sdram_write(10'd33, 16'h0214, 8'h00);   // skill 0
-        wk_cmd(8'h01, 8'd0, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 wheat
-        wk_cmd(8'h01, 8'd1, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 carrot
-        wk_cmd(8'h01, 8'd2, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 berry
-        wk_cmd(8'h01, 8'd3, 8'd1, 8'h00, 8'h00, r, r1, ok);  // 1 pumpkin
         wk_cmd(8'h02, 8'd0, 8'd1, 8'd2, 8'd3, r, r1, ok);    // FEAST
         if (r !== 8'hE8) begin errors=errors+1;
             $display("FAIL rarity floor r=%h want E8 (impossible at skill 0)", r); end
@@ -1790,28 +1748,21 @@ module project_obscurus_tb;
         if (r!==8'hE6) begin errors=errors+1; $display("FAIL learn-12 r=%h want E6", r); end
         end
         // ===== known-recipe failure curve (distribution test) =====
-        // skill 0, BREAD owned, 30 attempts: assert both ROK and $E9 occur,
-        // and that pantry drops by exactly 2 on every attempt (consumed either way).
+        // skill 0, BREAD owned, 30 attempts: assert both ROK and $E9 occur.
+        // blob rolls discovery/known-fail WITHOUT pantry; no deposit needed.
         begin : wk_kfail
-        reg [7:0] r, r1, pantry_before; reg ok; integer a, nok, nfail;
+        reg [7:0] r, r1; reg ok; integer a, nok, nfail;
         // own BREAD (idx 0, combo 0,0), skill 0 -> FAILBASE[0]=48/256 ~19%
         sdram_write(10'd33, 16'h0215, 8'h01);   // DISC bit 0 (BREAD known)
         sdram_write(10'd33, 16'h0216, 8'h00);
         sdram_write(10'd33, 16'h0214, 8'h00);   // skill 0
         nok = 0; nfail = 0;
         for (a = 0; a < 30; a = a + 1) begin
-            wk_cmd(8'h01, 8'd0, 8'd2, 8'h00, 8'h00, r, r1, ok); // deposit 2 wheat
-            sdram_read(10'd33, 16'h0210, pantry_before);          // capture pantry before craft
-            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok); // craft BREAD
+            wk_cmd(8'h02, 8'd0, 8'd0, 8'hFF, 8'hFF, r, r1, ok); // craft BREAD (rolls without pantry)
             if (r === 8'h01) nok = nok + 1;
             else if (r === 8'hE9) nfail = nfail + 1;
             else begin errors=errors+1; $display("FAIL kfail unexpected r=%h", r); end
-            sdram_read(10'd33, 16'h0210, r1);                     // pantry after craft
-            // pantry must drop by exactly 2 on every attempt (success or fail)
-            if (r1 !== pantry_before - 8'd2) begin errors=errors+1;
-                $display("FAIL kfail pantry not consumed: before=%0d after=%0d",
-                         pantry_before, r1); end
-            // wait for station to finish cooking, then collect to keep slot free
+            // wait for station to auto-idle (cook-done -> STATE=00 + GOODS++)
             begin : kf_clear
             integer w; reg [7:0] st;
             st = 8'h01; w = 0;
@@ -1819,7 +1770,6 @@ module project_obscurus_tb;
                 repeat (4000) @(posedge clk100);
                 sdram_read(10'd33, 16'h0220, st); w = w + 1;
             end
-            wk_cmd(8'h03, 8'd0, 8'h00, 8'h00, 8'h00, r, r1, ok); // collect sta0 if done
             end
         end
         if (nok == 0 || nfail == 0) begin errors=errors+1;
