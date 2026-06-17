@@ -59,7 +59,7 @@ T16 DS 2
 NTMP DS 1
 GRLO DS 24
 GRHI DS 24
-SHADOW DS 400
+SHADOW DS 800
 RSTRCT DS 2
 PRCOL DS 1
 CNT DS 2
@@ -67,6 +67,11 @@ EVT DS 1
 EVA DS 1
 EVB DS 1
 PLOTC DS 1
+PLOTCR DS 1
+DCCROP DS 1
+DCSTG DS 1
+RSCROP DS 1
+RSSTAGE DS 1
 DECV DS 5
 DAX DS 1
 DAY DS 1
@@ -214,21 +219,19 @@ CR20LP
 * crop ripe colors: wheat carrot berry pumpkn
 CROPC DFB $0D,$09,$03,$0C
 
-* === PLOTDRAW: X=px Y=py A=plot byte ->
+* === PLOTDRAW: X=px Y=py A=stage PLOTCR=crop ->
 * crop color from stg1; growth fill; checker
 * stg0: blk; 1-5: fill; 6(STRIPE): chk; 7: dead
 PLOTDRAW
  STX PLOTC
  STA NTMP
-* crop color -> T16+1
- LSR
- LSR
- LSR
+* crop color from PLOTCR -> T16+1
+ LDA PLOTCR
  AND #3
  TAX
  LDA CROPC,X
  STA T16+1
-* stage dispatch
+* stage dispatch (A was stage on entry, in NTMP)
  LDA NTMP
  AND #7
  BEQ PDST0
@@ -1054,16 +1057,18 @@ EVDISP
  LDA EVT
  CMP #EVRIPE
  BNE EVD2
-* shadow update always (both screens)
- JSR SHADGET
- AND #$F8
+* set stage (byte1) ripe, preserve flags
+ JSR SHADGET1
+ AND #$F0 ; keep flags(hi nib), clear stage
  ORA #STRIPE
  STA SHADV
- JSR SHADSET
+ JSR SHADSET1
 * skip screen paint while in text mode
  LDA SCREEN
  BNE EVRMSG
-* paint on GR screen
+* paint on GR screen: crop=byte0, stage=SHADV
+ JSR SHADGET
+ STA PLOTCR
  LDA SHADV
  LDX EVA
  LDY EVB
@@ -1140,6 +1145,9 @@ SHADADR
  LDA T16+1
  ADC #0
  STA T16+1
+* itr4.1 2-byte plots: double offset before base
+ ASL T16
+ ROL T16+1
  LDA T16
  CLC
  ADC #<SHADOW
@@ -1163,6 +1171,22 @@ SHADGET
  JSR SHADADR
  LDY #0
  LDA (SHADP),Y
+ RTS
+
+* === SHADGET1: A = SHADOW byte1 (stage) ===
+SHADGET1
+ JSR SHADADR
+ LDY #1
+ LDA (SHADP),Y
+ RTS
+
+* === SHADSET1: SHADOW byte1 (stage) = A ===
+SHADSET1
+ STA SHADV
+ JSR SHADADR
+ LDY #1
+ LDA SHADV
+ STA (SHADP),Y
  RTS
 
 * === RESYNC: stable (SEQCTR,HEAD) pair, full
@@ -1191,7 +1215,7 @@ RSAGN
  JSR HUDDRAW
  RTS
 
-* === RDGRID: stream 400 bytes -> SHADOW ===
+* === RDGRID: stream 800 bytes -> SHADOW ===
 RDGRID
  LDA #GBANK
  STA SDM_BANK
@@ -1207,9 +1231,9 @@ RDGRID
  STA SHADP
  LDA #>SHADOW
  STA SHADP+1
- LDA #<400
+ LDA #<800
  STA CNT
- LDA #>400
+ LDA #>800
  STA CNT+1
  LDY #0
 RGLP
@@ -1450,7 +1474,7 @@ COLDST
  LDA #<FSEEDS
  LDY #>FSEEDS
  JSR FWR
-* zero grid: 400 x WRNEXT
+* zero grid: 800 x WRNEXT (2-byte plots)
  LDA #GBANK
  STA SDM_BANK
  LDA #0
@@ -1463,9 +1487,9 @@ COLDST
  JSR SDM_SETADDR
  LDA #0
  STA SDM_VAL
- LDA #<400
+ LDA #<800
  STA CNT
- LDA #>400
+ LDA #>800
  STA CNT+1
 CZLP
  JSR SDM_WRNEXT
@@ -1900,13 +1924,10 @@ DCOK
  LDA CMDOP
  CMP #OPPLANT
  BNE DCH
-* paint plot byte = SELCROP*8+1
+* paint: crop=SELCROP, stage 1
  LDA SELCROP
- ASL
- ASL
- ASL
- CLC
- ADC #1
+ STA DCCROP
+ LDA #1
  JSR DCPAINT
  JMP DCMKT
 DCH
@@ -1916,17 +1937,15 @@ DCH
 DCHWK
  JMP DCMKT
 DCHARV
-* read crop id from shadow before clear
+* read crop id (byte0) from shadow before clear
  LDA CURX
  STA EVA
  LDA CURY
  STA EVB
  JSR SHADGET
- LSR
- LSR
- LSR
  STA HCROP
  LDA #0
+ STA DCCROP
  JSR DCPAINT
 DCMKT
 * save pre-RDMKT crop count for yield delta
@@ -1986,18 +2005,21 @@ DCOKM
  LDY #21
  JSR PRSTR
  RTS
-* === DCPAINT: A=plot byte -> plot+shadow at
-* cursor, re-apply cursor XOR on top ===
+* === DCPAINT: DCCROP=crop, A=stage -> set both
+* shadow bytes at cursor, repaint, re-XOR cursor ===
 DCPAINT
- PHA
+ STA DCSTG
  LDA CURX
  STA EVA
  LDA CURY
  STA EVB
- PLA
- PHA
+ LDA DCCROP
  JSR SHADSET
- PLA
+ LDA DCSTG
+ JSR SHADSET1
+ LDA DCCROP
+ STA PLOTCR
+ LDA DCSTG
  LDX CURX
  LDY CURY
  JSR PLOTDRAW
@@ -2032,11 +2054,17 @@ DAROW
 DACOL
  LDY #0
  LDA (SHADP),Y
+ STA PLOTCR
+ LDY #1
+ LDA (SHADP),Y
  LDX DAX
  LDY DAY
  JSR PLOTDRAW
- INC SHADP
- BNE DANC
+ LDA SHADP
+ CLC
+ ADC #2
+ STA SHADP
+ BCC DANC
  INC SHADP+1
 DANC
  INC DAX
@@ -2094,17 +2122,35 @@ RSROW2
  LDA #0
  STA DAX
 RSCOL2
+* read both SDRAM bytes (crop, stage)
  JSR SDM_RDNEXT
+ LDA SDM_VAL
+ STA RSCROP
+ JSR SDM_RDNEXT
+ LDA SDM_VAL
+ STA RSSTAGE
+* changed vs shadow pair?
  LDY #0
  LDA (SHADP),Y
- CMP SDM_VAL
+ CMP RSCROP
+ BNE RSCHG
+ LDY #1
+ LDA (SHADP),Y
+ CMP RSSTAGE
  BEQ RSSAME
- LDA SDM_VAL
+RSCHG
+ LDA RSCROP
+ LDY #0
+ STA (SHADP),Y
+ LDA RSSTAGE
+ LDY #1
  STA (SHADP),Y
 * skip GR paint on market (text) screen
  LDA SCREEN
  BNE RSSAME
- LDA SDM_VAL
+ LDA RSCROP
+ STA PLOTCR
+ LDA RSSTAGE
  LDX DAX
  LDY DAY
  JSR PLOTDRAW
@@ -2116,8 +2162,11 @@ RSCOL2
  BNE RSSAME
  JSR CURSDRAW
 RSSAME
- INC SHADP
- BNE RSNC
+ LDA SHADP
+ CLC
+ ADC #2
+ STA SHADP
+ BCC RSNC
  INC SHADP+1
 RSNC
  INC DAX
