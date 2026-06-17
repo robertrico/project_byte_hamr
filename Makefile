@@ -578,16 +578,16 @@ farm: $(FARMTASKB_S) $(WORKTASKB_S)
 WORKTASKSIM_BIN := $(SDM_DIR)/WORKTASKSIM.bin
 WORKTASK_MEM := gateware/rev2/project_obscurus/worktask.mem
 
-# WORKTASK blob bound: ORG $2000, extended task space $2000-$2FFF.
-# cap = $3000 - $2000 = 4096 bytes.
-WORKTASK_MAXLEN := 4096
+# WORKTASK blob bound: ORG $4000, region $4000-$5FFF (itr4.1).
+# cap = $6000 - $4000 = 8192 bytes. Scratch lives at $A100+.
+WORKTASK_MAXLEN := 8192
 
 $(WORKTASKSIM_BIN): $(SDM_DIR)/WORKTASK.S $(SDM_DIR)/WORKEQU.S \
     $(SDM_DIR)/PORTLIB.S $(SDM_DIR)/EVLIB.S
 	sed -e 's/^ DSK WORKTASK.bin/ DSK WORKTASKSIM.bin/' $(SDM_DIR)/WORKTASK.S > $(SDM_DIR)/WORKTASKSIM.S
 	sed -e 's/^FSIM = 0/FSIM = 1/' $(SDM_DIR)/WORKEQU.S > $(SDM_DIR)/WORKEQUS.S
 	cd $(SDM_DIR) && sed -e 's/ PUT WORKEQU$$/ PUT WORKEQUS/' WORKTASKSIM.S > WORKTASKSIM.tmp && mv WORKTASKSIM.tmp WORKTASKSIM.S && $(MERLIN32) $(MERLIN_LIB) WORKTASKSIM.S
-	@sz=$$(wc -c < $(WORKTASKSIM_BIN)); if [ $$sz -gt $(WORKTASK_MAXLEN) ]; then echo "WORKTASKSIM.bin $$sz bytes > $(WORKTASK_MAXLEN) (code crosses \$$3000)"; rm -f $(WORKTASKSIM_BIN); exit 1; fi
+	@sz=$$(wc -c < $(WORKTASKSIM_BIN)); if [ $$sz -gt $(WORKTASK_MAXLEN) ]; then echo "WORKTASKSIM.bin $$sz bytes > $(WORKTASK_MAXLEN) (code exceeds \$$6000)"; rm -f $(WORKTASKSIM_BIN); exit 1; fi
 
 $(WORKTASK_MEM): $(WORKTASKSIM_BIN)
 	python3 -c "b=open('$(WORKTASKSIM_BIN)','rb').read(); open('$(WORKTASK_MEM)','w').write('\n'.join('%02x'%x for x in b)+'\n')"
@@ -607,7 +607,7 @@ WORKTASKB_S := $(SDM_DIR)/WORKTASKB.S
 $(WORKTASK_BIN): $(SDM_DIR)/WORKTASK.S $(SDM_DIR)/WORKEQU.S \
     $(SDM_DIR)/PORTLIB.S $(SDM_DIR)/EVLIB.S
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) WORKTASK.S
-	@sz=$$(wc -c < $(WORKTASK_BIN)); if [ $$sz -gt $(WORKTASK_MAXLEN) ]; then echo "WORKTASK.bin $$sz bytes > $(WORKTASK_MAXLEN) (code crosses \$$3000)"; rm -f $(WORKTASK_BIN); exit 1; fi
+	@sz=$$(wc -c < $(WORKTASK_BIN)); if [ $$sz -gt $(WORKTASK_MAXLEN) ]; then echo "WORKTASK.bin $$sz bytes > $(WORKTASK_MAXLEN) (code exceeds \$$6000)"; rm -f $(WORKTASK_BIN); exit 1; fi
 
 $(WORKTASKB_S): $(WORKTASK_BIN)
 	{ echo 'WSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'WSKEND'; echo 'WSKLEN = WSKEND-WSKILL'; } > $@
