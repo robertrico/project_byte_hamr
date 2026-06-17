@@ -19,6 +19,7 @@ TA0 = $A018
 TA1 = $A019
 TA2 = $A01A
 TRES = $A01B
+* PLOTV: FSEEDS addr scratch / DOGROW byte1 temp
 PLOTV = $A01C
 PADRL = $A01D
 PADRH = $A01E
@@ -206,7 +207,9 @@ CPLANT
  JMP MBFIN
 PLCROK
  JSR PLOTADR
- JSR RDPLOT
+* occupied? stage (byte1 low nibble) != 0
+ JSR RDPLOT1
+ AND #$0F
  BEQ PLOK
  LDA #RERROCC
  JMP MBFIN
@@ -215,7 +218,6 @@ PLOK
  CLC
  ADC #<FSEEDS
  STA PLOTV
-; hi const $02 - breaks if FSEEDS/FCROPS cross a page
  LDA PLOTV
  LDY #>FSEEDS
  JSR RDB
@@ -229,34 +231,27 @@ PLSEED
  LDA PLOTV
  LDY #>FSEEDS
  JSR WRB
-* plot byte = crop*8 + 1
- LDA TA2
- ASL
- ASL
- ASL
- CLC
- ADC #1
- TAX
+* 2-byte plot: byte0=crop, byte1=stage 1
+ LDX TA2
  JSR WRPLOT
+ LDX #1
+ JSR WRPLOT1
  LDA #ROK
  JMP MBFIN
 
 * --- HARVEST TA0=x TA1=y ---
 CHARV
  JSR PLOTADR
- JSR RDPLOT
- STA PLOTV
- AND #7
+* stage = byte1 low nibble; ripe?
+ JSR RDPLOT1
+ AND #$0F
  CMP #STRIPE
  BEQ HVOK
  LDA #RERRRIPE
  JMP MBFIN
 HVOK
-* crop id -> CROPI, FCROPS+crop -> M20L/H
- LDA PLOTV
- LSR
- LSR
- LSR
+* crop id = byte0 -> CROPI, FCROPS+crop -> M20L
+ JSR RDPLOT
  STA CROPI
  CLC
  ADC #<FCROPS
@@ -317,6 +312,8 @@ HVNC
 HVCLR
  LDX #0
  JSR WRPLOT
+ LDX #0 ; reload: WRPLOT clobbered X
+ JSR WRPLOT1
  LDA #ROK
  JMP MBFIN
 
@@ -638,7 +635,7 @@ PLOTADR
  LDA M20H
  ADC PADRH
  STA M20H
-* + x
+* + x  (PADR = y*20 + x, 16-bit)
  LDA M20L
  CLC
  ADC TA0
@@ -646,6 +643,10 @@ PLOTADR
  LDA M20H
  ADC #0
  STA PADRH
+* itr4.1 2-byte plots: double the offset (16-bit;
+* exceeds 255 past plot 128 - ASL would wrap)
+ ASL PADRL
+ ROL PADRH
 * + FGRID base
  LDA PADRL
  CLC
@@ -665,6 +666,33 @@ WRPLOT
  LDY PADRH
  JSR WRB
  RTS
+* === RDPLOT1: A = byte1 (stage+flags) at PADR+1 ===
+RDPLOT1
+ LDA PADRL
+ CLC
+ ADC #1
+ STA WP1L
+ LDA PADRH
+ ADC #0
+ TAY
+ LDA WP1L
+ JSR RDB
+ RTS
+* === WRPLOT1: write X to byte1 at PADR+1 ===
+WRPLOT1
+ STX WPVAL
+ LDA PADRL
+ CLC
+ ADC #1
+ STA WP1L
+ LDA PADRH
+ ADC #0
+ STA WP1H
+ LDX WPVAL
+ LDA WP1L
+ LDY WP1H
+ JSR WRB
+ RTS
 
 * === MKADR: A=crop -> MKAL/H = FMKT+crop*3 ===
 MKADR
@@ -681,7 +709,8 @@ MKADR
 
 * === DOGROW: advance plots due this tick ===
 * GTICK++ each call; crop advances when
-* (GTICK AND GROWM[crop]) == 0
+* (GTICK AND GROWM[crop]) == 0. PADR walks
+* byte0 of each plot, stepping by 2.
 DOGROW
  INC GTICK
  LDA #<FGRID
@@ -692,33 +721,30 @@ DOGROW
  STA PX
  STA PY
 GRLP
+* stage = byte1 (PADR+1)
+ JSR RDPLOT1
+ STA PLOTV
+ AND #$0F
+ BEQ GRNEXT
+ CMP #STRIPE
+ BCS GRNEXT
+* crop = byte0 -> GROWM index
  LDA PADRL
  LDY PADRH
  JSR RDB
- STA PLOTV
- BEQ GRNEXT
- AND #7
- CMP #STRIPE
- BCS GRNEXT
-* crop due this tick?
- LDA PLOTV
- LSR
- LSR
- LSR
  TAX
  LDA GROWM,X
  AND GTICK
  BNE GRNEXT
+* advance stage (low nibble +1, flags preserved)
  LDA PLOTV
  CLC
  ADC #1
  STA PLOTV
  TAX
- LDA PADRL
- LDY PADRH
- JSR WRB
+ JSR WRPLOT1
  LDA PLOTV
- AND #7
+ AND #$0F
  CMP #STRIPE
  BNE GRNEXT
 * publish EV_RIPE x,y
@@ -730,10 +756,14 @@ GRLP
  STA EVP1
  JSR PUTEV
 GRNEXT
- INC PADRL
- BNE GRNC
- INC PADRH
-GRNC
+* step PADR by 2 (16-bit)
+ LDA PADRL
+ CLC
+ ADC #2
+ STA PADRL
+ LDA PADRH
+ ADC #0
+ STA PADRH
  INC PX
  LDA PX
  CMP #GCOLS
