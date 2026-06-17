@@ -24,6 +24,7 @@ MTMP = $A122
 MVAL = $A123
 STI = $A124
 STAL = $A125
+DADL = $A126
 
  JMP WGAME
 
@@ -261,17 +262,10 @@ WLSET
  JSR WDBIT
  ORA MTMP
  TAX
- LDA RIDX
- CMP #8
- BCS WLHI
- LDA #<WDISCL
- LDY #>WDISCL
- JSR WRB
- LDA #ROK
- JMP WMFIN
-WLHI
- LDA #<WDISCH
- LDY #>WDISCH
+* write back: WDISC + (RIDX>>3)
+* (DADL set by WDBIT)
+ LDA DADL
+ LDY #>WDISC
  JSR WRB
  LDA #ROK
  JMP WMFIN
@@ -472,20 +466,13 @@ WCROLL
  JMP WMFIN
 
 WCDISC
-* set DISC bit
+* set DISC bit: WDISC + (RIDX>>3)
+* (DADL from WDBIT)
  JSR WDBIT
  ORA MTMP
  TAX
- LDA RIDX
- CMP #8
- BCS WCDH
- LDA #<WDISCL
- LDY #>WDISCL
- JSR WRB
- JMP WCGO
-WCDH
- LDA #<WDISCH
- LDY #>WDISCH
+ LDA DADL
+ LDY #>WDISC
  JSR WRB
  JMP WCGO
 * known recipe: failure roll. failChance =
@@ -566,10 +553,9 @@ WCGO
  JMP WMFIN
 
 * === WDBIT: MTMP=bit mask, A=disc byte ===
-* RIDX<8 -> reads WDISCL, else WDISCH
-* mask = 1 << (RIDX AND 7)
-* CLOBBERS MTMP (mask); not preserved across
-* subroutines that also use MTMP
+* itr4.1 64-bit bitmap: byte = WDISC + (RIDX>>3),
+* mask = 1 << (RIDX AND 7). DADL = byte addr lo.
+* CLOBBERS MTMP (mask), DADL.
 WDBIT
  LDA RIDX
  AND #7
@@ -583,16 +569,15 @@ WDBSH
  JMP WDBSH
 WDBRD
  STA MTMP
+* byte addr = WDISC + (RIDX>>3)
  LDA RIDX
- CMP #8
- BCS WDBH
- LDA #<WDISCL
- LDY #>WDISCL
- JSR RDB
- RTS
-WDBH
- LDA #<WDISCH
- LDY #>WDISCH
+ LSR
+ LSR
+ LSR
+ CLC
+ ADC #<WDISC
+ STA DADL
+ LDY #>WDISC
  JSR RDB
  RTS
 
