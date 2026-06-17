@@ -145,7 +145,7 @@ module coproc #(
     // a_wr_ok: Arlet may write $0000-$BFFF EXCEPT kernel $1000-$1FFF and TABLE $02xx
     wire a_wr_ok = WE & in_bram & rdy & ~(AB[15:12]==4'h1) & ~(AB[15:8]==8'h02);
     // b_wr_ok: host loader may write everything except kernel $1000-$1FFF
-    wire b_wr_ok = lwr & ~(laddr[15:12]==4'h1);
+    wire b_wr_ok = lwr & ~(laddr[15:14]==2'b11) & ~(laddr[15:12]==4'h1);
 
     // single shared write port (host load wins over Arlet)
     wire        wr_en   = a_wr_ok | b_wr_ok;
