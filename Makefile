@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill life8 life8gr cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report farmtasksim farm \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill life8 life8gr cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report farmtasksim farm farmtest \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -572,6 +572,15 @@ $(FARMTASKB_S): $(FARMTASK_BIN)
 farm: $(FARMTASKB_S) $(WORKTASKB_S)
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARM.S
 
+FARMTEST_BIN := $(SDM_DIR)/FARMTEST.bin
+
+$(FARMTEST_BIN): $(FARMTASKB_S) $(WORKTASKB_S) \
+    $(SDM_DIR)/FARMTEST.S $(SDM_DIR)/FARMEQU.S \
+    $(SDM_DIR)/SDRAMLIB.S $(SDM_DIR)/CPLIB.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARMTEST.S
+
+farmtest: $(FARMTEST_BIN)
+
 # WORKTASK sim blob (FSIM=1 tiny dividers) -> worktask.mem for the tb.
 # Committed WORKTASK.S keeps FSIM=0 (hardware dividers); sim variant is
 # generated, never hand-edited. Pattern mirrors FARMTASK rules above.
@@ -643,7 +652,7 @@ cpboot:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot mverse grverse farm
+sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot mverse grverse farm farmtest
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -663,6 +672,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cp
 	$(AC_CLASSIC) -p $(SDM_PO) MVERSE BIN 0x6000 < $(SDM_DIR)/MVERSE.bin
 	$(AC_CLASSIC) -p $(SDM_PO) GRVERSE BIN 0x6000 < $(SDM_DIR)/GRVERSE.bin
 	$(AC_CLASSIC) -p $(SDM_PO) FARM BIN 0x2000 < $(SDM_DIR)/FARM.bin
+	$(AC_CLASSIC) -p $(SDM_PO) FARM_TEST BIN 0x2000 < $(SDM_DIR)/FARMTEST.bin
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
