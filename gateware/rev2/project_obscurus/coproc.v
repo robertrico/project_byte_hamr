@@ -8,13 +8,20 @@
 // HELD HIGH through the stall, so latches gate on & rdy and the post is one-shot
 // via state transition). See spec 2026-06-08.
 //
-// BRAM map (16 KB, $0000-$3FFF):
+// BRAM map (48 KB, $0000-$BFFF) [itr4.1]:
 //   $0000-$00FF  ZP / scratch
 //   $0100-$01FF  stacks
 //   $0200-$02FF  TABLE (write-protected from Arlet + host restore)
-//   $0300-$0FFF  task code / kernel mailboxes
+//   $0F80-$0FFF  kernel mailboxes
 //   $1000-$1FFF  kernel (write-protected from both ports)
-//   $2000-$3FFF  extended task space (NOT covered by cflash snapshots)
+//   $2000-$3FFF  FARMTASK code
+//   $4000-$5FFF  WORKTASK code
+//   $6000-$7FFF  future task 3 (reserved)
+//   $8000-$9FFF  future task 4 (reserved)
+//   $A000-$AFFF  shared task scratch (all tasks)
+//   $B000-$BFFF  spare
+//   (task code + $A000 scratch are OUTSIDE the 13-bit cflash snapshot
+//    window $0200-$0FFF - respawn model, see itr4.1 spec)
 // =============================================================================
 module coproc #(
     parameter [7:0] CORE_ID = 8'd0
@@ -28,7 +35,7 @@ module coproc #(
     output reg  [7:0]  wdata,
     input  wire        busy,
     input  wire [7:0]  rdata,
-    input  wire [13:0] laddr,
+    input  wire [15:0] laddr,
     input  wire [7:0]  ldata_in,
     input  wire        lwr,
     output reg  [7:0]  ldata_out,
@@ -120,7 +127,7 @@ module coproc #(
     assign c4_timedout = timedout;
     assign c4_active   = call_req | running | done_r;
 
-    // 16KB resident-kernel BRAM ($0000-$3FFF). ECP5 DP16KD has exactly TWO
+    // 48 KB resident BRAM ($0000-$BFFF). ECP5 DP16KD has exactly TWO
     // ports, but this yosys (oss-cad-suite) will NOT infer DP16KD for a memory
     // with TWO write ports (each combined with a read) -- it always falls back
     // to FF mapping (verified: 1W+2R maps via $__DP16KD_, any 2W maps to FFs
@@ -129,18 +136,20 @@ module coproc #(
     // deliberate 6502 setup sequence and takes priority; port A (Arlet) writes
     // only when rdy=1. They never legitimately collide, so the host>Arlet
     // priority is safe and the two-port execute/load semantics are preserved.
-    reg [7:0] bram [0:16383];
+    reg [7:0] bram [0:49151];        // itr4.1: 48 KB ($0000-$BFFF)
     initial $readmemh("kernel.mem", bram);
 
-    wire in_bram = (AB[15:14] == 2'b00);
-    // a_wr_ok: Arlet may write $0000-$3FFF EXCEPT kernel $1000-$1FFF and TABLE $02xx
-    wire a_wr_ok = WE & in_bram & rdy & ~(AB[13:12]==2'b01) & ~(AB[13:8]==6'h02);
+    // in_bram = everything below the $C000 quadrant ($0000-$BFFF).
+    // $C000-$DFFF unused; $E0xx I/O + $FFFx vectors overridden by the DI mux priority chain.
+    wire in_bram = ~(AB[15] & AB[14]);
+    // a_wr_ok: Arlet may write $0000-$BFFF EXCEPT kernel $1000-$1FFF and TABLE $02xx
+    wire a_wr_ok = WE & in_bram & rdy & ~(AB[15:12]==4'h1) & ~(AB[15:8]==8'h02);
     // b_wr_ok: host loader may write everything except kernel $1000-$1FFF
-    wire b_wr_ok = lwr & ~(laddr[13:12]==2'b01);
+    wire b_wr_ok = lwr & ~(laddr[15:12]==4'h1);
 
     // single shared write port (host load wins over Arlet)
     wire        wr_en   = a_wr_ok | b_wr_ok;
-    wire [13:0] wr_addr = b_wr_ok ? laddr : AB[13:0];
+    wire [15:0] wr_addr = b_wr_ok ? laddr : AB[15:0];
     wire [7:0]  wr_data = b_wr_ok ? ldata_in : DO;
     always @(posedge clk)
         if (wr_en) bram[wr_addr] <= wr_data;
@@ -163,7 +172,7 @@ module coproc #(
     reg in_bram_q, is_rstlo_q,is_rsthi_q,is_irqlo_q,is_irqhi_q,is_nmilo_q,is_nmihi_q,is_count_q,is_coreid_q,is_e014_q;
     reg is_callreq_q, is_snapbusy_q, is_e008_q;
     always @(posedge clk) begin
-        bram_qa    <= bram[AB[13:0]];   // port A read
+        bram_qa    <= bram[AB[15:0]];   // port A read
         in_bram_q  <= in_bram;
         is_rstlo_q <= is_rstlo; is_rsthi_q <= is_rsthi;
         is_irqlo_q <= is_irqlo; is_irqhi_q <= is_irqhi;
