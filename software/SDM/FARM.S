@@ -80,7 +80,7 @@ OLDCROP DS 1
 TAIL2 DS 1
 EXPSEQ2 DS 1
 WSKILLV DS 1
-WDISCV DS 2
+WDISCV DS 8
 MIXBUF DS 4
 MIXN DS 1
 STREC DS 8
@@ -1285,6 +1285,17 @@ SIG0OK
  BEQ SIG1OK
  JMP COLDST
 SIG1OK
+* farm CVER gate (itr4.1): mismatch -> COLDST.
+* without this, a pre-relay 'FM' world passes SIG
+* and corrupts against the new layout.
+ LDA #<FBCVER
+ LDY #>FBCVER
+ JSR FRD
+ LDA SDM_VAL
+ CMP #CVERNUM
+ BEQ FCVOK
+ JMP COLDST
+FCVOK
 * farm probe: STATUS 3 tries
  LDX #3
 PRLOOP
@@ -1384,66 +1395,52 @@ WKPFAIL
 COLDST
 * full cold start: RSTWAIT first
  JSR RSTWAIT
-* bank-32 market/inventory init (SIG last)
+* zero header event-state $0002-$000F
+ LDA #GBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #<FSEQC
+ STA SDM_ADDR
+ LDA #>FSEQC
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
  LDA #0
  STA SDM_VAL
- LDA #<FSEQC
- LDY #>FSEQC
- JSR FWR
- LDA #<FHEAD
- LDY #>FHEAD
- JSR FWR
+ LDA #14
+ STA CNT
+ LDA #0
+ STA CNT+1
+CZHLP
+ JSR SDM_WRNEXT
+ DEC CNT
+ BNE CZHLP
+* zero $0200-$0AFF: mailbox+market+cash+seeds+
+* crops + full 2 KB grid reserve (one sweep)
  LDA #<FMFLAG
- LDY #>FMFLAG
- JSR FWR
- LDA #<FMKT+1
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+2
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+4
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+5
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+7
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+8
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+10
- LDY #>FMKT
- JSR FWR
- LDA #<FMKT+11
- LDY #>FMKT
- JSR FWR
- LDA #<FCASHH
- LDY #>FCASHH
- JSR FWR
- LDA #<FSEEDS+1
- LDY #>FSEEDS
- JSR FWR
- LDA #<FSEEDS+2
- LDY #>FSEEDS
- JSR FWR
- LDA #<FSEEDS+3
- LDY #>FSEEDS
- JSR FWR
- LDA #<FCROPS
- LDY #>FCROPS
- JSR FWR
- LDA #<FCROPS+1
- LDY #>FCROPS
- JSR FWR
- LDA #<FCROPS+2
- LDY #>FCROPS
- JSR FWR
- LDA #<FCROPS+3
- LDY #>FCROPS
- JSR FWR
+ STA SDM_ADDR
+ LDA #>FMFLAG
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #0
+ STA SDM_VAL
+ LDA #<$0900
+ STA CNT
+ LDA #>$0900
+ STA CNT+1
+CZLP
+ JSR SDM_WRNEXT
+ LDA CNT
+ SEC
+ SBC #1
+ STA CNT
+ LDA CNT+1
+ SBC #0
+ STA CNT+1
+ ORA CNT
+ BNE CZLP
+* market base prices (PRICE lo of crops 0-3)
  LDA #8
  STA SDM_VAL
  LDA #<FMKT ;wheat 8
@@ -1464,6 +1461,7 @@ COLDST
  LDA #<FMKT+9 ;pumpkn 40
  LDY #>FMKT
  JSR FWR
+* cash + starting seeds[0]
  LDA #CASH0
  STA SDM_VAL
  LDA #<FCASHL
@@ -1474,34 +1472,6 @@ COLDST
  LDA #<FSEEDS
  LDY #>FSEEDS
  JSR FWR
-* zero grid: 800 x WRNEXT (2-byte plots)
- LDA #GBANK
- STA SDM_BANK
- LDA #0
- STA SDM_BANK+1
- JSR SDM_SETBANK
- LDA #<FGRID
- STA SDM_ADDR
- LDA #>FGRID
- STA SDM_ADDR+1
- JSR SDM_SETADDR
- LDA #0
- STA SDM_VAL
- LDA #<800
- STA CNT
- LDA #>800
- STA CNT+1
-CZLP
- JSR SDM_WRNEXT
- LDA CNT
- SEC
- SBC #1
- STA CNT
- LDA CNT+1
- SBC #0
- STA CNT+1
- ORA CNT
- BNE CZLP
 * seed bank 33
  JSR SEED33
 * quiesce: all BRAM loads first
@@ -1541,6 +1511,12 @@ CS2OK
  STA SDM_VAL
  LDA #<FSIG1
  LDY #>FSIG1
+ JSR FWR
+* farm CVER last (gate reads this)
+ LDA #CVERNUM
+ STA SDM_VAL
+ LDA #<FBCVER
+ LDY #>FBCVER
  JSR FWR
  JSR RESYNC
  JSR WSYNC
@@ -2302,7 +2278,7 @@ RSWDN
  RTS
 
 * === CHKWK: bad SIG -> SEED33 (cold).
-* valid SIG + CVER mismatch -> MIGRATE33. ===
+* valid SIG + CVER mismatch -> SEED33. ===
 CHKWK
  LDA #<WBSIG0
  LDY #>WBSIG0
@@ -2322,109 +2298,66 @@ CHKWK
  LDA SDM_VAL
  CMP #CVERNUM
  BEQ CHKWKDN
-* valid SIG, CVER mismatch -> migrate
- JSR MIGRATE33
+* CVER mismatch -> full SEED33 (no migrate)
+ JSR SEED33
  JMP CHKWKDN
 CHKSEED
  JSR SEED33
 CHKWKDN
  RTS
 
-* === MIGRATE33: valid SIG, CVER bumped.
-* zero GOODS + retired pantry, set CVER.
-* PRESERVE DISC/SKILL/MODE/STA/recipes. ===
-MIGRATE33
+* === SEED33: cold-seed bank 33 (no SIG) ===
+* caller writes SIG after all rings
+SEED33
+* zero header $0002-$000F (CVER set below)
+ LDA #WBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #<WBSEQC
+ STA SDM_ADDR
+ LDA #>WBSEQC
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
  LDA #0
  STA SDM_VAL
-* zero retired pantry $0210-13
- LDX #0
-MIG_PANT
- TXA
- CLC
- ADC #$10
- LDY #$02
- JSR WFWR
- INX
- CPX #4
- BNE MIG_PANT
-* zero GOODS $0228-33
- LDX #0
-MIG_GOOD
- TXA
- CLC
- ADC #<WBGOODS
- LDY #>WBGOODS
- JSR WFWR
- INX
- CPX #12
- BNE MIG_GOOD
+ LDA #14
+ STA CNT
+CS33HLP
+ JSR SDM_WRNEXT
+ DEC CNT
+ BNE CS33HLP
+* zero $0200-$04FF: mailbox + skill + disc(8) +
+* mode + stations(16) + goods(64) + recipe(512)
+ LDA #<WBFLAG
+ STA SDM_ADDR
+ LDA #>WBFLAG
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #0
+ STA SDM_VAL
+ LDA #<$0300
+ STA CNT
+ LDA #>$0300
+ STA CNT+1
+CS33ZLP
+ JSR SDM_WRNEXT
+ LDA CNT
+ SEC
+ SBC #1
+ STA CNT
+ LDA CNT+1
+ SBC #0
+ STA CNT+1
+ ORA CNT
+ BNE CS33ZLP
 * CVER = CVERNUM
  LDA #CVERNUM
  STA SDM_VAL
  LDA #<WBCVER
  LDY #>WBCVER
  JSR WFWR
- RTS
-
-* === SEED33: cold-seed bank 33 (no SIG) ===
-* caller writes SIG after all rings
-SEED33
- LDA #0
- STA SDM_VAL
- LDA #<WBSEQC
- LDY #>WBSEQC
- JSR WFWR
- LDA #<WBHEAD
- LDY #>WBHEAD
- JSR WFWR
- LDA #<WBHBEAT
- LDY #>WBHBEAT
- JSR WFWR
-* CVER = CVERNUM (then re-zero for loop)
- LDA #CVERNUM
- STA SDM_VAL
- LDA #<WBCVER
- LDY #>WBCVER
- JSR WFWR
-* FLAG = 0
- LDA #0
- STA SDM_VAL
- LDA #<WBFLAG
- LDY #>WBFLAG
- JSR WFWR
-* pantry(4)+skill(1)+disc(2)+mode(1) at $0210-$0217
- LDX #0
-SD33ZLP
- TXA
- CLC
- ADC #<WBPANT
- LDY #>WBPANT
- JSR WFWR
- INX
- CPX #8
- BNE SD33ZLP
-* stations 8 bytes $0220-$0227
- LDX #0
-SD33SLP
- TXA
- CLC
- ADC #<WBSTA
- LDY #>WBSTA
- JSR WFWR
- INX
- CPX #8
- BNE SD33SLP
-* goods 12 bytes $0228-33
- LDX #0
-SD33GLP
- TXA
- CLC
- ADC #<WBGOODS
- LDY #>WBGOODS
- JSR WFWR
- INX
- CPX #12
- BNE SD33GLP
 * recipe table: stream 96 bytes to $0300
  LDA #WBANK
  STA SDM_BANK
@@ -2489,17 +2422,19 @@ WSAGN
  JSR WFRD
  LDA SDM_VAL
  STA WSKILLV
-* disc 2 bytes
- LDA #<WBDISCL
- LDY #>WBDISCL
+* disc 8 bytes (64-bit bitmap)
+ LDX #0
+WSDLP
+ TXA
+ CLC
+ ADC #<WBDISC
+ LDY #>WBDISC
  JSR WFRD
  LDA SDM_VAL
- STA WDISCV
- LDA #<WBDISCH
- LDY #>WBDISCH
- JSR WFRD
- LDA SDM_VAL
- STA WDISCV+1
+ STA WDISCV,X
+ INX
+ CPX #8
+ BNE WSDLP
 * stations 8 bytes
  LDX #0
 WSSTA
@@ -3015,11 +2950,8 @@ WKRECLP
 * uses SHADP(ZP) SHADV DAX NTMP T16.
 * NTMP trashed; EVT preserved.
 WKDREC
-* check discovered bit
+* check discovered bit (64-bit: byte=EVA>>3)
  LDA EVA
- CMP #8
- BCS WKDR_HI
-* lo byte: bit = 1 << (EVA & 7)
  AND #7
  TAX
  LDA #1
@@ -3030,24 +2962,14 @@ WKDR_SHL
  DEX
  JMP WKDR_SHL
 WKDR_MK
- AND WDISCV
- BNE WKDR_KNW
- JMP WKDR_UNK
-WKDR_HI
-* hi byte: bit = 1 << ((EVA-8) & 7)
- SEC
- SBC #8
- AND #7
+ STA NTMP
+ LDA EVA
+ LSR
+ LSR
+ LSR
  TAX
- LDA #1
-WKDR_SH2
- CPX #0
- BEQ WKDR_MK2
- ASL
- DEX
- JMP WKDR_SH2
-WKDR_MK2
- AND WDISCV+1
+ LDA WDISCV,X
+ AND NTMP
  BNE WKDR_KNW
  JMP WKDR_UNK
 WKDR_KNW
@@ -3471,8 +3393,8 @@ SHLP
 SHFOUND
  TXA
  RTS
-* === DISCSET: A=idx -> Z=1 not owned
-* Z=0 owned. Uses NTMP. ===
+* === DISCSET: A=idx -> Z=1 not owned,
+* Z=0 owned. 64-bit: byte=idx>>3. Uses NTMP. ===
 DISCSET
  STA NTMP
  AND #7
@@ -3485,13 +3407,14 @@ DSSHL
  DEX
  JMP DSSHL
 DSMK
- LDX NTMP
- CPX #8
- BCS DSHI
- AND WDISCV
- RTS
-DSHI
- AND WDISCV+1
+ STA SHADV
+ LDA NTMP
+ LSR
+ LSR
+ LSR
+ TAX
+ LDA WDISCV,X
+ AND SHADV
  RTS
 * === CANAFFORD: C=1 if CASH >= T16 ===
 CANAFFORD
