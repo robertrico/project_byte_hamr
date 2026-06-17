@@ -700,6 +700,13 @@ RCDC
  STA CNT+1
  ORA CNT
  BNE RCLP
+* seed SKILL=$FF: lifts the WKCRAFT discovery-roll
+* threshold to ~167/256; the retry below makes it solid
+ LDA #$FF
+ STA SDM_VAL
+ LDA #<WBSKILL
+ LDY #>WBSKILL
+ JSR WFWR
 * 5. Spawn both tasks
  JSR LOADF
  JSR LOADW
@@ -866,10 +873,10 @@ MN_FRM
  STA MSGPTR+1
  JSR WSENDCMD
  JSR DOTEST
-* TEST 12: WK CRAFT recipe 0 (0,0,$FF,$FF)
-* needs FCROPS[0]>=2; we seeded FCROPS[0]=10
- LDA #WOPCRAFT
- STA CMDOP2
+* TEST 12: WK CRAFT recipe 0 (0,0,$FF,$FF).
+* discovery roll is random per craft (~65% at
+* SKILL=$FF); RUIN/FAIL consume nothing, so retry
+* up to 16x until ROK. Station cooks on success.
  LDA #0
  STA CMDA02
  STA CMDA12
@@ -882,8 +889,25 @@ MN_FRM
  STA MSGPTR
  LDA #>LLWKC
  STA MSGPTR+1
+ LDX #16
+WKCTRY
+ LDA #WOPCRAFT
+ STA CMDOP2
  JSR WSENDCMD
+ BCS WKCNXT
+ CMP #ROK
+ BEQ WKCWIN
+WKCNXT
+ DEX
+ BNE WKCTRY
+ SEC
  JSR DOTEST
+ JMP WKCDONE
+WKCWIN
+ CLC
+ LDA #ROK
+ JSR DOTEST
+WKCDONE
 * TEST 13: WK station 0 STATE == 1 (cooking)
  LDA #1
  STA TEXP
