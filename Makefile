@@ -663,7 +663,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cp
 	$(AC_CLASSIC) -p $(SDM_PO) CPBOOT BIN 0x6000 < $(SDM_DIR)/CPBOOT
 	$(AC_CLASSIC) -p $(SDM_PO) MVERSE BIN 0x6000 < $(SDM_DIR)/MVERSE.bin
 	$(AC_CLASSIC) -p $(SDM_PO) GRVERSE BIN 0x6000 < $(SDM_DIR)/GRVERSE.bin
-	$(AC_CLASSIC) -p $(SDM_PO) FARM BIN 0x6000 < $(SDM_DIR)/FARM.bin
+	$(AC_CLASSIC) -p $(SDM_PO) FARM BIN 0x2000 < $(SDM_DIR)/FARM.bin
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
