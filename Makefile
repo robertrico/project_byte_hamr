@@ -536,17 +536,16 @@ life8gr:
 FARMTASKSIM_BIN := $(SDM_DIR)/FARMTASKSIM.bin
 FARMTASK_MEM := gateware/rev2/project_obscurus/farmtask.mem
 
-# FARMTASK blob bound: ORG $0600, scratch at $0E00+, but WORKSHOP
-# scratch owns $0D00+ -> code must end below $0D00 = 1792 bytes MAX.
-# A silent overflow once landed code on the EVLIB scratch bytes (PUTEV
-# self-corrupting, ring dead) - hence the hard check after every assemble.
-FARMTASK_MAXLEN := 1792
+# FARMTASK blob bound: ORG $2000, region $2000-$3FFF (itr4.1).
+# Scratch now lives at $A000+ (out of the way) so the only bound is the
+# 8 KB task region. Hard check after every assemble (stale-blob lesson).
+FARMTASK_MAXLEN := 8192
 
 $(FARMTASKSIM_BIN): $(SDM_DIR)/FARMTASK.S $(SDM_DIR)/FARMEQU.S $(SDM_DIR)/EVLIB.S
 	sed -e 's/^ DSK FARMTASK.bin/ DSK FARMTASKSIM.bin/' $(SDM_DIR)/FARMTASK.S > $(SDM_DIR)/FARMTASKSIM.S
 	sed -e 's/^FSIM = 0/FSIM = 1/' $(SDM_DIR)/FARMEQU.S > $(SDM_DIR)/FARMEQUS.S
 	cd $(SDM_DIR) && sed -e 's/ PUT FARMEQU$$/ PUT FARMEQUS/' FARMTASKSIM.S > FARMTASKSIM.tmp && mv FARMTASKSIM.tmp FARMTASKSIM.S && $(MERLIN32) $(MERLIN_LIB) FARMTASKSIM.S
-	@sz=$$(wc -c < $(FARMTASKSIM_BIN)); if [ $$sz -gt $(FARMTASK_MAXLEN) ]; then echo "FARMTASKSIM.bin $$sz bytes > $(FARMTASK_MAXLEN) (code crosses \$$0D00)"; rm -f $(FARMTASKSIM_BIN); exit 1; fi
+	@sz=$$(wc -c < $(FARMTASKSIM_BIN)); if [ $$sz -gt $(FARMTASK_MAXLEN) ]; then echo "FARMTASKSIM.bin $$sz bytes > $(FARMTASK_MAXLEN) (code exceeds \$$4000)"; rm -f $(FARMTASKSIM_BIN); exit 1; fi
 
 $(FARMTASK_MEM): $(FARMTASKSIM_BIN)
 	python3 -c "b=open('$(FARMTASKSIM_BIN)','rb').read(); open('$(FARMTASK_MEM)','w').write('\n'.join('%02x'%x for x in b)+'\n')"
@@ -565,7 +564,7 @@ FARMTASKB_S := $(SDM_DIR)/FARMTASKB.S
 
 $(FARMTASK_BIN): $(SDM_DIR)/FARMTASK.S $(SDM_DIR)/FARMEQU.S $(SDM_DIR)/EVLIB.S
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARMTASK.S
-	@sz=$$(wc -c < $(FARMTASK_BIN)); if [ $$sz -gt $(FARMTASK_MAXLEN) ]; then echo "FARMTASK.bin $$sz bytes > $(FARMTASK_MAXLEN) (code crosses \$$0D00)"; rm -f $(FARMTASK_BIN); exit 1; fi
+	@sz=$$(wc -c < $(FARMTASK_BIN)); if [ $$sz -gt $(FARMTASK_MAXLEN) ]; then echo "FARMTASK.bin $$sz bytes > $(FARMTASK_MAXLEN) (code exceeds \$$4000)"; rm -f $(FARMTASK_BIN); exit 1; fi
 
 $(FARMTASKB_S): $(FARMTASK_BIN)
 	{ echo 'FSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'FSKEND'; echo 'FSKLEN = FSKEND-FSKILL'; } > $@
