@@ -1,5 +1,9 @@
 * FARM.S - FARM/MARKET GAME, //e HOST SIDE
-* ORG $6000. BRUN FARM.
+* ORG $2000. BRUN FARM. (relocated from $6000:
+* game is lo-res/text only, never uses hi-res
+* pages $2000-$5FFF - verified free on bench -
+* so ORG $2000 reclaims them: ceiling ~$9600
+* gives ~30 KB program space vs ~13.8 KB).
 * GR MIXED MODE: 20x20 PLOTS AS 2x2 LO-RES
 * BLOCKS (ROWS 0-39), HUD TEXT ROWS 20-23.
 * COPROC GAMETASK (SKILL 2) IS WORLD AUTHORITY.
@@ -10,7 +14,7 @@
 * THIS REMOTE.
  TYP $06
  DSK FARM.bin
- ORG $6000
+ ORG $2000
 
  JMP MAIN
  PUT FARMEQU
