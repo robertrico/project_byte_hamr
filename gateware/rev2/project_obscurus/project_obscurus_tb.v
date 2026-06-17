@@ -170,6 +170,7 @@ module project_obscurus_tb;
     endtask
 
     reg [7:0] krn_before, tbl_before;
+    reg [7:0] hibram_z0, hibram_r;   // itr4.1 high-BRAM snapshot + readback
     task load_byte(input [7:0] d); begin wr_reg(4'hB, d); end endtask  // CP_WDATA (auto-inc)
     task cp_read(input [13:0] a, output [7:0] d); begin
         // CP_RDATA reads auto-increment m_laddr (top.v line 304) AND the coproc's
@@ -179,6 +180,20 @@ module project_obscurus_tb;
         // Re-arm the address before reading so the latch reflects exactly `a`.
         wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {2'b0, a[13:8]});
         rd_reg(4'hC, d);    // ldata_out already settled to bram[a]
+    end endtask
+
+    // ---- itr4.1: 16-bit load port helpers (48 KB high-BRAM range) ----
+    // cp_read only accepts 14-bit (covers $0000-$3FFF). These extend to the full
+    // 16-bit m_laddr so the $4000-$BFFF region added by itr4 can be exercised.
+    task cp_load_byte16(input [15:0] a, input [7:0] d); begin
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, a[15:8]);
+        load_byte(d);   // CP_WDATA at the new address, then laddr++
+    end endtask
+    task cp_read16(input [15:0] a, output [7:0] d); begin
+        // same re-arm-before-read semantics as cp_read - do NOT rd_reg twice
+        // (port-B ldata_out is registered; a 2nd read advances to bram[a+1])
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, a[15:8]);
+        rd_reg(4'hC, d);  // ldata_out settled to bram[a] after addr-set latency
     end endtask
 
     // ---- C4 async-dispatch helpers ----
@@ -675,6 +690,24 @@ module project_obscurus_tb;
         cp_read(13'h0200, tmp);
         if (tmp!==tbl_before) begin errors=errors+1; $display("FAIL C1 task wrote TABLE $0200"); end
         else $display("PASS C1 TABLE $0200 protected from task");
+
+        // --- itr4.1: high-BRAM ($4000-$BFFF) load + readback ---
+        // Proves the 48 KB array + 16-bit load path are real. Pre-itr4.1
+        // these writes aliased back under $4000 (CP_LADDR_HI capped at 6 bits).
+        cp_read16(16'h0000, hibram_z0);  // snapshot $0000 before high writes
+        cp_load_byte16(16'h4000, 8'hA5); // alt-bit pattern, WORKTASK base
+        cp_load_byte16(16'h8000, 8'h5A); // future-task base
+        cp_load_byte16(16'hBFFF, 8'h3C); // top of task space
+        cp_read16(16'h4000, hibram_r);
+        if (hibram_r!==8'hA5) begin errors=errors+1; $display("FAIL hibram $4000=%h", hibram_r); end
+        cp_read16(16'h8000, hibram_r);
+        if (hibram_r!==8'h5A) begin errors=errors+1; $display("FAIL hibram $8000=%h", hibram_r); end
+        cp_read16(16'hBFFF, hibram_r);
+        if (hibram_r!==8'h3C) begin errors=errors+1; $display("FAIL hibram $BFFF=%h", hibram_r); end
+        // alias guard: the $4000 write must NOT have touched $0000
+        cp_read16(16'h0000, hibram_r);
+        if (hibram_r!==hibram_z0) begin errors=errors+1; $display("FAIL hibram alias $0000 %h->%h", hibram_z0, hibram_r); end
+        else $display("PASS hibram 48KB load/readback");
 
         // ===== C2: cooperative race (NPARAM 4/8 -> order 1/2; re-arm 12/8 -> flip 2/1) =====
         // The C1 tasks above terminate with RTS (not JSR DONE), which is the OLD
