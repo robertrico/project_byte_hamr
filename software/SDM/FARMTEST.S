@@ -944,10 +944,6 @@ LLSIGF ASC "LAP SIG-F"
  DFB 0
 LLSIGM ASC "LAP SIG-M"
  DFB 0
-LLRSRV ASC "RESET SURVIVAL"
- DFB 0
-LLWARM ASC "WARM: RESET CHECK"
- DFB 0
 
 * === RECTAB: recipe table 12x8 ===
 * I0 I1 I2 I3 TIME VALUE RARITY PAD
@@ -975,22 +971,10 @@ MAIN
  STA MSGPTR+1
  JSR PRMSG
  JSR CROUT
-* 2. Warm/cold detect via SIG bytes
-* Cold: SIG != "FM" -> full suite.
-* Warm (ctrl-reset): SIG == "FM" -> reset check.
- LDA #<FSIG0
- LDY #>FSIG0
- JSR FRD
- LDA SDM_VAL
- CMP #SIGF
- BNE MNCOLD
- LDA #<FSIG1
- LDY #>FSIG1
- JSR FRD
- LDA SDM_VAL
- CMP #SIGM
- BNE MNCOLD
- JMP MNWARM
+* 2. Always cold: wipe + seed + spawn + full suite.
+* SDRAM persists across ctrl-reset so SIG sticks - a
+* warm-detect would skip the suite on every re-run.
+* Reset-survival is bench-play (or a separate FARM_TESTW).
 MNCOLD
 * 3. Cold: run fixture + test suite
  JSR SETUP
@@ -1736,58 +1720,6 @@ MN_TAL
  JSR PRHEX
  JSR CROUT
  RTS
-
-* === MNWARM: warm boot reset-survival check ===
-* Two-run test procedure:
-*  Cold: BRUN -> full suite, SIG "FM" written.
-*  Ctrl-Reset. Warm: BRUN -> this path.
-* Verifies: SDRAM world survived, task respawns,
-*  STATUS responds, plot(3,3) stage byte != 0.
-MNWARM
- LDA #<LLWARM
- STA MSGPTR
- LDA #>LLWARM
- STA MSGPTR+1
- JSR PRMSG
- JSR CROUT
- JSR RSTWAIT
-* respawn farm task (workshop not needed here)
- JSR LOADF
- JSR STAGEF
- JSR RINGF
- BCS MNWFAL
-* STATUS probe -> ROK
- LDA #OPSTAT
- STA CMDOP
- LDA #0
- STA CMDA0
- STA CMDA1
- STA CMDA2
- JSR SENDCMD
- BCS MNWFAL
- CMP #ROK
- BNE MNWFAL
-* survivor: plot (3,3) byte1 (stage) != 0
-* byte1 = FGRID+127 (idx=63, 2-byte plot)
- LDA #<FGRID+127
- LDY #>FGRID+127
- JSR FRD
- LDA SDM_VAL
- BEQ MNWFAL
-* PASS
- LDA #<LLRSRV
- STA MSGPTR
- LDA #>LLRSRV
- STA MSGPTR+1
- JSR PRPASS
- JMP MN_TAL
-MNWFAL
- LDA #<LLRSRV
- STA MSGPTR
- LDA #>LLRSRV
- STA MSGPTR+1
- JSR PRFAIL
- JMP MN_TAL
 
 * --- embedded blobs ---
  PUT FARMTASKB
