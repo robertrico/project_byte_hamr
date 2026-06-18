@@ -40,7 +40,7 @@ LPF         := $(if $(wildcard $(LPF_DESIGN)),$(LPF_DESIGN),$(LPF_BASE))
 DESIGN ?= signal_check
 
 .PHONY: all clean clean-reports clean-all help synth pnr bit prog prog-flash prog-detect pinout lpf \
-        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill life8 life8gr cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report farmtasksim farm farmtest \
+        sim wave gtk unit unit-wave assemble sdmtest cpreg cprace cprace3 cmpskill life8 life8gr cpdemo cpsdrd cpsave cpboot sdmdisk extract-dsk create-dsk list-dsk report farmtasksim farm farmtest conwaytest \
         esp-build esp-flash esp-monitor esp-all esp-clean esp-menuconfig esp-help
 
 # =============================================================================
@@ -522,6 +522,20 @@ $(LIFE8GRB_S): $(LIFE8GRHW_BIN)
 grverse: $(LIFE8GRB_S)
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) GRVERSE.S
 
+# LIFE8 HW blob (LSIM=0, 192-row) -> DFB include for CONWAYTEST.
+# sed flips the committed LSIM=1 literal and renames the DSK output so it
+# does NOT clobber the sim LIFE8.bin (LSIM=1) used by gateware life8.mem.
+# LIFE8B.S is regenerated from the LSIM=0 bin, never hand-transcribed.
+LIFE8HW_BIN := $(SDM_DIR)/LIFE8HW.bin
+LIFE8B_S    := $(SDM_DIR)/LIFE8B.S
+
+$(LIFE8HW_BIN): $(SDM_DIR)/LIFE8.S $(SDM_DIR)/LIFEMAP.S
+	sed -e 's/^LSIM = 1/LSIM = 0/' -e 's/^ DSK LIFE8.bin/ DSK LIFE8HW.bin/' $< > $(SDM_DIR)/LIFE8HW.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) LIFE8HW.S
+
+$(LIFE8B_S): $(LIFE8HW_BIN)
+	{ echo 'LSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'LSKEND'; echo 'LSKLEN = LSKEND-LSKILL'; } > $@
+
 life8:
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) LIFE8.S
 	python3 -c "b=open('$(SDM_DIR)/LIFE8.bin','rb').read(); open('gateware/rev2/project_obscurus/life8.mem','w').write('\n'.join('%02x'%x for x in b)+'\n')"
@@ -580,6 +594,15 @@ $(FARMTEST_BIN): $(FARMTASKB_S) $(WORKTASKB_S) \
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARMTEST.S
 
 farmtest: $(FARMTEST_BIN)
+
+CONWAYTEST_BIN := $(SDM_DIR)/CONWAYTEST.bin
+
+$(CONWAYTEST_BIN): $(LIFE8B_S) $(LIFE8GRB_S) \
+    $(SDM_DIR)/CONWAYTEST.S $(SDM_DIR)/FARMEQU.S \
+    $(SDM_DIR)/SDRAMLIB.S $(SDM_DIR)/CPLIB.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CONWAYTEST.S
+
+conwaytest: $(CONWAYTEST_BIN)
 
 # WORKTASK sim blob (FSIM=1 tiny dividers) -> worktask.mem for the tb.
 # Committed WORKTASK.S keeps FSIM=0 (hardware dividers); sim variant is
@@ -652,7 +675,7 @@ cpboot:
 # classic ac would stamp L=8192 random-access -> ProDOS copy-util crashes).
 SDM_PO     := $(SDM_DIR)/SDMTEST.po
 AC_CLASSIC := java -jar /Users/hambook/Downloads/AppleCommander-ac-13.0.jar
-sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot mverse grverse farm farmtest
+sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cpsave cpboot mverse grverse farm farmtest conwaytest
 	rm -f $(SDM_PO)
 	$(AC_CLASSIC) -pro140 $(SDM_PO) SDRAM
 	dd if=$(PRODOS_SRC) of=$(SDM_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -673,6 +696,7 @@ sdmdisk: sdmtest cpreg cprace cprace3 cmpskill cpdemo cpsdrd cmpdelay cpwatch cp
 	$(AC_CLASSIC) -p $(SDM_PO) GRVERSE BIN 0x6000 < $(SDM_DIR)/GRVERSE.bin
 	$(AC_CLASSIC) -p $(SDM_PO) FARM BIN 0x2000 < $(SDM_DIR)/FARM.bin
 	$(AC_CLASSIC) -p $(SDM_PO) FARM_TEST BIN 0x2000 < $(SDM_DIR)/FARMTEST.bin
+	$(AC_CLASSIC) -p $(SDM_PO) CONWAY_TEST BIN 0x2000 < $(SDM_DIR)/CONWAYTEST.bin
 	$(AC) import -d $(SDM_PO) -f --text -t TXT --aux 0 -n SDRAMLIB.S $(SDM_DIR)/SDRAMLIB.S
 	$(AC) list -d $(SDM_PO)
 	@echo "Disk ready (fresh /SDRAM/ volume): $(SDM_PO) — copy to ADTPro disks and send to floppy."
