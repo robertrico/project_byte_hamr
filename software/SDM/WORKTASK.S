@@ -205,6 +205,8 @@ WMGO
  BEQ WJMODE
  CMP #WOPLEARN
  BEQ WJLEARN
+ CMP #WOPTSELL
+ BEQ WJTSL
  LDA #RERRBAD
  JMP WMFIN
 WJCRAFT
@@ -215,6 +217,8 @@ WJMODE
  JMP WCMODE
 WJLEARN
  JMP WCLEARN
+WJTSL
+ JMP WOPTSLH
 WCSTAT
  LDA #ROK
  JMP WMFIN
@@ -598,6 +602,88 @@ WSKUP
 WSKDN
  RTS
 
+* --- WOPTSELL TI0=npc TI1=good TI2=qty ---
+* sell good to a goods-purchaser; per-unit NPC
+* price -> WRES1 (//e does qty*price + cash);
+* debit goods, drop the NPC price (saturation)
+* inline errors: handler >127B so a shared exit
+* label at end would be out of branch range; each
+* check uses BCC/BNE-skip-over-JMP pattern instead.
+WOPTSLH
+ LDA TI0
+ CMP #NGNPC
+ BCC WTSC0
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC0
+ LDA TI1
+ CMP #NRECIP
+ BCC WTSC1
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC1
+ LDA TI2
+ BNE WTSC2
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC2
+ LDA TI1
+ CLC
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP TI2
+ BCS WTSOK
+ LDA #RERRCROP
+ JMP WMFIN
+WTSOK
+ SEC
+ SBC TI2
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* offset = npc*128 + good*2 (NGNPC=2: 0,1 only)
+ LDA #0
+ STA RADL
+ LDA TI0
+ BEQ WTSN0
+ LDA #128
+ STA RADL
+WTSN0
+ LDA TI1
+ ASL
+ CLC
+ ADC RADL
+ STA RADL
+ LDA RADL
+ LDY #>WNPC
+ JSR RDB
+ STA MVAL
+ LDX MVAL
+ LDA #<WRES1
+ LDY #>WRES1
+ JSR WRB
+ LDA MVAL
+ SEC
+ SBC TI2
+ BCC WTSFL
+ CMP #PFLOOR
+ BCS WTSDW
+WTSFL
+ LDA #PFLOOR
+WTSDW
+ TAX
+ LDA RADL
+ LDY #>WNPC
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
 * known-craft failChance base per rarity /256
 FAILBASE DFB 48,80,112,144
 
