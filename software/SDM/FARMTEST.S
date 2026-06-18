@@ -1504,8 +1504,10 @@ EV32D
  LDA #<FMKT+2
  LDY #>FMKT
  JSR FWR
-* drain-until-NPRICE: inner 256 tight + drain
- LDA #2
+* drain-until-NPRICE: inner 256 + drain. LAPN=32
+* (~several market ticks); loop exits early on the
+* first EV_PRICE so this only widens the miss timeout.
+ LDA #32
  STA LAPN
 EVPROO
  LDA #0
