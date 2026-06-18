@@ -204,12 +204,18 @@ existing market screen (`M`) stays for the baseline per-crop market.
 
 ## §3 — Migration
 
-Phase 1 (recipe VALs) changes bank-33 recipe content → re-seed recipes
-(the //e already streams RECTAB on cold-seed; just rebuild the blob/embed).
-Phase 2 adds NPC regions to both banks → a **CVER bump (4 → 5)** that
-cold-seeds both banks fresh (init NPC current-prices to their bases). Per
-the itr4.1 seed model: //e is sole seeder, writes the NPC base prices into
-the live tables during cold-seed (before spawn), single-writer by
+Phase 1 (recipe VALs) changes bank-33 recipe content. The //e streams
+RECTAB into SDRAM only on a **re-seed**, which a warm world (matching CVER,
+SIG present) skips — so WORKTASK would keep reading the OLD VALs from SDRAM
+and the rebalance would never reach existing saves. Phase 1 therefore
+**bumps CVER 4 → 5** to force the re-seed of the rebalanced recipes on a
+warm world. (FARM_TEST is always-cold and re-seeds regardless — CVER only
+matters for the game.)
+
+Phase 2 adds NPC regions to both banks → a further **CVER bump (5 → 6)**
+that cold-seeds both banks fresh (init NPC current-prices to their bases).
+Per the itr4.1 seed model: //e is sole seeder, writes the NPC base prices
+into the live tables during cold-seed (before spawn), single-writer by
 sequencing. Bench world resets once.
 
 ## §4 — Testing

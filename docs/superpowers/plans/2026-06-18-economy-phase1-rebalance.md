@@ -146,20 +146,23 @@ CVERNUM = 5
 ```
 (The farm CVER gate + CHKWK now see a mismatch on a warm world → full cold-seed → SEED33 streams the new RECTAB VALs into SDRAM. FARM_TEST is always-cold and unaffected by CVER — it seeds its own RECTAB regardless.)
 
-- [ ] **Step 7: Verify all four tables agree + RPRICE = 2× VAL**
+- [ ] **Step 7: Verify all four tables agree + RPRICE = 2× VAL (hard gate)**
 
-Run this consistency check:
+Run this — it exits nonzero on any mismatch (don't commit unless it prints `PASS 4-table sync`):
 ```bash
 cd /Users/hambook/Development/project_byte_hamr/software/SDM
-echo "FARM RECTAB VALs (byte5):"; awk '/^RECTAB/{f=1;next} f&&/^ DFB/{n=split($0,a,",");print a[6]+0; c++} c==12{exit}' FARM.S | tr '\n' ' '; echo
-echo "FARM RVALUE:"; sed -n "/^RVALUE/,+1p" FARM.S | grep -oE "[0-9]+" | tr '\n' ' '; echo
-echo "FARMTEST RECTAB VALs:"; awk '/^RECTAB/{f=1;next} f&&/^ DFB/{n=split($0,a,",");print a[6]+0; c++} c==12{exit}' FARMTEST.S | tr '\n' ' '; echo
-echo "FARM RPRICEL:"; sed -n "/^RPRICEL/,+1p" FARM.S | grep -oE "[0-9]+" | tr '\n' ' '; echo
+rectab() { awk '/^RECTAB/{f=1;next} f&&/^ DFB/{split($0,a,",");printf "%d ",a[6]; c++} c==12{exit}' "$1"; }
+vlist()  { sed -n "/^$2/,+1p" "$1" | grep -oE "[0-9]+" | tr '\n' ' '; }
+EXP_V="18 25 32 43 54 64 64 72 112 119 119 127 "
+EXP_P="36 50 64 86 108 128 128 144 224 238 238 254 "
+ok=1
+[ "$(rectab FARM.S)"      = "$EXP_V" ] || { echo "FAIL FARM RECTAB:    $(rectab FARM.S)"; ok=0; }
+[ "$(rectab FARMTEST.S)"  = "$EXP_V" ] || { echo "FAIL FARMTEST RECTAB:$(rectab FARMTEST.S)"; ok=0; }
+[ "$(vlist FARM.S RVALUE)"  = "$EXP_V" ] || { echo "FAIL RVALUE:  $(vlist FARM.S RVALUE)"; ok=0; }
+[ "$(vlist FARM.S RPRICEL)" = "$EXP_P" ] || { echo "FAIL RPRICEL: $(vlist FARM.S RPRICEL)"; ok=0; }
+[ "$ok" = 1 ] && echo "PASS 4-table sync (RECTAB==RVALUE==FARMTEST, RPRICE=2xVAL)" || exit 1
 ```
-Expected:
-- FARM RECTAB VALs == FARM RVALUE == FARMTEST RECTAB VALs == `18 25 32 43 54 64 64 72 112 119 119 127`
-- FARM RPRICEL == `36 50 64 86 108 128 128 144 224 238 238 254` (each = 2× the matching VAL)
-If any row disagrees, fix it before committing.
+Expected: `PASS 4-table sync ...`. Any `FAIL` line names the table that's off — fix it, re-run, before Step 8. (`rectab` reads byte 5 = the VAL column of each DFB row; `vlist` pulls the numbers from the named single-+-continuation-line table.)
 
 - [ ] **Step 8: Build farm + farmtest, confirm clean + embed==bin**
 
