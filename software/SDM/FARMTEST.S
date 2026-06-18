@@ -4,6 +4,9 @@
 * drives mailbox ops, prints PASS/FAIL + tally.
 * Build: make farmtest. Burn disk. BRUN.
 * Replaces slow Verilog farm/workshop tb.
+* TWO-RUN RESET TEST:
+*  Cold: BRUN -> full suite, leaves SIG+world.
+*  Ctrl-Reset. Warm: BRUN -> reset-survival.
  TYP $06
  DSK FARMTEST.bin
  ORG $2000
@@ -37,6 +40,23 @@ POLLAL DS 1
 POLLAH DS 1
 POLLT DS 1
 POLLC DS 2
+* --- DRAIN / EVENT VARS ---
+TAIL DS 1
+EXPSEQ DS 1
+NRIPE DS 1
+NPRICE DS 1
+REVX DS 1
+REVY DS 1
+LAPPED DS 1
+RECLO DS 1
+RSEQ DS 1
+EVTT DS 1
+EVPP0 DS 1
+EVPP1 DS 1
+* --- LAP LOOP VARS ---
+LAPX DS 1
+LAPY DS 1
+LAPN DS 1
 * --- MONITOR ENTRY POINTS ---
 HOME = $FC58
 COUT = $FDED
@@ -525,6 +545,329 @@ PRPOK
  CLC
  RTS
 
+* === SETUP: seed both banks + init drain + spawn ===
+* === TEST FIXTURE - resource map ===
+* plots: (3,3)(19,19) basic plant
+*  (10,10)(11,11)(12,12) ripen/divergence
+*  (0,0) EV_RIPE drain-poll (case 31)
+*  rows 5-8 (0-19) lap test (70 plots)
+* crop0=wheat SEEDS depleted by plants
+*  crop1=carrot (buy) crop3=pumpkin
+*  (SEEDS[3]=254 overflow + divergence)
+* SIG "FM"+CVER seeded -> lap SIG-survival
+*  + reset warm-detect
+* Returns C=0 success, C=1 spawn fail.
+SETUP
+ JSR RSTWAIT
+* seed GBANK zero $0000-$0AFF
+ LDA #GBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #0
+ STA SDM_ADDR
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #0
+ STA SDM_VAL
+ LDA #<$0B00
+ STA CNT
+ LDA #>$0B00
+ STA CNT+1
+SU0LP
+ JSR SDM_WRNEXT
+ LDA CNT
+ SEC
+ SBC #1
+ STA CNT
+ LDA CNT+1
+ SBC #0
+ STA CNT+1
+ ORA CNT
+ BNE SU0LP
+* write SIG "FM" + CVER
+ LDA #SIGF
+ STA SDM_VAL
+ LDA #<FSIG0
+ LDY #>FSIG0
+ JSR FWR
+ LDA #SIGM
+ STA SDM_VAL
+ LDA #<FSIG1
+ LDY #>FSIG1
+ JSR FWR
+ LDA #CVERNUM
+ STA SDM_VAL
+ LDA #<FBCVER
+ LDY #>FBCVER
+ JSR FWR
+* market base prices
+ LDA #8
+ STA SDM_VAL
+ LDA #<FMKT
+ LDY #>FMKT
+ JSR FWR
+ LDA #14
+ STA SDM_VAL
+ LDA #<FMKT+3
+ LDY #>FMKT
+ JSR FWR
+ LDA #24
+ STA SDM_VAL
+ LDA #<FMKT+6
+ LDY #>FMKT
+ JSR FWR
+ LDA #40
+ STA SDM_VAL
+ LDA #<FMKT+9
+ LDY #>FMKT
+ JSR FWR
+* cash
+ LDA #100
+ STA SDM_VAL
+ LDA #<FCASHL
+ LDY #>FCASHL
+ JSR FWR
+ LDA #0
+ STA SDM_VAL
+ LDA #<FCASHH
+ LDY #>FCASHH
+ JSR FWR
+* seeds[0..3] = 5 each
+ LDA #5
+ STA SDM_VAL
+ LDA #<FSEEDS
+ LDY #>FSEEDS
+ JSR FWR
+ LDA #5
+ STA SDM_VAL
+ LDA #<FSEEDS+1
+ LDY #>FSEEDS
+ JSR FWR
+ LDA #5
+ STA SDM_VAL
+ LDA #<FSEEDS+2
+ LDY #>FSEEDS
+ JSR FWR
+ LDA #5
+ STA SDM_VAL
+ LDA #<FSEEDS+3
+ LDY #>FSEEDS
+ JSR FWR
+* seeds[3]=254 overflow guard for TEST 20
+ LDA #254
+ STA SDM_VAL
+ LDA #<FSEEDS+3
+ LDY #>FSEEDS
+ JSR FWR
+* crops[0]=5 (wheat; econ tests sell all 5)
+ LDA #5
+ STA SDM_VAL
+ LDA #<FCROPS
+ LDY #>FCROPS
+ JSR FWR
+* seed WBANK zero $0200-$027F
+ LDA #WBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #<WBFLAG
+ STA SDM_ADDR
+ LDA #>WBFLAG
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #0
+ STA SDM_VAL
+ LDA #128
+ STA CNT
+ LDA #0
+ STA CNT+1
+SU1LP
+ JSR SDM_WRNEXT
+ DEC CNT
+ BNE SU1LP
+* stream RECTAB (96 bytes) -> WBRECIP $0300
+ LDA #WBANK
+ STA SDM_BANK
+ LDA #0
+ STA SDM_BANK+1
+ JSR SDM_SETBANK
+ LDA #<WBRECIP
+ STA SDM_ADDR
+ LDA #>WBRECIP
+ STA SDM_ADDR+1
+ JSR SDM_SETADDR
+ LDA #<RECTAB
+ STA SRC
+ LDA #>RECTAB
+ STA SRC+1
+ LDA #96
+ STA CNT
+ LDA #0
+ STA CNT+1
+SURLP
+ LDY #0
+ LDA (SRC),Y
+ STA SDM_VAL
+ JSR SDM_WRNEXT
+ INC SRC
+ BNE SURDC
+ INC SRC+1
+SURDC
+ LDA CNT
+ SEC
+ SBC #1
+ STA CNT
+ LDA CNT+1
+ SBC #0
+ STA CNT+1
+ ORA CNT
+ BNE SURLP
+* seed SKILL=$FF (lifts craft discovery rate)
+ LDA #$FF
+ STA SDM_VAL
+ LDA #<WBSKILL
+ LDY #>WBSKILL
+ JSR WFWR
+* init ring drain vars
+ LDA #0
+ STA TAIL
+ STA EXPSEQ
+ STA NRIPE
+ STA NPRICE
+ STA LAPPED
+* spawn both tasks
+ JSR LOADF
+ JSR LOADW
+ JSR STAGEF
+ JSR STAGEW
+ JSR RINGF
+ BCS SUSPF
+ JSR RINGW
+ BCS SUSPF
+ CLC
+ RTS
+SUSPF
+ SEC
+ RTS
+
+* === SYNCRING: atomic TAIL=FHEAD, EXPSEQ=FSEQC ===
+* Double-read of FSEQC guards against mid-write.
+SYNCRING
+SYRAGS
+ LDA #<FSEQC
+ LDY #>FSEQC
+ JSR FRD
+ LDA SDM_VAL
+ STA EXPSEQ
+ LDA #<FHEAD
+ LDY #>FHEAD
+ JSR FRD
+ LDA SDM_VAL
+ STA TAIL
+ LDA #<FSEQC
+ LDY #>FSEQC
+ JSR FRD
+ LDA SDM_VAL
+ CMP EXPSEQ
+ BNE SYRAGS
+ RTS
+
+* === DRAINEV: drain ring TAIL..FHEAD ===
+* Counts: NRIPE+=EV_RIPE, NPRICE+=EV_PRICE.
+* First EV_RIPE: REVX/REVY captured.
+* Seq-tear or seq-gap: LAPPED=1, TAIL=FHEAD.
+* DS: TAIL EXPSEQ NRIPE NPRICE REVX REVY
+*     LAPPED RECLO RSEQ EVTT EVPP0 EVPP1
+DRAINEV
+ LDA #<FHEAD
+ LDY #>FHEAD
+ JSR FRD
+ LDA SDM_VAL
+ CMP TAIL
+ BNE DRWORK
+ RTS
+DRWORK
+* RECLO = TAIL*4 (ring page-aligned, no carry)
+ LDA TAIL
+ ASL
+ ASL
+ STA RECLO
+* read SEQ TYPE P0 P1
+ LDA RECLO
+ LDY #>FRING
+ JSR FRD
+ LDA SDM_VAL
+ STA RSEQ
+ LDA RECLO
+ CLC
+ ADC #1
+ LDY #>FRING
+ JSR FRD
+ LDA SDM_VAL
+ STA EVTT
+ LDA RECLO
+ CLC
+ ADC #2
+ LDY #>FRING
+ JSR FRD
+ LDA SDM_VAL
+ STA EVPP0
+ LDA RECLO
+ CLC
+ ADC #3
+ LDY #>FRING
+ JSR FRD
+ LDA SDM_VAL
+ STA EVPP1
+* seqlock re-read: guard mid-write tear
+ LDA RECLO
+ LDY #>FRING
+ JSR FRD
+ LDA SDM_VAL
+ CMP RSEQ
+ BNE DRLAPD
+ LDA RSEQ
+ CMP EXPSEQ
+ BNE DRLAPD
+* classify event type
+ LDA EVTT
+ CMP #EVRIPE
+ BNE DRCKPR
+ INC NRIPE
+ LDA NRIPE
+ CMP #1
+ BNE DRADV
+ LDA EVPP0
+ STA REVX
+ LDA EVPP1
+ STA REVY
+ JMP DRADV
+DRCKPR
+ CMP #EVPRICE
+ BNE DRADV
+ INC NPRICE
+DRADV
+ INC EXPSEQ
+ LDA TAIL
+ CLC
+ ADC #1
+ AND #$3F
+ STA TAIL
+ JMP DRAINEV
+DRLAPD
+* seq mismatch: lap detected, resync TAIL=HEAD
+ LDA #1
+ STA LAPPED
+ LDA #<FHEAD
+ LDY #>FHEAD
+ JSR FRD
+ LDA SDM_VAL
+ STA TAIL
+ RTS
+
 * --- test label strings (0-term hi-ASCII) ---
 LTITLE ASC "FARM_TEST"
  DFB 0
@@ -590,6 +933,21 @@ LLDIVW ASC "PLANT WHEAT12"
  DFB 0
 LLDIV ASC "PUMPKIN SLOWER"
  DFB 0
+* --- new test label strings ---
+LLEV31 ASC "EV_RIPE>=1"
+ DFB 0
+LLEVXY ASC "EV_RIPE XY"
+ DFB 0
+LLEVRP ASC "EV_PRICE>=1"
+ DFB 0
+LLSIGF ASC "LAP SIG-F"
+ DFB 0
+LLSIGM ASC "LAP SIG-M"
+ DFB 0
+LLRSRV ASC "RESET SURVIVAL"
+ DFB 0
+LLWARM ASC "WARM: RESET CHECK"
+ DFB 0
 
 * === RECTAB: recipe table 12x8 ===
 * I0 I1 I2 I3 TIME VALUE RARITY PAD
@@ -617,174 +975,25 @@ MAIN
  STA MSGPTR+1
  JSR PRMSG
  JSR CROUT
-* 2. Wait for coproc cflash restore_done
- JSR RSTWAIT
-* 3. Seed bank 32 (GBANK): zero $0200-$0AFF
- LDA #GBANK
- STA SDM_BANK
- LDA #0
- STA SDM_BANK+1
- JSR SDM_SETBANK
- LDA #<FMFLAG
- STA SDM_ADDR
- LDA #>FMFLAG
- STA SDM_ADDR+1
- JSR SDM_SETADDR
- LDA #0
- STA SDM_VAL
- LDA #<$0900
- STA CNT
- LDA #>$0900
- STA CNT+1
-GB0LP
- JSR SDM_WRNEXT
- LDA CNT
- SEC
- SBC #1
- STA CNT
- LDA CNT+1
- SBC #0
- STA CNT+1
- ORA CNT
- BNE GB0LP
-* market base prices
- LDA #8
- STA SDM_VAL
- LDA #<FMKT
- LDY #>FMKT
- JSR FWR
- LDA #14
- STA SDM_VAL
- LDA #<FMKT+3
- LDY #>FMKT
- JSR FWR
- LDA #24
- STA SDM_VAL
- LDA #<FMKT+6
- LDY #>FMKT
- JSR FWR
- LDA #40
- STA SDM_VAL
- LDA #<FMKT+9
- LDY #>FMKT
- JSR FWR
-* cash
- LDA #100
- STA SDM_VAL
- LDA #<FCASHL
- LDY #>FCASHL
- JSR FWR
- LDA #0
- STA SDM_VAL
- LDA #<FCASHH
- LDY #>FCASHH
- JSR FWR
-* seeds[0..3] = 5 each
- LDA #5
- STA SDM_VAL
- LDA #<FSEEDS
- LDY #>FSEEDS
- JSR FWR
- LDA #5
- STA SDM_VAL
- LDA #<FSEEDS+1
- LDY #>FSEEDS
- JSR FWR
- LDA #5
- STA SDM_VAL
- LDA #<FSEEDS+2
- LDY #>FSEEDS
- JSR FWR
- LDA #5
- STA SDM_VAL
- LDA #<FSEEDS+3
- LDY #>FSEEDS
- JSR FWR
-* seeds[3]=254 (overflow guard for TEST 20)
- LDA #254
- STA SDM_VAL
- LDA #<FSEEDS+3
- LDY #>FSEEDS
- JSR FWR
-* crops[0]=5 (wheat; econ tests sell all 5)
- LDA #5
- STA SDM_VAL
- LDA #<FCROPS
- LDY #>FCROPS
- JSR FWR
-* 4. Seed bank 33 (WBANK): zero $0200-$027F
- LDA #WBANK
- STA SDM_BANK
- LDA #0
- STA SDM_BANK+1
- JSR SDM_SETBANK
- LDA #<WBFLAG
- STA SDM_ADDR
- LDA #>WBFLAG
- STA SDM_ADDR+1
- JSR SDM_SETADDR
- LDA #0
- STA SDM_VAL
- LDA #128
- STA CNT
- LDA #0
- STA CNT+1
-WB0LP
- JSR SDM_WRNEXT
- DEC CNT
- BNE WB0LP
-* stream RECTAB (96 bytes) -> WBRECIP $0300
- LDA #WBANK
- STA SDM_BANK
- LDA #0
- STA SDM_BANK+1
- JSR SDM_SETBANK
- LDA #<WBRECIP
- STA SDM_ADDR
- LDA #>WBRECIP
- STA SDM_ADDR+1
- JSR SDM_SETADDR
- LDA #<RECTAB
- STA SRC
- LDA #>RECTAB
- STA SRC+1
- LDA #96
- STA CNT
- LDA #0
- STA CNT+1
-RCLP
- LDY #0
- LDA (SRC),Y
- STA SDM_VAL
- JSR SDM_WRNEXT
- INC SRC
- BNE RCDC
- INC SRC+1
-RCDC
- LDA CNT
- SEC
- SBC #1
- STA CNT
- LDA CNT+1
- SBC #0
- STA CNT+1
- ORA CNT
- BNE RCLP
-* seed SKILL=$FF: lifts the WKCRAFT discovery-roll
-* threshold to ~167/256; the retry below makes it solid
- LDA #$FF
- STA SDM_VAL
- LDA #<WBSKILL
- LDY #>WBSKILL
- JSR WFWR
-* 5. Spawn both tasks
- JSR LOADF
- JSR LOADW
- JSR STAGEF
- JSR STAGEW
- JSR RINGF
- BCS MN_SPF
- JSR RINGW
+* 2. Warm/cold detect via SIG bytes
+* Cold: SIG != "FM" -> full suite.
+* Warm (ctrl-reset): SIG == "FM" -> reset check.
+ LDA #<FSIG0
+ LDY #>FSIG0
+ JSR FRD
+ LDA SDM_VAL
+ CMP #SIGF
+ BNE MNCOLD
+ LDA #<FSIG1
+ LDY #>FSIG1
+ JSR FRD
+ LDA SDM_VAL
+ CMP #SIGM
+ BNE MNCOLD
+ JMP MNWARM
+MNCOLD
+* 3. Cold: run fixture + test suite
+ JSR SETUP
  BCS MN_SPF
  JMP MN_FRM
 MN_SPF
@@ -1268,13 +1477,234 @@ DIVRDY
  STA MSGPTR
  LDA #>LLDIV
  STA MSGPTR+1
- JMP PRPASS
+ JSR PRPASS
+ JMP C30DN
 DIVBAD
  LDA #<LLDIV
  STA MSGPTR
  LDA #>LLDIV
  STA MSGPTR+1
- JMP PRFAIL
+ JSR PRFAIL
+C30DN
+* === NEW: EV_RIPE / EV_PRICE / LAP+SIG tests ===
+
+* TEST 31-32: EV_RIPE: plant (0,0), drain-poll
+* SYNCRING -> atomic ring position before plant.
+* Drain every 16 FRD-polls to prevent ring lap.
+* LAPN=64 outer-outer: ~35s timeout (covers ripen).
+* NOTE: market-events dominate ring during poll;
+* drain-during-poll keeps TAIL current so DRAINEV
+* can count the single EV_RIPE without lap loss.
+ JSR SYNCRING
+ LDA #0
+ STA NRIPE
+ STA NPRICE
+ STA LAPPED
+* plant (0,0) wheat for EV_RIPE test
+ LDA #OPPLANT
+ STA CMDOP
+ LDA #0
+ STA CMDA0
+ STA CMDA1
+ STA CMDA2
+ JSR SENDCMD
+* drain-during-poll: inner 16 FRD + drain + outer
+ LDA #64
+ STA LAPN
+EVRDOO
+ LDA #0
+ STA TMO+1
+EVRDOU
+ LDA #16
+ STA CNT
+EVRDPL
+ LDA #<FGRID+1
+ LDY #>FGRID+1
+ JSR FRD
+ LDA SDM_VAL
+ AND #$0F
+ CMP #STRIPE
+ BEQ EVRDN
+ DEC CNT
+ BNE EVRDPL
+ JSR DRAINEV
+ INC TMO+1
+ BNE EVRDOU
+ DEC LAPN
+ BNE EVRDOO
+EVRDN
+ JSR DRAINEV
+* TEST 31: EV_RIPE >= 1
+ LDA #1
+ STA TEXP
+ LDA #<LLEV31
+ STA MSGPTR
+ LDA #>LLEV31
+ STA MSGPTR+1
+ LDA NRIPE
+ BEQ EV31FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV31D
+EV31FAL
+ SEC
+ JSR DOTEST
+EV31D
+* TEST 32: EV_RIPE XY valid (REVX <= 19)
+ LDA #1
+ STA TEXP
+ LDA #<LLEVXY
+ STA MSGPTR
+ LDA #>LLEVXY
+ STA MSGPTR+1
+ LDA REVX
+ CMP #20
+ BCS EV32FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV32D
+EV32FAL
+ SEC
+ JSR DOTEST
+EV32D
+
+* TEST 33: EV_PRICE >= 1
+* SYNCRING, poke SUPPLY[0]=20 (TGT[0]=2),
+* drain-until-NPRICE inner-256+drain loop.
+* Market ticks ~every 50ms; NPRICE>0 within ~200ms.
+ LDA #0
+ STA NPRICE
+ STA NRIPE
+ STA LAPPED
+ JSR SYNCRING
+* poke SUPPLY[0]=20 to force price drift
+ LDA #20
+ STA SDM_VAL
+ LDA #<FMKT+2
+ LDY #>FMKT
+ JSR FWR
+* drain-until-NPRICE: inner 256 tight + drain
+ LDA #2
+ STA LAPN
+EVPROO
+ LDA #0
+ STA TMO+1
+EVPRPOL
+ LDA #0
+ STA TMO
+EVPRIN
+ INC TMO
+ BNE EVPRIN
+ JSR DRAINEV
+ LDA NPRICE
+ BNE EVPRGOT
+ INC TMO+1
+ BNE EVPRPOL
+ DEC LAPN
+ BNE EVPROO
+EVPRGOT
+ LDA #1
+ STA TEXP
+ LDA #<LLEVRP
+ STA MSGPTR
+ LDA #>LLEVRP
+ STA MSGPTR+1
+ LDA NPRICE
+ BEQ EV33FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV33D
+EV33FAL
+ SEC
+ JSR DOTEST
+EV33D
+
+* TEST 34-35: LAP SIG-F / LAP SIG-M
+* Plant 70 plots rows 5-8 (FAST: ~40ms total).
+* Then wait-until-LAPPED using market events:
+* ring laps in ~800ms (4 events/50ms tick).
+* SIG "FM" at $0000-$0001 must survive ring
+* activity (PUTEV never writes those bytes).
+* NOTE: spec's 70-ripen wait replaced by market-
+* event-driven lap; same SIG-survival coverage.
+ LDA #$FF
+ STA SDM_VAL
+ LDA #<FSEEDS
+ LDY #>FSEEDS
+ JSR FWR
+* plant 70 plots rows 5-8 cols 0-19
+ LDA #0
+ STA LAPX
+ LDA #5
+ STA LAPY
+ LDA #70
+ STA LAPN
+LAPLNT
+ LDA #OPPLANT
+ STA CMDOP
+ LDA LAPX
+ STA CMDA0
+ LDA LAPY
+ STA CMDA1
+ LDA #0
+ STA CMDA2
+ JSR SENDCMD
+ INC LAPX
+ LDA LAPX
+ CMP #20
+ BCC LAPNXT
+ LDA #0
+ STA LAPX
+ INC LAPY
+LAPNXT
+ DEC LAPN
+ BNE LAPLNT
+* SYNCRING then wait until ring laps
+ JSR SYNCRING
+ LDA #0
+ STA LAPPED
+ LDA #10
+ STA LAPN
+LAPWOO
+ LDA #0
+ STA TMO+1
+LAPWOU
+ LDA #0
+ STA TMO
+LAPWIN2
+ INC TMO
+ BNE LAPWIN2
+ JSR DRAINEV
+ LDA LAPPED
+ BNE LAPDET
+ INC TMO+1
+ BNE LAPWOU
+ DEC LAPN
+ BNE LAPWOO
+LAPDET
+* TEST 34: LAP SIG-F (FSIG0 == $46)
+ LDA #SIGF
+ STA TEXP
+ LDA #<LLSIGF
+ STA MSGPTR
+ LDA #>LLSIGF
+ STA MSGPTR+1
+ LDA #<FSIG0
+ LDY #>FSIG0
+ JSR FRDCHK
+* TEST 35: LAP SIG-M (FSIG1 == $4D)
+ LDA #SIGM
+ STA TEXP
+ LDA #<LLSIGM
+ STA MSGPTR
+ LDA #>LLSIGM
+ STA MSGPTR+1
+ LDA #<FSIG1
+ LDY #>FSIG1
+ JSR FRDCHK
 * 9. Tally
 MN_TAL
  JSR CROUT
@@ -1306,6 +1736,58 @@ MN_TAL
  JSR PRHEX
  JSR CROUT
  RTS
+
+* === MNWARM: warm boot reset-survival check ===
+* Two-run test procedure:
+*  Cold: BRUN -> full suite, SIG "FM" written.
+*  Ctrl-Reset. Warm: BRUN -> this path.
+* Verifies: SDRAM world survived, task respawns,
+*  STATUS responds, plot(3,3) stage byte != 0.
+MNWARM
+ LDA #<LLWARM
+ STA MSGPTR
+ LDA #>LLWARM
+ STA MSGPTR+1
+ JSR PRMSG
+ JSR CROUT
+ JSR RSTWAIT
+* respawn farm task (workshop not needed here)
+ JSR LOADF
+ JSR STAGEF
+ JSR RINGF
+ BCS MNWFAL
+* STATUS probe -> ROK
+ LDA #OPSTAT
+ STA CMDOP
+ LDA #0
+ STA CMDA0
+ STA CMDA1
+ STA CMDA2
+ JSR SENDCMD
+ BCS MNWFAL
+ CMP #ROK
+ BNE MNWFAL
+* survivor: plot (3,3) byte1 (stage) != 0
+* byte1 = FGRID+127 (idx=63, 2-byte plot)
+ LDA #<FGRID+127
+ LDY #>FGRID+127
+ JSR FRD
+ LDA SDM_VAL
+ BEQ MNWFAL
+* PASS
+ LDA #<LLRSRV
+ STA MSGPTR
+ LDA #>LLRSRV
+ STA MSGPTR+1
+ JSR PRPASS
+ JMP MN_TAL
+MNWFAL
+ LDA #<LLRSRV
+ STA MSGPTR
+ LDA #>LLRSRV
+ STA MSGPTR+1
+ JSR PRFAIL
+ JMP MN_TAL
 
 * --- embedded blobs ---
  PUT FARMTASKB
