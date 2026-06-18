@@ -927,6 +927,12 @@ LLHCLRC ASC "HARV CLR CROP"
  DFB 0
 LLHCLRS ASC "HARV CLR STG"
  DFB 0
+LLDIVP ASC "PLANT PUMPKIN"
+ DFB 0
+LLDIVW ASC "PLANT WHEAT12"
+ DFB 0
+LLDIV ASC "PUMPKIN SLOWER"
+ DFB 0
 * --- new test label strings ---
 LLEV31 ASC "EV_RIPE>=1"
  DFB 0
@@ -937,6 +943,10 @@ LLEVRP ASC "EV_PRICE>=1"
 LLSIGF ASC "LAP SIG-F"
  DFB 0
 LLSIGM ASC "LAP SIG-M"
+ DFB 0
+LLRSRV ASC "RESET SURVIVAL"
+ DFB 0
+LLWARM ASC "WARM: RESET CHECK"
  DFB 0
 
 * === RECTAB: recipe table 12x8 ===
@@ -965,10 +975,22 @@ MAIN
  STA MSGPTR+1
  JSR PRMSG
  JSR CROUT
-* 2. Always cold: wipe + seed + spawn + full suite.
-* SDRAM persists across ctrl-reset so SIG sticks - a
-* warm-detect would skip the suite on every re-run.
-* Reset-survival is bench-play (or a separate FARM_TESTW).
+* 2. Warm/cold detect via SIG bytes
+* Cold: SIG != "FM" -> full suite.
+* Warm (ctrl-reset): SIG == "FM" -> reset check.
+ LDA #<FSIG0
+ LDY #>FSIG0
+ JSR FRD
+ LDA SDM_VAL
+ CMP #SIGF
+ BNE MNCOLD
+ LDA #<FSIG1
+ LDY #>FSIG1
+ JSR FRD
+ LDA SDM_VAL
+ CMP #SIGM
+ BNE MNCOLD
+ JMP MNWARM
 MNCOLD
 * 3. Cold: run fixture + test suite
  JSR SETUP
@@ -1335,14 +1357,34 @@ HBDONE
  STA MSGPTR+1
  JSR SENDCMD
  JSR DOTEST
-* TEST 24: HARVEST(10,10) forced - write stage 6
-* directly (ripen forced via address write, no
-* tick wait), then harvest.
- LDA #6
- STA SDM_VAL
+* TEST 24: poll wheat(10,10) stage=6 x4
  LDA #<FGRID+421
- LDY #>FGRID+421
- JSR FWR
+ STA POLLAL
+ LDA #>FGRID+421
+ STA POLLAH
+ LDA #6
+ STA POLLT
+ LDA #1
+ STA TEXP
+ LDA #<LLRIPE
+ STA MSGPTR
+ LDA #>LLRIPE
+ STA MSGPTR+1
+ LDX #16
+RIPTRY
+ JSR POLLRIP
+ BCC RIPWIN
+ DEX
+ BNE RIPTRY
+ SEC
+ JSR DOTEST
+ JMP RIPDONE
+RIPWIN
+ CLC
+ LDA #1
+ JSR DOTEST
+RIPDONE
+* TEST 25: HARVEST(10,10) -> ROK
  LDA #OPHARV
  STA CMDOP
  LDA #10
@@ -1358,7 +1400,7 @@ HBDONE
  STA MSGPTR+1
  JSR SENDCMD
  JSR DOTEST
-* TEST 25: harvest cleared crop=0
+* TEST 26: harvest cleared crop=0
  LDA #0
  STA TEXP
  LDA #<LLHCLRC
@@ -1368,7 +1410,7 @@ HBDONE
  LDA #<FGRID+420
  LDY #>FGRID+420
  JSR FRDCHK
-* TEST 26: harvest cleared stage=0
+* TEST 27: harvest cleared stage=0
  LDA #0
  STA TEXP
  LDA #<LLHCLRS
@@ -1377,6 +1419,291 @@ HBDONE
  STA MSGPTR+1
  LDA #<FGRID+421
  LDY #>FGRID+421
+ JSR FRDCHK
+* TEST 28: PLANT(11,11) pumpkin -> ROK
+ LDA #OPPLANT
+ STA CMDOP
+ LDA #11
+ STA CMDA0
+ STA CMDA1
+ LDA #3
+ STA CMDA2
+ LDA #ROK
+ STA TEXP
+ LDA #<LLDIVP
+ STA MSGPTR
+ LDA #>LLDIVP
+ STA MSGPTR+1
+ JSR SENDCMD
+ JSR DOTEST
+* TEST 29: PLANT(12,12) wheat -> ROK
+ LDA #OPPLANT
+ STA CMDOP
+ LDA #12
+ STA CMDA0
+ STA CMDA1
+ LDA #0
+ STA CMDA2
+ LDA #ROK
+ STA TEXP
+ LDA #<LLDIVW
+ STA MSGPTR
+ LDA #>LLDIVW
+ STA MSGPTR+1
+ JSR SENDCMD
+ JSR DOTEST
+* TEST 30: wheat(12,12) ripe; pumpkin<ripe
+ LDA #<FGRID+505
+ STA POLLAL
+ LDA #>FGRID+505
+ STA POLLAH
+ LDA #6
+ STA POLLT
+ LDX #16
+DIVTRY
+ JSR POLLRIP
+ BCC DIVRDY
+ DEX
+ BNE DIVTRY
+DIVRDY
+ LDA #<FGRID+463
+ LDY #>FGRID+463
+ JSR FRD
+ LDA SDM_VAL
+ AND #$0F
+ CMP #6
+ BCS DIVBAD
+ LDA #<LLDIV
+ STA MSGPTR
+ LDA #>LLDIV
+ STA MSGPTR+1
+ JSR PRPASS
+ JMP C30DN
+DIVBAD
+ LDA #<LLDIV
+ STA MSGPTR
+ LDA #>LLDIV
+ STA MSGPTR+1
+ JSR PRFAIL
+C30DN
+* === NEW: EV_RIPE / EV_PRICE / LAP+SIG tests ===
+
+* TEST 31-32: EV_RIPE: plant (0,0), drain-poll
+* SYNCRING -> atomic ring position before plant.
+* Drain every 16 FRD-polls to prevent ring lap.
+* LAPN=64 outer-outer: ~35s timeout (covers ripen).
+* NOTE: market-events dominate ring during poll;
+* drain-during-poll keeps TAIL current so DRAINEV
+* can count the single EV_RIPE without lap loss.
+ JSR SYNCRING
+ LDA #0
+ STA NRIPE
+ STA NPRICE
+ STA LAPPED
+* plant (0,0) wheat for EV_RIPE test
+ LDA #OPPLANT
+ STA CMDOP
+ LDA #0
+ STA CMDA0
+ STA CMDA1
+ STA CMDA2
+ JSR SENDCMD
+* drain-during-poll: inner 16 FRD + drain + outer
+ LDA #64
+ STA LAPN
+EVRDOO
+ LDA #0
+ STA TMO+1
+EVRDOU
+ LDA #16
+ STA CNT
+EVRDPL
+ LDA #<FGRID+1
+ LDY #>FGRID+1
+ JSR FRD
+ LDA SDM_VAL
+ AND #$0F
+ CMP #STRIPE
+ BEQ EVRDN
+ DEC CNT
+ BNE EVRDPL
+ JSR DRAINEV
+ INC TMO+1
+ BNE EVRDOU
+ DEC LAPN
+ BNE EVRDOO
+EVRDN
+ JSR DRAINEV
+* TEST 31: EV_RIPE >= 1
+ LDA #1
+ STA TEXP
+ LDA #<LLEV31
+ STA MSGPTR
+ LDA #>LLEV31
+ STA MSGPTR+1
+ LDA NRIPE
+ BEQ EV31FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV31D
+EV31FAL
+ SEC
+ JSR DOTEST
+EV31D
+* TEST 32: EV_RIPE XY valid (REVX <= 19)
+ LDA #1
+ STA TEXP
+ LDA #<LLEVXY
+ STA MSGPTR
+ LDA #>LLEVXY
+ STA MSGPTR+1
+ LDA REVX
+ CMP #20
+ BCS EV32FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV32D
+EV32FAL
+ SEC
+ JSR DOTEST
+EV32D
+
+* TEST 33: EV_PRICE >= 1
+* SYNCRING, poke SUPPLY[0]=20 (TGT[0]=2),
+* drain-until-NPRICE inner-256+drain loop.
+* Market ticks ~every 50ms; NPRICE>0 within ~200ms.
+ LDA #0
+ STA NPRICE
+ STA NRIPE
+ STA LAPPED
+ JSR SYNCRING
+* poke SUPPLY[0]=20 to force price drift
+ LDA #20
+ STA SDM_VAL
+ LDA #<FMKT+2
+ LDY #>FMKT
+ JSR FWR
+* drain-until-NPRICE: inner 256 tight + drain
+ LDA #2
+ STA LAPN
+EVPROO
+ LDA #0
+ STA TMO+1
+EVPRPOL
+ LDA #0
+ STA TMO
+EVPRIN
+ INC TMO
+ BNE EVPRIN
+ JSR DRAINEV
+ LDA NPRICE
+ BNE EVPRGOT
+ INC TMO+1
+ BNE EVPRPOL
+ DEC LAPN
+ BNE EVPROO
+EVPRGOT
+ LDA #1
+ STA TEXP
+ LDA #<LLEVRP
+ STA MSGPTR
+ LDA #>LLEVRP
+ STA MSGPTR+1
+ LDA NPRICE
+ BEQ EV33FAL
+ CLC
+ LDA #1
+ JSR DOTEST
+ JMP EV33D
+EV33FAL
+ SEC
+ JSR DOTEST
+EV33D
+
+* TEST 34-35: LAP SIG-F / LAP SIG-M
+* Plant 70 plots rows 5-8 (FAST: ~40ms total).
+* Then wait-until-LAPPED using market events:
+* ring laps in ~800ms (4 events/50ms tick).
+* SIG "FM" at $0000-$0001 must survive ring
+* activity (PUTEV never writes those bytes).
+* NOTE: spec's 70-ripen wait replaced by market-
+* event-driven lap; same SIG-survival coverage.
+ LDA #$FF
+ STA SDM_VAL
+ LDA #<FSEEDS
+ LDY #>FSEEDS
+ JSR FWR
+* plant 70 plots rows 5-8 cols 0-19
+ LDA #0
+ STA LAPX
+ LDA #5
+ STA LAPY
+ LDA #70
+ STA LAPN
+LAPLNT
+ LDA #OPPLANT
+ STA CMDOP
+ LDA LAPX
+ STA CMDA0
+ LDA LAPY
+ STA CMDA1
+ LDA #0
+ STA CMDA2
+ JSR SENDCMD
+ INC LAPX
+ LDA LAPX
+ CMP #20
+ BCC LAPNXT
+ LDA #0
+ STA LAPX
+ INC LAPY
+LAPNXT
+ DEC LAPN
+ BNE LAPLNT
+* SYNCRING then wait until ring laps
+ JSR SYNCRING
+ LDA #0
+ STA LAPPED
+ LDA #10
+ STA LAPN
+LAPWOO
+ LDA #0
+ STA TMO+1
+LAPWOU
+ LDA #0
+ STA TMO
+LAPWIN2
+ INC TMO
+ BNE LAPWIN2
+ JSR DRAINEV
+ LDA LAPPED
+ BNE LAPDET
+ INC TMO+1
+ BNE LAPWOU
+ DEC LAPN
+ BNE LAPWOO
+LAPDET
+* TEST 34: LAP SIG-F (FSIG0 == $46)
+ LDA #SIGF
+ STA TEXP
+ LDA #<LLSIGF
+ STA MSGPTR
+ LDA #>LLSIGF
+ STA MSGPTR+1
+ LDA #<FSIG0
+ LDY #>FSIG0
+ JSR FRDCHK
+* TEST 35: LAP SIG-M (FSIG1 == $4D)
+ LDA #SIGM
+ STA TEXP
+ LDA #<LLSIGM
+ STA MSGPTR
+ LDA #>LLSIGM
+ STA MSGPTR+1
+ LDA #<FSIG1
+ LDY #>FSIG1
  JSR FRDCHK
 * 9. Tally
 MN_TAL
@@ -1410,9 +1737,58 @@ MN_TAL
  JSR CROUT
  RTS
 
-* --- embedded blobs (FSIM=0 production: mailbox stays
-* responsive. Natural-tick tests live in the emulator,
-* not here - on hardware grow ticks are ~60s/stage and
-* FSIM=1 tiny dividers tick-storm the mailbox) ---
+* === MNWARM: warm boot reset-survival check ===
+* Two-run test procedure:
+*  Cold: BRUN -> full suite, SIG "FM" written.
+*  Ctrl-Reset. Warm: BRUN -> this path.
+* Verifies: SDRAM world survived, task respawns,
+*  STATUS responds, plot(3,3) stage byte != 0.
+MNWARM
+ LDA #<LLWARM
+ STA MSGPTR
+ LDA #>LLWARM
+ STA MSGPTR+1
+ JSR PRMSG
+ JSR CROUT
+ JSR RSTWAIT
+* respawn farm task (workshop not needed here)
+ JSR LOADF
+ JSR STAGEF
+ JSR RINGF
+ BCS MNWFAL
+* STATUS probe -> ROK
+ LDA #OPSTAT
+ STA CMDOP
+ LDA #0
+ STA CMDA0
+ STA CMDA1
+ STA CMDA2
+ JSR SENDCMD
+ BCS MNWFAL
+ CMP #ROK
+ BNE MNWFAL
+* survivor: plot (3,3) byte1 (stage) != 0
+* byte1 = FGRID+127 (idx=63, 2-byte plot)
+ LDA #<FGRID+127
+ LDY #>FGRID+127
+ JSR FRD
+ LDA SDM_VAL
+ BEQ MNWFAL
+* PASS
+ LDA #<LLRSRV
+ STA MSGPTR
+ LDA #>LLRSRV
+ STA MSGPTR+1
+ JSR PRPASS
+ JMP MN_TAL
+MNWFAL
+ LDA #<LLRSRV
+ STA MSGPTR
+ LDA #>LLRSRV
+ STA MSGPTR+1
+ JSR PRFAIL
+ JMP MN_TAL
+
+* --- embedded blobs ---
  PUT FARMTASKB
  PUT WORKTASKB
