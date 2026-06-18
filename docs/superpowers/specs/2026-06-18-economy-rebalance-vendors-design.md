@@ -80,10 +80,24 @@ inputs to the fat high-rarity recipes, and Phase 2's rare-crop purchaser
 the craft + trade layers, not raw selling. (Crop-economy tuning is a
 possible later pass, out of scope here.)
 
-**Sync the display table.** `RVALUE` (FARM.S, the //e goods-price display)
-MUST track `RECTAB byte 5` — retune both to the same numbers. (Per the
-build-artifact rule, RVALUE is display-only; RECTAB is the cash authority —
-they must agree.)
+**FOUR tables must stay in sync — retune ALL of them to the new VALs.**
+(Each is active; missing one silently breaks an invariant — assembles
+clean, surfaces only on the bench.)
+1. **`RECTAB` byte 5 (FARM.S)** — the cash authority, streamed to SDRAM on
+   cold-seed. The source of truth.
+2. **`RVALUE` (FARM.S)** — the //e goods-price DISPLAY. Must equal RECTAB
+   byte 5.
+3. **`RPRICEL`/`RPRICEH` (FARM.S)** — recipe LEARN-COST, driving SHOPBUY →
+   OPSPEND debit + the shop "BUY nnn" display. The code's invariant is
+   **price = 2× value** (RPRICE = 2× old VAL today). **Preserve it:** set
+   RPRICEL/H = **2× the new VAL**. New values — all ≤254, so RPRICEH stays
+   all 0: `36,50,64,86,108,128,128,144,224,238,238,254`.
+4. **`RECTAB` in `FARMTEST.S`** — the self-test keeps its OWN duplicate
+   RECTAB and streams it to SDRAM (`$0300`) for the test. Retune this copy
+   too, or §4's WSELL assertions check stale VALs.
+
+(RECTAB = cash authority; RVALUE = display; RPRICE = learn-cost; the
+FARMTEST copy = test seed. All four agree on the new VALs, RPRICE = 2× VAL.)
 
 Phase 1 is small, self-contained, and ships first as the immediate bread
 fix — fully testable in FARM_TEST (assert WSELL returns the new per-unit
@@ -172,7 +186,7 @@ Farm side (FARMTASK, crops/seeds):
 
 Workshop side (WORKTASK, goods):
 - **WOPTSELL** (npc, good, qty) — debit goods, credit cash at NPC's good
-  price (returned per-unit in WRES1 like the existing WOPSELL), drop price.
+  price (returned per-unit in WRES1 like the existing WSELL op), drop price.
 
 Validation mirrors the existing sell/buy (insufficient inventory →
 RERRCROP, insufficient cash → RERRCASH, bad args → RERRBAD). The
