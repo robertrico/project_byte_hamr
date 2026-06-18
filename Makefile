@@ -572,14 +572,8 @@ $(FARMTASKB_S): $(FARMTASK_BIN)
 farm: $(FARMTASKB_S) $(WORKTASKB_S)
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARM.S
 
-FARMTEST_BIN := $(SDM_DIR)/FARMTEST.bin
-
-$(FARMTEST_BIN): $(FARMTASKB_S) $(WORKTASKB_S) \
-    $(SDM_DIR)/FARMTEST.S $(SDM_DIR)/FARMEQU.S \
-    $(SDM_DIR)/SDRAMLIB.S $(SDM_DIR)/CPLIB.S
-	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARMTEST.S
-
-farmtest: $(FARMTEST_BIN)
+# FARM_TEST build is below the WORKTASK rules (it embeds the
+# FSIM=1 fast-divider sim blobs, defined after WORKTASKSIM_BIN).
 
 # WORKTASK sim blob (FSIM=1 tiny dividers) -> worktask.mem for the tb.
 # Committed WORKTASK.S keeps FSIM=0 (hardware dividers); sim variant is
@@ -622,6 +616,28 @@ $(WORKTASKB_S): $(WORKTASK_BIN)
 	{ echo 'WSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'WSKEND'; echo 'WSKLEN = WSKEND-WSKILL'; } > $@
 
 worktask: $(WORKTASKB_S)
+
+# === FARM_TEST: //e self-test (embeds FSIM=1 fast-divider blobs) ===
+# Production blobs (FSIM=0) ripen ~60s/stage - far too slow for a test.
+# FARM_TEST embeds the SIM (FSIM=1, tiny-divider) blobs so grow/market
+# ticks fire in microseconds on hardware. Same logic, fast timing.
+FARMTASKSIMB_S := $(SDM_DIR)/FARMTASKSIMB.S
+WORKTASKSIMB_S := $(SDM_DIR)/WORKTASKSIMB.S
+
+$(FARMTASKSIMB_S): $(FARMTASKSIM_BIN)
+	{ echo 'FSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'FSKEND'; echo 'FSKLEN = FSKEND-FSKILL'; } > $@
+
+$(WORKTASKSIMB_S): $(WORKTASKSIM_BIN)
+	{ echo 'WSKILL'; od -An -tx1 -v $< | awk '{for(i=1;i<=NF;i++)printf " DFB $$%s\n",toupper($$i)}'; echo 'WSKEND'; echo 'WSKLEN = WSKEND-WSKILL'; } > $@
+
+FARMTEST_BIN := $(SDM_DIR)/FARMTEST.bin
+
+$(FARMTEST_BIN): $(FARMTASKSIMB_S) $(WORKTASKSIMB_S) \
+    $(SDM_DIR)/FARMTEST.S $(SDM_DIR)/FARMEQU.S \
+    $(SDM_DIR)/SDRAMLIB.S $(SDM_DIR)/CPLIB.S
+	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) FARMTEST.S
+
+farmtest: $(FARMTEST_BIN)
 
 cpdemo: cmpskill
 	cd $(SDM_DIR) && $(MERLIN32) $(MERLIN_LIB) CPDEMO.S

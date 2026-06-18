@@ -1634,6 +1634,8 @@ MN_TAL
  JSR CROUT
  RTS
 
-* --- embedded blobs ---
- PUT FARMTASKB
- PUT WORKTASKB
+* --- embedded blobs (FSIM=1 fast-divider sim build:
+* grow/market ticks fire in us so tick-tests run fast.
+* Same logic as production - only divider constants differ) ---
+ PUT FARMTASKSIMB
+ PUT WORKTASKSIMB
