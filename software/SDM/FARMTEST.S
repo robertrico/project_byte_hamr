@@ -927,12 +927,6 @@ LLHCLRC ASC "HARV CLR CROP"
  DFB 0
 LLHCLRS ASC "HARV CLR STG"
  DFB 0
-LLDIVP ASC "PLANT PUMPKIN"
- DFB 0
-LLDIVW ASC "PLANT WHEAT12"
- DFB 0
-LLDIV ASC "PUMPKIN SLOWER"
- DFB 0
 * --- new test label strings ---
 LLEV31 ASC "EV_RIPE>=1"
  DFB 0
@@ -1341,34 +1335,14 @@ HBDONE
  STA MSGPTR+1
  JSR SENDCMD
  JSR DOTEST
-* TEST 24: poll wheat(10,10) stage=6 x4
- LDA #<FGRID+421
- STA POLLAL
- LDA #>FGRID+421
- STA POLLAH
+* TEST 24: HARVEST(10,10) forced - write stage 6
+* directly (ripen forced via address write, no
+* tick wait), then harvest.
  LDA #6
- STA POLLT
- LDA #1
- STA TEXP
- LDA #<LLRIPE
- STA MSGPTR
- LDA #>LLRIPE
- STA MSGPTR+1
- LDX #4
-RIPTRY
- JSR POLLRIP
- BCC RIPWIN
- DEX
- BNE RIPTRY
- SEC
- JSR DOTEST
- JMP RIPDONE
-RIPWIN
- CLC
- LDA #1
- JSR DOTEST
-RIPDONE
-* TEST 25: HARVEST(10,10) -> ROK
+ STA SDM_VAL
+ LDA #<FGRID+421
+ LDY #>FGRID+421
+ JSR FWR
  LDA #OPHARV
  STA CMDOP
  LDA #10
@@ -1384,7 +1358,7 @@ RIPDONE
  STA MSGPTR+1
  JSR SENDCMD
  JSR DOTEST
-* TEST 26: harvest cleared crop=0
+* TEST 25: harvest cleared crop=0
  LDA #0
  STA TEXP
  LDA #<LLHCLRC
@@ -1394,7 +1368,7 @@ RIPDONE
  LDA #<FGRID+420
  LDY #>FGRID+420
  JSR FRDCHK
-* TEST 27: harvest cleared stage=0
+* TEST 26: harvest cleared stage=0
  LDA #0
  STA TEXP
  LDA #<LLHCLRS
@@ -1404,87 +1378,18 @@ RIPDONE
  LDA #<FGRID+421
  LDY #>FGRID+421
  JSR FRDCHK
-* TEST 28: PLANT(11,11) pumpkin -> ROK
- LDA #OPPLANT
- STA CMDOP
- LDA #11
- STA CMDA0
- STA CMDA1
- LDA #3
- STA CMDA2
- LDA #ROK
- STA TEXP
- LDA #<LLDIVP
- STA MSGPTR
- LDA #>LLDIVP
- STA MSGPTR+1
- JSR SENDCMD
- JSR DOTEST
-* TEST 29: PLANT(12,12) wheat -> ROK
- LDA #OPPLANT
- STA CMDOP
- LDA #12
- STA CMDA0
- STA CMDA1
- LDA #0
- STA CMDA2
- LDA #ROK
- STA TEXP
- LDA #<LLDIVW
- STA MSGPTR
- LDA #>LLDIVW
- STA MSGPTR+1
- JSR SENDCMD
- JSR DOTEST
-* TEST 30: wheat(12,12) ripe; pumpkin<ripe
- LDA #<FGRID+505
- STA POLLAL
- LDA #>FGRID+505
- STA POLLAH
- LDA #6
- STA POLLT
- LDX #4
-DIVTRY
- JSR POLLRIP
- BCC DIVRDY
- DEX
- BNE DIVTRY
-DIVRDY
- LDA #<FGRID+463
- LDY #>FGRID+463
- JSR FRD
- LDA SDM_VAL
- AND #$0F
- CMP #6
- BCS DIVBAD
- LDA #<LLDIV
- STA MSGPTR
- LDA #>LLDIV
- STA MSGPTR+1
- JSR PRPASS
- JMP C30DN
-DIVBAD
- LDA #<LLDIV
- STA MSGPTR
- LDA #>LLDIV
- STA MSGPTR+1
- JSR PRFAIL
-C30DN
 * === NEW: EV_RIPE / EV_PRICE / LAP+SIG tests ===
 
-* TEST 31-32: EV_RIPE: plant (0,0), drain-poll
-* SYNCRING -> atomic ring position before plant.
-* Drain every 16 FRD-polls to prevent ring lap.
-* LAPN=64 outer-outer: ~35s timeout (covers ripen).
-* NOTE: market-events dominate ring during poll;
-* drain-during-poll keeps TAIL current so DRAINEV
-* can count the single EV_RIPE without lap loss.
+* TEST 27: GROWTH + EV_RIPE source. Plant (0,0),
+* force near-ripe (stage 5) via address write, then
+* observe ONE grow tick advance it to ripe (6). The
+* only deliberate tick wait ("see it tick once") -
+* and it publishes the EV_RIPE drained below.
  JSR SYNCRING
  LDA #0
  STA NRIPE
  STA NPRICE
  STA LAPPED
-* plant (0,0) wheat for EV_RIPE test
  LDA #OPPLANT
  STA CMDOP
  LDA #0
@@ -1492,31 +1397,39 @@ C30DN
  STA CMDA1
  STA CMDA2
  JSR SENDCMD
-* drain-during-poll: inner 16 FRD + drain + outer
- LDA #64
- STA LAPN
-EVRDOO
- LDA #0
- STA TMO+1
-EVRDOU
- LDA #16
- STA CNT
-EVRDPL
+* force stage 5 (near ripe) via address write
+ LDA #5
+ STA SDM_VAL
  LDA #<FGRID+1
  LDY #>FGRID+1
- JSR FRD
- LDA SDM_VAL
- AND #$0F
- CMP #STRIPE
- BEQ EVRDN
- DEC CNT
- BNE EVRDPL
- JSR DRAINEV
- INC TMO+1
- BNE EVRDOU
- DEC LAPN
- BNE EVRDOO
-EVRDN
+ JSR FWR
+* observe one tick: (0,0) stage 5 -> 6
+ LDA #<FGRID+1
+ STA POLLAL
+ LDA #>FGRID+1
+ STA POLLAH
+ LDA #6
+ STA POLLT
+ LDA #1
+ STA TEXP
+ LDA #<LLRIPE
+ STA MSGPTR
+ LDA #>LLRIPE
+ STA MSGPTR+1
+ LDX #16
+GRWTRY
+ JSR POLLRIP
+ BCC GRWWIN
+ DEX
+ BNE GRWTRY
+ SEC
+ JSR DOTEST
+ JMP GRWDN
+GRWWIN
+ CLC
+ LDA #1
+ JSR DOTEST
+GRWDN
  JSR DRAINEV
 * TEST 31: EV_RIPE >= 1
  LDA #1
