@@ -120,16 +120,59 @@ crop-side index is 1 = NPTRDC — both equal 1 by 2A's equates.)
   BUY seed → `SENDCMD` with `OPTBUY`. Args: NPC index, item index, qty.
   Result handling reuses the existing `DOCMD`-style dispatch (timeout →
   message, error code → hex, ROK → confirm + repaint).
+- **Symbol note:** `FARM.S` compiles against `FARMEQU.S`, so the UI reads
+  the goods-NPC tables via the `WB`-prefixed names — `WBNPC` ($0500) /
+  `WBNPCB` ($0600). These are the SAME addresses the workshop blob writes
+  under the bare `WNPC`/`WNPCB` (`WORKEQU.S`); the prefix split is the
+  existing 2A convention, not a new binding. Crop-side is `FNPC`/`FNPCB`.
+
+### Qty entry — generalize QTYPROMPT (resolves the one code-shape risk)
+
+The existing `QTYPROMPT` modal is hardwired to the crop market: its commit
+path `SQGO` sets `CMDA0=QPCROP`, `CMDA1=QVAL`, then `JMP DOCMD` — it cannot
+dispatch a trade op with {NPC, item, qty}. Rather than fork a second modal
+(duplicating ~90 lines of digit-entry paint), generalize it:
+
+- Add a mode flag `QPMODE` (0 = market, the existing path; 1 = trade) and
+  three pending-op staging bytes the drill-in sets before invoking the
+  modal: `TRADEOP` (the op code OPTSELL/OPTBUY/WOPTSELL), `TRADENPC` (NPC
+  index), `TRADEITEM` (crop or recipe index).
+- At the commit point, branch on `QPMODE`: `0` → the existing `SQGO`/`DOCMD`
+  market path (unchanged); `1` → a new `TRADEGO` that loads
+  `TRADEOP`/`TRADENPC`/`TRADEITEM` + the entered qty and dispatches via
+  `SENDCMD` (OPTSELL/OPTBUY) or `WSENDCMD` (WOPTSELL), then handles the
+  result + repaints.
+- The drill-in's RET handler sets `QPMODE=1` + the three staging bytes (op
+  by NPC role/tag, NPC index, item index) and calls the modal. ESC in the
+  modal restores `QPMODE=0` so the market path is never left armed.
+
+This keeps one modal, one digit-entry routine, and isolates the trade
+dispatch in `TRADEGO`.
 
 ## Repaint
 
-- Re-read NPC prices from SDRAM on drill-in entry and after every trade
-  (a trade changes the price).
-- While on a trade screen, an `EVPRICE` event draining in `EVDISP`
-  triggers a price re-read + repaint of the current drill-in (NPC drift
-  piggybacks `DOMKT`'s per-tick `EVPRICE`, so the displayed prices track
-  the live drift). On the picker screen, `EVPRICE` is ignored (no prices
-  shown there).
+Live price tracking is **event-independent** — it does NOT ride the crop
+`EVPRICE` heartbeat. Two reasons that heartbeat is unreliable for this:
+goods-NPC drift (`WNPDFT`, bank 33) emits no `EVPRICE` at all (it drains on
+the separate bank-33 ring), and even crop `EVPRICE` only fires on a price
+*change*, so when crop prices sit at base no event arrives. A pure-goods
+drill-in (BAKER) would then never refresh. Instead:
+
+- **On the drill-in**, a `TRADETICK` routine (called each `MLOOP` pass while
+  `SCREEN` = trade-drill) re-reads the visible NPC's prices directly from
+  SDRAM (`FNPC`/`WBNPC` by the row's bank) and repaints a price cell ONLY
+  when its value changed since the last paint. Bank-agnostic, no event
+  dependency, no flicker (unchanged cells aren't touched). This gives true
+  live drift tracking for both crop and goods NPCs.
+- **On drill-in entry and after every trade**, a full price re-read +
+  repaint (a trade changes a price immediately; entry must show current).
+- **On the picker** (`SCREEN` = trade-picker), no per-tick re-read — it
+  shows only the static NPC roster + cash (cash already updated by the
+  existing HUD path).
+
+`MLOOP` already runs every pass regardless of screen, so hooking
+`TRADETICK` there (guarded by the screen state) follows the existing
+`DRAIN`/`DRAIN2` per-pass idiom.
 
 ## Dropped (YAGNI)
 
