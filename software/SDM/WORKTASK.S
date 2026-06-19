@@ -360,21 +360,19 @@ RECADR
 
 * --- CRAFT TI0-3 sorted asc, $FF pad ---
 WCRAFT
-* free station? prefer 0
+* free station? scan 0..NSLOTS-1
  LDA #0
  STA STI
+WCFREE
  JSR STADR
  LDA STAL
  LDY #>WSTA
  JSR RDB
  BEQ WCSCAN
- LDA #1
- STA STI
- JSR STADR
- LDA STAL
- LDY #>WSTA
- JSR RDB
- BEQ WCSCAN
+ INC STI
+ LDA STI
+ CMP #NSLOTS
+ BNE WCFREE
  LDA #RERRFULL
  JMP WMFIN
 * table scan for combo
