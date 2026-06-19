@@ -672,7 +672,7 @@ SMIX ASC "MIX:"
  DFB 0
 SUNKNOWN ASC "?????"
  DFB 0
-SWKLEG ASC "1-4 MIX RET CRAFT L=LRN I ESC"
+SWKLEG ASC "1-4 MIX RET CRAFT R=LRN I ESC"
  DFB 0
 SCOOKING ASC "COOKING..."
  DFB 0
@@ -3356,7 +3356,7 @@ WKK3
  JSR INVENTER
  JMP MLOOP
 WKK4
- CMP #$CC ; L -> learn recipe
+ CMP #$D2 ; R -> learn recipe
  BNE WKKNONE
  JSR SHOPBUY
  JSR WKDRAW
@@ -3590,19 +3590,24 @@ WKCRAFT_UPD
 
 * === SHOPLOW: A=lowest unowned recipe
 * idx, $FF if all owned ===
+* counter in SHOPIDX (mem) not X - DISCSET
+* clobbers X (returns idx>>3), so X can't be
+* the loop var across the JSR.
 SHOPLOW
- LDX #0
+ LDA #0
+ STA SHOPIDX
 SHLP
- TXA
+ LDA SHOPIDX
  JSR DISCSET
  BEQ SHFOUND
- INX
- CPX #12
+ INC SHOPIDX
+ LDA SHOPIDX
+ CMP #12
  BNE SHLP
  LDA #$FF
  RTS
 SHFOUND
- TXA
+ LDA SHOPIDX
  RTS
 * === DISCSET: A=idx -> Z=1 not owned,
 * Z=0 owned. 64-bit: byte=idx>>3. Uses NTMP. ===
