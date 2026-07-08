@@ -88,3 +88,14 @@ gateware/**/smart_hamr/fuji/fnconfig.ini
 gateware/**/smart_hamr/fuji/
 
 gateware/**/flash_hamr/_FileInformation.txt
+
+# B8008: regenerable Merlin build artifacts (make b8test/b8term/b8run/hello8)
+software/B8008/B8TEST
+software/B8008/B8TERM
+software/B8008/B8RUN
+software/B8008/HELLO8
+software/B8008/_FileInformation.txt
+software/B8008/*_Output.txt
+software/B8008/*_Symbols.txt
+gateware/**/b8008_hamr/b8fw.bin
+gateware/**/b8008_hamr/_FileInformation.txt

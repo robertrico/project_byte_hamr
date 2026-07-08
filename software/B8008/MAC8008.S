@@ -1,0 +1,206 @@
+* MAC8008 - 8008 AS MERLIN MACROS
+* GENERATED - DO NOT EDIT
+* RENAMED: JMP8 ADC8 ORA8 CMP8
+* TWO-OP USES ; LIKE: MOV A;B
+* NO INR A / DCR A (=HLT)
+* REGISTER CODES
+A EQU 0
+B EQU 1
+C EQU 2
+D EQU 3
+E EQU 4
+H EQU 5
+L EQU 6
+M EQU 7
+MOV MAC
+ DFB ]1*8+$C0+]2
+ <<<
+MVI MAC
+ DFB ]1*8+$06
+ DFB ]2
+ <<<
+INR MAC
+ DFB ]1*8
+ <<<
+DCR MAC
+ DFB ]1*8+$01
+ <<<
+ADD MAC
+ DFB ]1+$80
+ <<<
+ADC8 MAC
+ DFB ]1+$88
+ <<<
+SUB MAC
+ DFB ]1+$90
+ <<<
+SBB MAC
+ DFB ]1+$98
+ <<<
+ANA MAC
+ DFB ]1+$A0
+ <<<
+XRA MAC
+ DFB ]1+$A8
+ <<<
+ORA8 MAC
+ DFB ]1+$B0
+ <<<
+CMP8 MAC
+ DFB ]1+$B8
+ <<<
+ADI MAC
+ DFB $04
+ DFB ]1
+ <<<
+ACI MAC
+ DFB $0C
+ DFB ]1
+ <<<
+SUI MAC
+ DFB $14
+ DFB ]1
+ <<<
+SBI MAC
+ DFB $1C
+ DFB ]1
+ <<<
+ANI MAC
+ DFB $24
+ DFB ]1
+ <<<
+XRI MAC
+ DFB $2C
+ DFB ]1
+ <<<
+ORI MAC
+ DFB $34
+ DFB ]1
+ <<<
+CPI MAC
+ DFB $3C
+ DFB ]1
+ <<<
+RLC MAC
+ DFB $02
+ <<<
+RRC MAC
+ DFB $0A
+ <<<
+RAL MAC
+ DFB $12
+ <<<
+RAR MAC
+ DFB $1A
+ <<<
+JMP8 MAC
+ DFB $44
+ DA ]1
+ <<<
+JNC MAC
+ DFB $40
+ DA ]1
+ <<<
+JNZ MAC
+ DFB $48
+ DA ]1
+ <<<
+JP MAC
+ DFB $50
+ DA ]1
+ <<<
+JPO MAC
+ DFB $58
+ DA ]1
+ <<<
+JC MAC
+ DFB $60
+ DA ]1
+ <<<
+JZ MAC
+ DFB $68
+ DA ]1
+ <<<
+JM MAC
+ DFB $70
+ DA ]1
+ <<<
+JPE MAC
+ DFB $78
+ DA ]1
+ <<<
+CALL MAC
+ DFB $46
+ DA ]1
+ <<<
+CNC MAC
+ DFB $42
+ DA ]1
+ <<<
+CNZ MAC
+ DFB $4A
+ DA ]1
+ <<<
+CP MAC
+ DFB $52
+ DA ]1
+ <<<
+CPO MAC
+ DFB $5A
+ DA ]1
+ <<<
+CC MAC
+ DFB $62
+ DA ]1
+ <<<
+CZ MAC
+ DFB $6A
+ DA ]1
+ <<<
+CM MAC
+ DFB $72
+ DA ]1
+ <<<
+CPE MAC
+ DFB $7A
+ DA ]1
+ <<<
+RET MAC
+ DFB $07
+ <<<
+RNC MAC
+ DFB $03
+ <<<
+RNZ MAC
+ DFB $0B
+ <<<
+RP MAC
+ DFB $13
+ <<<
+RPO MAC
+ DFB $1B
+ <<<
+RC MAC
+ DFB $23
+ <<<
+RZ MAC
+ DFB $2B
+ <<<
+RM MAC
+ DFB $33
+ <<<
+RPE MAC
+ DFB $3B
+ <<<
+RST MAC
+ DFB ]1*8+$05
+ <<<
+IN MAC
+ DFB ]1*2+$41
+ <<<
+OUT MAC
+ DFB ]1*2+$41
+ <<<
+HLT MAC
+ DFB $00
+ <<<

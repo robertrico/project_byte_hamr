@@ -206,6 +206,20 @@ ifeq ($(DESIGN),project_obscurus)
 $(JSON): $(OBSCURUS_ROM_MEM) $(OBSCURUS_MON_MEM) $(OBSCURUS_KERNEL_MEM)
 endif
 
+# b8008_hamr slot ROM (256 bytes at $C400): PR#4 terminal firmware.
+# base 0xC000 -> bin at mem[0] (indexed by A[7:0]); fill 0x00 per project rule.
+B8008_SLOT_MEM := $(GATEWARE_DIR)/b8008_hamr/b8008_slot.mem
+B8008_SLOT_SRC := $(GATEWARE_DIR)/b8008_hamr/b8fw.S
+
+$(B8008_SLOT_MEM): $(B8008_SLOT_SRC)
+	@echo "=== Assembling b8008_hamr slot ROM (Merlin32) ==="
+	cd $(GATEWARE_DIR)/b8008_hamr && $(MERLIN32) $(MERLIN_LIB) b8fw.S
+	python3 scripts/rom2mem.py $(GATEWARE_DIR)/b8008_hamr/b8fw.bin $@ 0xC000 256 0x00
+
+ifeq ($(DESIGN),b8008_hamr)
+$(JSON): $(B8008_SLOT_MEM)
+endif
+
 # Flash Hamr menu volume (picker + ProDOS)
 FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
 PICKER_SRC     := $(FLASH_HAMR_DIR)/picker.S
@@ -729,6 +743,15 @@ endif
 list-dsk:
 	@for f in $(ADTPRO_DISKS)/*.dsk; do [ -f "$$f" ] && basename "$$f"; done 2>/dev/null || echo "No .dsk files found"
 
+# Copy any disk image (.po/.dsk/.2mg) into the ADTPro disks folder
+copy-dsk:
+ifndef DSK
+	@echo "Usage: make copy-dsk DSK=path/to/image.po"
+	@exit 1
+endif
+	cp $(DSK) $(ADTPRO_DISKS)/
+	@echo "Copied $(notdir $(DSK)) -> $(ADTPRO_DISKS)/"
+
 # =============================================================================
 # ESP32 Firmware (Yellow Hamr companion)
 # =============================================================================
@@ -868,3 +891,60 @@ clean-reports:
 
 clean-all: clean clean-reports
 	@echo "All build artifacts cleaned"
+
+# ============================================================================
+# B8008 — Intel 8008 coprocessor software (gateware/rev2/b8008_hamr)
+# ============================================================================
+B8008_DIR := software/B8008
+B8008_PO  := $(B8008_DIR)/B8008.po
+
+b8test:
+	cd $(B8008_DIR) && $(MERLIN32) $(MERLIN_LIB) B8TEST.S
+
+b8term:
+	cd $(B8008_DIR) && $(MERLIN32) $(MERLIN_LIB) B8TERM.S
+
+b8run:
+	cd $(B8008_DIR) && $(MERLIN32) $(MERLIN_LIB) B8RUN.S
+
+# HELLO8.S is //e-editable (no TYP/DSK) — assemble via a wrapper, then
+# verify byte-identical to the ASL golden hex (the pre-merge MAC8008 gate).
+hello8:
+	cd $(B8008_DIR) && printf ' TYP $$06\n DSK HELLO8\n' | cat - HELLO8.S > .H8W.S \
+	    && $(MERLIN32) $(MERLIN_LIB) .H8W.S && rm -f .H8W.S
+	scripts/validate_mac8008.sh $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm
+
+# Regenerate MAC8008.S from the b8008 core's isa.json + revalidate 6 samples
+mac8008:
+	python3 scripts/gen_mac8008.py \
+	    $(HOME)/Development/intel-8008-vhdl/docs/isa.json $(B8008_DIR)/MAC8008.S
+	scripts/validate_mac8008.sh \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/rotate_carry_test_as.asm \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/conditional_call_test_as.asm \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/alu_test_as.asm \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/rst_test_as.asm \
+	    $(HOME)/Development/intel-8008-vhdl/test_programs/mov_rr_test_as.asm
+
+# Bootable workflow disk: tools as BIN, 8008 sources as TXT (edit in Merlin 8).
+# HELLO8 BIN aux type 0x2040 = its 8008 ORG — B8RUN reads it for L/G.
+b8008disk: b8test b8term b8run hello8
+	rm -f $(B8008_PO)
+	$(AC_CLASSIC) -pro140 $(B8008_PO) B8008
+	dd if=$(PRODOS_SRC) of=$(B8008_PO) bs=512 count=2 conv=notrunc 2>/dev/null
+	$(AC_CLASSIC) -g $(PRODOS_SRC) PRODOS > /tmp/b8_prodos.sys
+	$(AC_CLASSIC) -p $(B8008_PO) PRODOS SYS 0x2000 < /tmp/b8_prodos.sys
+	$(AC_CLASSIC) -g $(PRODOS_SRC) BASIC.SYSTEM > /tmp/b8_basic.sys
+	$(AC_CLASSIC) -p $(B8008_PO) BASIC.SYSTEM SYS 0x2000 < /tmp/b8_basic.sys
+	$(AC_CLASSIC) -p $(B8008_PO) B8TEST BIN 0x2000 < $(B8008_DIR)/B8TEST
+	$(AC_CLASSIC) -p $(B8008_PO) B8TERM BIN 0x2000 < $(B8008_DIR)/B8TERM
+	$(AC_CLASSIC) -p $(B8008_PO) B8RUN BIN 0x2000 < $(B8008_DIR)/B8RUN
+	$(AC_CLASSIC) -p $(B8008_PO) HELLO8 BIN 0x2040 < $(B8008_DIR)/HELLO8
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n MAC8008.S $(B8008_DIR)/MAC8008.S
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n HELLO8.S $(B8008_DIR)/HELLO8.S
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n B8LIB.S $(B8008_DIR)/B8LIB.S
+	$(AC) list -d $(B8008_PO)
+	@echo "Disk ready: $(B8008_PO) — BRUN B8TEST first, then B8RUN HELLO8."
+	@echo "Send to ADTPro with: make copy-dsk DSK=$(B8008_PO)"
+
+.PHONY: b8test b8term b8run hello8 mac8008 b8008disk
