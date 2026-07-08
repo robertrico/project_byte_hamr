@@ -46,8 +46,12 @@ line in the source flows to the G command untouched.
 
 ## v1 acceptance test (the golden gate)
 
-Ship `test_programs/samples/hello_8008_ram.asm` (true ASL syntax, UNMODIFIED)
-on the disk as TXT + its reference BIN. On the //e: ASM8 assembles it, a small
+Fixtures are ALREADY VENDORED in software/B8008/ and shipped by `b8008disk`:
+- `HELLO8R.ASM` — hello_8008_ram.asm from the core repo, true ASL syntax,
+  byte-for-byte UNMODIFIED (goes to disk as TXT)
+- `HELLO8R.REF` — 457-byte reference BIN derived from the ASL golden hex
+  (base $2040, $00 gap fill; cross-checked == the Merlin-built HELLO8)
+On the //e: ASM8 assembles HELLO8R.ASM, a small
 B8CMP tool (also v1 scope, ~80 lines: MLI-read two files, compare, print PASS
 or first-diff offset) proves the output byte-identical, then B8RUN + G 2040
 runs it. Byte-identical on real hardware = shipped. (Same gate MAC8008 passed

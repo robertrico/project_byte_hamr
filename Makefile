@@ -943,6 +943,8 @@ b8008disk: b8test b8term b8run hello8
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n MAC8008.S $(B8008_DIR)/MAC8008.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n HELLO8.S $(B8008_DIR)/HELLO8.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n B8LIB.S $(B8008_DIR)/B8LIB.S
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n HELLO8R.ASM $(B8008_DIR)/HELLO8R.ASM
+	$(AC_CLASSIC) -p $(B8008_PO) HELLO8R.REF BIN 0x2040 < $(B8008_DIR)/HELLO8R.REF
 	$(AC) list -d $(B8008_PO)
 	@echo "Disk ready: $(B8008_PO) — BRUN B8TEST first, then B8RUN HELLO8."
 	@echo "Send to ADTPro with: make copy-dsk DSK=$(B8008_PO)"
