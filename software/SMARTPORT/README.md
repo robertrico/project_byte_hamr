@@ -29,7 +29,6 @@ SmartPort disk emulator running on a Raspberry Pi Pico W. Receives SmartPort com
 | `fm_rx.pio` | PIO state machine for receiving FM-encoded data |
 | `fm_tx.pio` | PIO state machine for transmitting FM-encoded data |
 | `hw_config.c` | SPI clock and pin setup for SD card |
-| `PLAN.md` | Comprehensive design document (protocol, PIO, wire-level details) |
 
 ## SmartPort Wire Protocol
 

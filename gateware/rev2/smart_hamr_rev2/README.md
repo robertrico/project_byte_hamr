@@ -46,7 +46,7 @@ FujiNet ESP32 debug-print flooding stalling its ISR — not a
 gateware fault. Reduce ESP32 print rate when troubleshooting
 similar errors.
 
-See `PLAN.md` for full scope, `docs/bringup_log.md` for bench results.
+See `docs/bringup_log.md` for bench results.
 
 ## Files
 

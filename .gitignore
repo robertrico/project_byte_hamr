@@ -101,3 +101,8 @@ software/B8008/*_Output.txt
 software/B8008/*_Symbols.txt
 gateware/**/b8008_hamr/b8fw.bin
 gateware/**/b8008_hamr/_FileInformation.txt
+
+# superpowers: local-only agentic working docs — plans, specs,
+# handoffs, build tools. Session fodder stays out of the repo;
+# READMEs + committed HANDOFF_*.md carry durable state.
+docs/superpowers/
