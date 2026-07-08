@@ -48,7 +48,9 @@ line in the source flows to the G command untouched.
 
 Fixtures are ALREADY VENDORED in software/B8008/ and shipped by `b8008disk`:
 - `HELLO8R.ASM` — hello_8008_ram.asm from the core repo, true ASL syntax,
-  byte-for-byte UNMODIFIED (goes to disk as TXT)
+  byte-for-byte UNMODIFIED (goes to disk as TXT). NOTE: lines up to 81 cols —
+  this is ASM8 INPUT, never load it in Merlin (the <=40-col rule is for files
+  Merlin loads; ASM8 must digest real-world-wide ASL sources — that IS the bar)
 - `HELLO8R.REF` — 457-byte reference BIN derived from the ASL golden hex
   (base $2040, $00 gap fill; cross-checked == the Merlin-built HELLO8)
 On the //e: ASM8 assembles HELLO8R.ASM, a small
@@ -66,7 +68,7 @@ page (self-modifying pointers are fine — program runs from RAM).
 | # | Component | Notes |
 |---|-----------|-------|
 | 1 | File I/O | LIFT FROM B8RUN.S: auto-prefix idiom (GET_PREFIX / ON_LINE on $BF30 / SET_PREFIX), GETLN1 $FD6F filename prompt, upcase, MERR error reporting. Output: MLI CREATE (type $06, aux=ORG) + OPEN/WRITE/CLOSE. |
-| 2 | Two-pass driver | STREAMING: no whole-source buffer. Read 512-byte chunks, extract CR-terminated lines into an 80-byte line buffer. Pass 1 = symbols only; re-open + re-read for pass 2 = emit. Removes any source-size limit. |
+| 2 | Two-pass driver | STREAMING: no whole-source buffer. Read 512-byte chunks, extract CR-terminated lines into a 128-byte line buffer (fixture reaches 81 cols; overflow = line-too-long error, never truncate silently). Pass 1 = symbols only; re-open + re-read for pass 2 = emit. Removes any source-size limit. |
 | 3 | Lexer | label / mnemonic / operand / comment split. Fixed grammar, ~150 lines. |
 | 4 | Symbol table | Linear list at $7000+: name (8 chars max) + 16-bit value. Hundreds of symbols max at 8008 scale — no hashing. Two-pass resolves forwards. |
 | 5 | Mnemonic table | GENERATED: scripts/gen_asm8_table.py reads intel-8008-vhdl/docs/isa.json, emits ASM8TAB.S as DFB data (name, class, base opcode). Same source of truth as the CPU and MAC8008. ~80 entries. |
