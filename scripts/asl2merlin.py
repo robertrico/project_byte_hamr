@@ -78,7 +78,7 @@ def main():
         if not s:
             continue
         if s.startswith(';'):
-            # Merlin 8 "Operand too long" on wide lines - clamp comments
+            # Merlin Pro "Operand too long" on wide lines - clamp comments
             out.append(('* ' + s.lstrip('; ').rstrip())[:40])
             continue
         # strip trailing comment (outside quotes)

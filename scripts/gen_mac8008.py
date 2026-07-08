@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate MAC8008.S — Intel 8008 assembly as a Merlin 8 macro library.
+"""Generate MAC8008.S — Intel 8008 assembly as a Merlin Pro macro library.
 
 Emits the 8008new (1975 Intel / 8080-style) mnemonic set as Merlin macros:
 flat byte-emitters only (no internal labels — Merlin restriction), operands
@@ -53,7 +53,7 @@ def main():
 
     L = []
     o = L.append
-    # Merlin 8 chokes on long lines ("Operand too long") -
+    # Merlin Pro chokes on long lines ("Operand too long") -
     # keep ALL emitted lines, comments included, under ~40 cols
     o("* MAC8008 - 8008 AS MERLIN MACROS")
     o("* GENERATED - DO NOT EDIT")

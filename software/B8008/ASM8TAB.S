@@ -1,0 +1,118 @@
+* ASM8TAB - 8008 MNEMONIC TABLE
+* GENERATED - DO NOT EDIT
+* ENTRY: 4CH NAME,CLASS,BASE
+* CLASS 0 NONE 1 R*8 2 R 3 MOV
+* 4 MVI 5 IMM 6 ADDR 7 RST
+* 8 IN 9 OUT
+ASM8TAB
+ ASC 'MOV '
+ DFB 3,$C0
+ ASC 'MVI '
+ DFB 4,$06
+ ASC 'INR '
+ DFB 1,$00
+ ASC 'DCR '
+ DFB 1,$01
+ ASC 'ADD '
+ DFB 2,$80
+ ASC 'ADC '
+ DFB 2,$88
+ ASC 'SUB '
+ DFB 2,$90
+ ASC 'SBB '
+ DFB 2,$98
+ ASC 'ANA '
+ DFB 2,$A0
+ ASC 'XRA '
+ DFB 2,$A8
+ ASC 'ORA '
+ DFB 2,$B0
+ ASC 'CMP '
+ DFB 2,$B8
+ ASC 'ADI '
+ DFB 5,$04
+ ASC 'ACI '
+ DFB 5,$0C
+ ASC 'SUI '
+ DFB 5,$14
+ ASC 'SBI '
+ DFB 5,$1C
+ ASC 'ANI '
+ DFB 5,$24
+ ASC 'XRI '
+ DFB 5,$2C
+ ASC 'ORI '
+ DFB 5,$34
+ ASC 'CPI '
+ DFB 5,$3C
+ ASC 'RLC '
+ DFB 0,$02
+ ASC 'RRC '
+ DFB 0,$0A
+ ASC 'RAL '
+ DFB 0,$12
+ ASC 'RAR '
+ DFB 0,$1A
+ ASC 'JMP '
+ DFB 6,$44
+ ASC 'JNC '
+ DFB 6,$40
+ ASC 'JNZ '
+ DFB 6,$48
+ ASC 'JP  '
+ DFB 6,$50
+ ASC 'JPO '
+ DFB 6,$58
+ ASC 'JC  '
+ DFB 6,$60
+ ASC 'JZ  '
+ DFB 6,$68
+ ASC 'JM  '
+ DFB 6,$70
+ ASC 'JPE '
+ DFB 6,$78
+ ASC 'CALL'
+ DFB 6,$46
+ ASC 'CNC '
+ DFB 6,$42
+ ASC 'CNZ '
+ DFB 6,$4A
+ ASC 'CP  '
+ DFB 6,$52
+ ASC 'CPO '
+ DFB 6,$5A
+ ASC 'CC  '
+ DFB 6,$62
+ ASC 'CZ  '
+ DFB 6,$6A
+ ASC 'CM  '
+ DFB 6,$72
+ ASC 'CPE '
+ DFB 6,$7A
+ ASC 'RET '
+ DFB 0,$07
+ ASC 'RNC '
+ DFB 0,$03
+ ASC 'RNZ '
+ DFB 0,$0B
+ ASC 'RP  '
+ DFB 0,$13
+ ASC 'RPO '
+ DFB 0,$1B
+ ASC 'RC  '
+ DFB 0,$23
+ ASC 'RZ  '
+ DFB 0,$2B
+ ASC 'RM  '
+ DFB 0,$33
+ ASC 'RPE '
+ DFB 0,$3B
+ ASC 'RST '
+ DFB 7,$05
+ ASC 'IN  '
+ DFB 8,$41
+ ASC 'OUT '
+ DFB 9,$41
+ ASC 'HLT '
+ DFB 0,$00
+ DFB 0 ; TABLE END

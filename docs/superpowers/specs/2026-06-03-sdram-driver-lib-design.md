@@ -55,7 +55,7 @@ first poll always reads busy=1; data is never sampled before the access finishes
 A `PUT`-includable source file. **Constraints that make it safe to import
 anywhere:** no `ORG`, no zero page, no reliance on the monitor ROM. All access is
 `$C0Cx` absolute. Uses only `A`/`X`/`Y` internally and its own labeled `DS`
-storage. Syntax kept to the Merlin-8 / Merlin32 common subset (equates, `DS`,
+storage. Syntax kept to the Merlin-Pro / Merlin32 common subset (equates, `DS`,
 plain mnemonics; no Merlin32-only directives) so it assembles on the Apple II too.
 
 **Configuration (the only knob):**
