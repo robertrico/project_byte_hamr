@@ -15,6 +15,7 @@ model are all generated from or checked against it.
 
 | Tool | What it does |
 |------|--------------|
+| `A8` | All-in-one 8008 environment: 80-col fullscreen editor + embedded ASM8 core + card loader. The whole edit → assemble → run loop in one program (see below). |
 | `ASM8` | Native 8008 assembler. True 8008new syntax (`MOV A,B`, `MVI C,41h`) — no dialect. Reads a ProDOS TXT source, writes a BIN object whose **aux type = ORG**. |
 | `B8RUN` | Loader. Reads a BIN object, streams it into 8008 RAM via the monitor's `L` (Intel-hex) command, prints the `G` address. |
 | `B8CMP` | Byte-compare two files via MLI; prints `PASS $nnnn BYTES` or the first-diff offset. The acceptance gate tool. |
@@ -51,12 +52,52 @@ implementation faithfulness is tested on hardware.
 
 ## Workflow on the //e
 
+### A8 (the one-program loop)
+
+`BRUN A8`, then live there:
+
+```
+edit -> ^A (assemble in memory; errors jump the cursor to the line)
+     -> ^G (stream object into 8008 RAM, drop into the monitor TTY)
+     -> inspect (D/H), type G <org>, watch it run
+     -> ^Q back to the editor, buffer untouched
+```
+
+- Row 0 = key legend, rows 1-22 = 80-col window into the buffer,
+  row 23 = status (filename, `*` dirty flag, L=line C=col, `<`/`>`
+  horizontal-scroll hints) and all prompts/messages.
+- Keys: arrows; `^B`/`^E` top/bottom; `^P`/`^V` page up/down;
+  `^S` save, `^L` load, `^N` new; `^D` delete line; `^F` find
+  (case-insensitive, wraps, prompt pre-filled with last pattern);
+  `^O` goto line; `^A` assemble; `^G` load-to-card + TTY;
+  `^Q` quit (confirms if dirty).
+- Buffer: 12KB (~400 lines), CR line ends — the buffer IS the TXT
+  file format, so load/save are single MLI calls and round-trip
+  byte-identical. Lines longer than 79 cols edit via horizontal
+  scroll of the current line (upstream ASL sources hit 81 cols).
+- `^A` needs a filename (refuses with `NO NAME. ^S FIRST`); a clean
+  assemble also writes the BIN object (aux=ORG) to disk, so B8RUN
+  and B8CMP interop keeps working. Errors show `LINE n: MSG` on the
+  status row and jump the cursor.
+- `^G` assembles first if the buffer is dirty or never assembled,
+  then streams and lands at the monitor: `LOADED $len AT $org -
+  G org WHEN READY`. **No auto-G** — inspect with D/H, type G
+  yourself. `^Q` exits the TTY back to the editor.
+
+### Standalone tools (the original loop, still shipped)
+
 1. Write 8008 source in an editor, save as ProDOS TXT (see Merlin
    notes below).
 2. `BRUN ASM8` → filename → object written, `OK $nnnn BYTES AT $oooo`.
 3. `BRUN B8RUN` → object name → streamed into 8008 RAM.
 4. `PR#4` then `G <org>` — run it. (Ctrl-Q exits the terminal;
    objects are run with B8RUN, never `BRUN <8008 bin>`.)
+
+Since the A8 work, ASM8.S is a thin file driver around `ASM8CORE.S`
+(the parser/encoder/symbol library both programs embed). The core's
+only seams are line source, object sink, and error exit; everything
+else moved verbatim. `make asm8` and the Python model gate are
+unchanged.
 
 ### ASM8 v1 syntax
 
@@ -102,6 +143,24 @@ to be embeddable for exactly that future.
 | `$7000-$8BFF` | Symbol table (14 bytes/entry: 12-char name + value) |
 | `$8C00` | MLI IOBUF |
 
+## Memory map (A8 at runtime)
+
+| Range | Use |
+|-------|-----|
+| `$2000-$57FF` | A8 code (14KB budget; ~9.2KB used) |
+| `$5800-$87FF` | TEXT buffer (12KB, CR lines = TXT format) |
+| `$8800-$8FFF` | Symbol table (2KB — 8008 scale is tens of symbols) |
+| `$9000-$93FF` | MLI IOBUF |
+| `$9400-$94FF` | Aux staging page |
+| AUX `$4000-$6FFF` | 8008 object buffer (full 12KB of 8008 RAM) |
+
+BASIC.SYSTEM stays resident (everything <= `$95FF`). Aux access is
+via A8's own RAMRD/RAMWR copy loops — AUXMOVE is banned (it uses
+ProDOS-adjacent ZP `$3C-$43`). Aux *reads* execute from a 20-byte
+stub at `$0130`: the stack page stays main RAM under RAMRD, code at
+`$2000` does not. Self-mod operands are only written with RAMWR off,
+and MLI/COUT are never called with a bank flipped.
+
 No zero page is touched anywhere (self-modifying absolute pointers) —
 ProDOS ZP is a minefield; see `CLAUDE.md` and the SDM lessons.
 
@@ -113,3 +172,14 @@ assembled on the //e byte-identical to HELLO8R.REF, then run via
 B8RUN + `G 2040`), the error paths, and a from-scratch program
 (COUNT8) written in Merlin, assembled with ASM8, and run — the
 founding "write 8008 code on the Apple" goal, in true 8008 syntax.
+
+A8 v1 SHIPPED 2026-07-08 — all bench gates passed on real hardware
+the same day it was built: the golden gate (`^A` of the verbatim
+HELLO8R.ASM inside A8, B8CMP vs HELLO8R.REF = `PASS $01C9 BYTES`),
+the `^G` stream + monitor D-dump + TTY + `^Q` round trip, error
+cursor-jump (`LINE n:` message and the cursor lands on the line),
+and the ship criterion: a from-scratch 8008 program written,
+assembled, loaded, and run without ever leaving A8. Four bench
+bugs were found and fixed the same day (key-dispatch clobber,
+hi-bit TXT line ends, X-clobber digit truncation, save-prompt
+editing) — see git log.

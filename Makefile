@@ -946,9 +946,16 @@ b8cmp:
 	cd $(B8008_DIR) && printf ' TYP $$06\n DSK B8CMP\n' | cat - B8CMP.S > .BCW.S \
 	    && $(MERLIN32) $(MERLIN_LIB) .BCW.S && rm -f .BCW.S
 
+# A8 — all-in-one 8008 environment (editor + ASM8 core + card loader).
+# .A8B.S wrapper name (.A8W.S is taken by the asm8 target).
+# Embeds ASM8CORE+ASM8TAB, so the table gen + model gate run first.
+a8: asm8tab asm8check
+	cd $(B8008_DIR) && printf ' TYP $$06\n DSK A8\n' | cat - A8.S > .A8B.S \
+	    && $(MERLIN32) $(MERLIN_LIB) .A8B.S && rm -f .A8B.S
+
 # Bootable workflow disk: tools as BIN, 8008 sources as TXT (edit in Merlin Pro).
 # HELLO8 BIN aux type 0x2040 = its 8008 ORG — B8RUN reads it for L/G.
-b8008disk: b8test b8term b8run hello8 asm8 b8cmp
+b8008disk: b8test b8term b8run hello8 asm8 b8cmp a8
 	rm -f $(B8008_PO)
 	$(AC_CLASSIC) -pro140 $(B8008_PO) B8008
 	dd if=$(PRODOS_SRC) of=$(B8008_PO) bs=512 count=2 conv=notrunc 2>/dev/null
@@ -961,14 +968,17 @@ b8008disk: b8test b8term b8run hello8 asm8 b8cmp
 	$(AC_CLASSIC) -p $(B8008_PO) B8RUN BIN 0x2000 < $(B8008_DIR)/B8RUN
 	$(AC_CLASSIC) -p $(B8008_PO) ASM8 BIN 0x2000 < $(B8008_DIR)/ASM8
 	$(AC_CLASSIC) -p $(B8008_PO) B8CMP BIN 0x2000 < $(B8008_DIR)/B8CMP
+	$(AC_CLASSIC) -p $(B8008_PO) A8 BIN 0x2000 < $(B8008_DIR)/A8
 	$(AC_CLASSIC) -p $(B8008_PO) HELLO8 BIN 0x2040 < $(B8008_DIR)/HELLO8
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n MAC8008.S $(B8008_DIR)/MAC8008.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n HELLO8.S $(B8008_DIR)/HELLO8.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n B8LIB.S $(B8008_DIR)/B8LIB.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n ASM8.S $(B8008_DIR)/ASM8.S
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n ASM8CORE.S $(B8008_DIR)/ASM8CORE.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n ASM8TAB.S $(B8008_DIR)/ASM8TAB.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n B8CMP.S $(B8008_DIR)/B8CMP.S
 	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n HELLO8R.ASM $(B8008_DIR)/HELLO8R.ASM
+	$(AC) import -d $(B8008_PO) -f --text -t TXT --aux 0 -n A8.S $(B8008_DIR)/A8.S
 	$(AC_CLASSIC) -p $(B8008_PO) HELLO8R.REF BIN 0x2040 < $(B8008_DIR)/HELLO8R.REF
 	$(AC) list -d $(B8008_PO)
 	@echo "Disk ready: $(B8008_PO) — BRUN B8TEST first, then B8RUN HELLO8."
