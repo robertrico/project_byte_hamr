@@ -1,0 +1,743 @@
+* WORKTASK.S - WORKSHOP COPROC TASK
+* SKILL ID 3, ORG $4000, CAP 8192 ($4000-$5FFF).
+* SOLE WRITER OF BANK 33. NOT IN CFLASH SNAPSHOT.
+ TYP $06
+ DSK WORKTASK.bin
+ ORG $4000
+ PUT WORKEQU
+* ABS SCRATCH $A110+ (EVLIB OWNS $A100-05)
+STAC0 = $A110
+STAC1 = $A111
+STAC2 = $A112
+TOP = $A113
+TI0 = $A114
+TI1 = $A115
+TI2 = $A116
+TI3 = $A117
+HBV = $A118
+LFSRL = $A119
+LFSRH = $A11A
+RIDX = $A11F
+RADL = $A120
+RADH = $A121
+MTMP = $A122
+MVAL = $A123
+STI = $A124
+STAL = $A125
+DADL = $A126
+
+ JMP WGAME
+
+WGAME
+ JSR WRELOAD
+ LDA #$7C
+ STA LFSRL
+ LDA #$5A
+ STA LFSRH
+WLOOP
+ JSR WMBOX
+ JSR WNEXTR
+* heartbeat liveness pulse
+ INC HBV
+ LDX HBV
+ LDA #<FHBEAT
+ LDY #>FHBEAT
+ JSR WRB
+* station tick 24-bit down-counter
+ LDA STAC0
+ SEC
+ SBC #1
+ STA STAC0
+ LDA STAC1
+ SBC #0
+ STA STAC1
+ LDA STAC2
+ SBC #0
+ STA STAC2
+ ORA STAC1
+ ORA STAC0
+ BNE WLOOP
+ JSR WTICK
+ JSR WNPDFT
+ JSR WRELOAD
+ JMP WLOOP
+
+WRELOAD
+ LDA #STAD0
+ STA STAC0
+ LDA #STAD1
+ STA STAC1
+ LDA #STAD2
+ STA STAC2
+ RTS
+
+WNEXTR
+ LSR LFSRH
+ ROR LFSRL
+ BCC WNRNO
+ LDA LFSRH
+ EOR #$B4
+ STA LFSRH
+WNRNO
+ RTS
+
+* === WTICK: each cooking station timer-- ===
+WTICK
+ LDA #0
+ STA STI
+WTKLP
+ JSR STADR
+ LDA STAL
+ LDY #>WSTA
+ JSR RDB
+ CMP #1
+ BNE WTKNX
+* timer at STAL+2
+ LDA STAL
+ CLC
+ ADC #2
+ LDY #>WSTA
+ JSR RDB
+ SEC
+ SBC #1
+ TAX
+ PHA
+ LDA STAL
+ CLC
+ ADC #2
+ LDY #>WSTA
+ JSR WRB
+ PLA
+ BNE WTKNX
+* done: GOODS[recipe]++ (clamp), station IDLE,
+* WEVDONE(station, recipe) for the //e notice
+ LDA STAL
+ CLC
+ ADC #1
+ LDY #>WSTA
+ JSR RDB
+ STA EVP1
+ STA MTMP
+* GOODS[recipe]++ clamp 255
+ LDA MTMP
+ CLC
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP #$FF
+ BEQ WTKGFULL
+ CLC
+ ADC #1
+WTKGFULL
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* station -> IDLE
+ LDX #0
+ LDA STAL
+ LDY #>WSTA
+ JSR WRB
+* WEVDONE(station, recipe)
+ LDA #WEVDONE
+ STA EVTYPE
+ LDA STI
+ STA EVP0
+ JSR PUTEV
+WTKNX
+ INC STI
+ LDA STI
+ CMP #NSLOTS
+ BEQ WTKDONE
+ JMP WTKLP
+WTKDONE
+ RTS
+
+* === STADR: STAL = <WSTA + STI*4 ===
+STADR
+ LDA STI
+ ASL
+ ASL
+ CLC
+ ADC #<WSTA
+ STA STAL
+ RTS
+
+* === WMBOX: consume one command ===
+WMBOX
+ LDA #<WFLAG
+ LDY #>WFLAG
+ JSR RDB
+ BNE WMGO
+ RTS
+WMGO
+ LDA #<WOP
+ LDY #>WOP
+ JSR RDB
+ STA TOP
+ LDA #<WI0
+ LDY #>WI0
+ JSR RDB
+ STA TI0
+ LDA #<WI1
+ LDY #>WI1
+ JSR RDB
+ STA TI1
+ LDA #<WI2
+ LDY #>WI2
+ JSR RDB
+ STA TI2
+ LDA #<WI3
+ LDY #>WI3
+ JSR RDB
+ STA TI3
+ LDA TOP
+ BEQ WCSTAT
+ CMP #WOPCRAFT
+ BEQ WJCRAFT
+ CMP #WOPCOLL
+ BEQ WJSELL
+ CMP #WOPMODE
+ BEQ WJMODE
+ CMP #WOPLEARN
+ BEQ WJLEARN
+ CMP #WOPTSELL
+ BEQ WJTSL
+ LDA #RERRBAD
+ JMP WMFIN
+WJCRAFT
+ JMP WCRAFT
+WJSELL
+ JMP WSELL
+WJMODE
+ JMP WCMODE
+WJLEARN
+ JMP WCLEARN
+WJTSL
+ JMP WOPTSLH
+WCSTAT
+ LDA #ROK
+ JMP WMFIN
+
+* === WMFIN: A=result code -> RES, FLAG=0 ===
+WMFIN
+ TAX
+ LDA #<WRES
+ LDY #>WRES
+ JSR WRB
+ LDX #0
+ LDA #<WFLAG
+ LDY #>WFLAG
+ JSR WRB
+ RTS
+
+
+* --- MODE TI0=flags ---
+WCMODE
+ LDX TI0
+ LDA #<WMODE
+ LDY #>WMODE
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+
+* --- LEARN TI0=recipe idx ---
+* idx<NRECIP and DISC bit clear -> set, ROK
+* else RERRBAD (dup / bad idx)
+WCLEARN
+ LDA TI0
+ CMP #NRECIP
+ BCC WLOK
+ LDA #RERRBAD
+ JMP WMFIN
+WLOK
+ LDA TI0
+ STA RIDX
+ JSR WDBIT
+ AND MTMP
+ BEQ WLSET
+ LDA #RERRBAD
+ JMP WMFIN
+WLSET
+ JSR WDBIT
+ ORA MTMP
+ TAX
+* write back: WDISC + (RIDX>>3)
+* (DADL set by WDBIT)
+ LDA DADL
+ LDY #>WDISC
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+
+* --- SELL TI0=product TI1=qty ---
+* goods>=qty -> dec by qty, return PER-UNIT
+* value (BOOM x2) in WRES1. //e does qty*unit
+* + credits cash. WMFIN writes the result code
+* to WRES, so the value MUST go in WRES1 (one
+* byte, <=254); the mailbox has no room for a
+* 16-bit total, hence per-unit + //e multiply.
+WSELL
+ LDA TI0
+ CMP #NRECIP
+ BCS WSLBAD
+ LDA TI1
+ BEQ WSLBAD
+* goods slot addr -> RADL/H
+ LDA TI0
+ CLC
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP TI1
+ BCS WSLOK
+ LDA #RERRCROP
+ JMP WMFIN
+WSLOK
+* goods -= qty
+ SEC
+ SBC TI1
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* per-unit value = RECIPE[product] + 5
+ LDA TI0
+ JSR RECADR
+ LDA RADL
+ CLC
+ ADC #5
+ STA RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ STA MVAL
+* BOOM? per-unit *2 (max 127*2=254, no clamp
+* needed - fits a byte)
+ LDA #<WMODE
+ LDY #>WMODE
+ JSR RDB
+ AND #1
+ BEQ WSLNB
+* BOOM? per-unit *2 (max 127*2=254, no clamp
+* needed - fits a byte). recipe values capped
+* <=127 by recipe-shop layer (else ASL truncates)
+ ASL MVAL
+WSLNB
+* WRES1 = per-unit value; WMFIN sets WRES=ROK
+ LDX MVAL
+ LDA #<WRES1
+ LDY #>WRES1
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+WSLBAD
+ LDA #RERRBAD
+ JMP WMFIN
+
+* === RECADR: A=recipe idx -> RADL/H ===
+RECADR
+ ASL
+ ASL
+ ASL
+ CLC
+ ADC #<WRECIP
+ STA RADL
+ LDA #0
+ ADC #>WRECIP
+ STA RADH
+ RTS
+
+* --- CRAFT TI0-3 sorted asc, $FF pad ---
+WCRAFT
+* free station? scan 0..NSLOTS-1
+ LDA #0
+ STA STI
+WCFREE
+ JSR STADR
+ LDA STAL
+ LDY #>WSTA
+ JSR RDB
+ BEQ WCSCAN
+ INC STI
+ LDA STI
+ CMP #NSLOTS
+ BNE WCFREE
+ LDA #RERRFULL
+ JMP WMFIN
+* table scan for combo
+WCSCAN
+ LDA #0
+ STA RIDX
+WCSLP
+ LDA RIDX
+ JSR RECADR
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP TI0
+ BNE WCSNX
+ JSR RNEXT
+ CMP TI1
+ BNE WCSNX
+ JSR RNEXT
+ CMP TI2
+ BNE WCSNX
+ JSR RNEXT
+ CMP TI3
+ BNE WCSNX
+ JMP WCHIT
+WCSNX
+ INC RIDX
+ LDA RIDX
+ CMP #NRECIP
+ BNE WCSLP
+* no match: skill++ + RUIN
+ JSR WSKUP
+ LDA #RRUIN
+ JMP WMFIN
+
+* helper: next recipe byte (RADL pre-inc)
+RNEXT
+ INC RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ RTS
+
+* === WCHIT: recipe match found in RIDX ===
+WCHIT
+* discovered? DISC bit RIDX
+ JSR WDBIT
+ AND MTMP
+* ~107B fwd branch (127 limit) - do NOT grow
+* the discovery roll below or this overflows
+ BNE WKNOWN
+* roll: LFSR < DISCBASE + SKILL/2 - RARITY*16
+* (BCS guard kept: clamp $FF if sum carries)
+ LDA #<WSKILL
+ LDY #>WSKILL
+ JSR RDB
+ LSR
+ CLC
+ ADC #DISCBASE
+ BCS WCTHI
+ STA MVAL
+* rarity at entry+6
+ LDA RIDX
+ JSR RECADR
+ LDA RADL
+ CLC
+ ADC #6
+ STA RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ ASL
+ ASL
+ ASL
+ ASL
+ STA MTMP
+ LDA MVAL
+ SEC
+ SBC MTMP
+ BCS WCTOK
+ LDA #0
+WCTOK
+ STA MVAL
+ JMP WCROLL
+WCTHI
+ LDA #$FF
+ STA MVAL
+WCROLL
+ LDA LFSRL
+ CMP MVAL
+ BCC WCDISC
+* failed roll: skill++ + RUIN
+ JSR WSKUP
+ LDA #RRUIN
+ JMP WMFIN
+
+WCDISC
+* set DISC bit: WDISC + (RIDX>>3)
+* (DADL from WDBIT)
+ JSR WDBIT
+ ORA MTMP
+ TAX
+ LDA DADL
+ LDY #>WDISC
+ JSR WRB
+ JMP WCGO
+* known recipe: failure roll. failChance =
+* FAILBASE[rarity] - SKILL/2, floor FAILFLOOR.
+* LFSR < failChance = FAIL (OPPOSITE polarity
+* to discovery roll: LFSR < thresh = SUCCESS).
+WKNOWN
+* rarity at entry+6 -> X
+ LDA RIDX
+ JSR RECADR
+ LDA RADL
+ CLC
+ ADC #6
+ STA RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ TAX
+ LDA FAILBASE,X
+ STA MVAL
+* MVAL -= SKILL/2
+ LDA #<WSKILL
+ LDY #>WSKILL
+ JSR RDB
+ LSR
+ STA MTMP
+ LDA MVAL
+ SEC
+ SBC MTMP
+ BCC WKNFL      ; underflow: use floor
+ CMP #FAILFLOOR
+ BCS WKNRL      ; result >= floor: keep it
+* A < FAILFLOOR here -> clamp up to floor
+WKNFL
+ LDA #FAILFLOOR ; clamp to floor
+WKNRL
+ STA MVAL
+ LDA LFSRL
+ CMP MVAL
+* WIN: LFSR >= failChance -> SUCCESS, cook
+ BCS WCGO
+* LOSE: LFSR < failChance -> FAIL
+ JSR WSKUP
+ LDA #RFAIL
+ JMP WMFIN
+WCGO
+* skill++ + start station
+ JSR WSKUP
+* station STATE=1 (cooking)
+ LDX #1
+ LDA STAL
+ LDY #>WSTA
+ JSR WRB
+* station RECIPE = RIDX
+ LDX RIDX
+ LDA STAL
+ CLC
+ ADC #1
+ LDY #>WSTA
+ JSR WRB
+* TIME at entry+4
+ LDA RIDX
+ JSR RECADR
+ LDA RADL
+ CLC
+ ADC #4
+ STA RADL
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ TAX
+ LDA STAL
+ CLC
+ ADC #2
+ LDY #>WSTA
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+
+* === WDBIT: MTMP=bit mask, A=disc byte ===
+* itr4.1 64-bit bitmap: byte = WDISC + (RIDX>>3),
+* mask = 1 << (RIDX AND 7). DADL = byte addr lo.
+* CLOBBERS MTMP (mask), DADL.
+WDBIT
+ LDA RIDX
+ AND #7
+ TAX
+ LDA #1
+WDBSH
+ CPX #0
+ BEQ WDBRD
+ ASL
+ DEX
+ JMP WDBSH
+WDBRD
+ STA MTMP
+* byte addr = WDISC + (RIDX>>3)
+ LDA RIDX
+ LSR
+ LSR
+ LSR
+ CLC
+ ADC #<WDISC
+ STA DADL
+ LDY #>WDISC
+ JSR RDB
+ RTS
+
+
+* === WSKUP: SKILL++ clamp $FF ===
+WSKUP
+ LDA #<WSKILL
+ LDY #>WSKILL
+ JSR RDB
+ CMP #$FF
+ BEQ WSKDN
+ CLC
+ ADC #1
+ TAX
+ LDA #<WSKILL
+ LDY #>WSKILL
+ JSR WRB
+WSKDN
+ RTS
+
+* --- WOPTSELL TI0=npc TI1=good TI2=qty ---
+* sell good to a goods-purchaser; per-unit NPC
+* price -> WRES1 (//e does qty*price + cash);
+* debit goods, drop the NPC price (saturation)
+* inline errors: handler >127B so a shared exit
+* label at end would be out of branch range; each
+* check uses BCC/BNE-skip-over-JMP pattern instead.
+WOPTSLH
+ LDA TI0
+ CMP #NGNPC
+ BCC WTSC0
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC0
+ LDA TI1
+ CMP #NRECIP
+ BCC WTSC1
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC1
+ LDA TI2
+ BNE WTSC2
+ LDA #RERRBAD
+ JMP WMFIN
+WTSC2
+ LDA TI1
+ CLC
+ ADC #<WGOODS
+ STA RADL
+ LDA #0
+ ADC #>WGOODS
+ STA RADH
+ LDA RADL
+ LDY RADH
+ JSR RDB
+ CMP TI2
+ BCS WTSOK
+ LDA #RERRCROP
+ JMP WMFIN
+WTSOK
+ SEC
+ SBC TI2
+ TAX
+ LDA RADL
+ LDY RADH
+ JSR WRB
+* offset = npc*128 + good*2 (NGNPC=2: 0,1 only)
+ LDA #0
+ STA RADL
+ LDA TI0
+ BEQ WTSN0
+ LDA #128
+ STA RADL
+WTSN0
+ LDA TI1
+ ASL
+ CLC
+ ADC RADL
+ STA RADL
+ LDA RADL
+ LDY #>WNPC
+ JSR RDB
+ STA MVAL
+ LDX MVAL
+ LDA #<WRES1
+ LDY #>WRES1
+ JSR WRB
+ LDA MVAL
+ SEC
+ SBC TI2
+ BCC WTSFL
+ CMP #PFLOOR
+ BCS WTSDW
+WTSFL
+ LDA #PFLOOR
+WTSDW
+ TAX
+ LDA RADL
+ LDY #>WNPC
+ JSR WRB
+ LDA #ROK
+ JMP WMFIN
+* === WNPDFT: goods-NPC prices revert to base ===
+* every NPC*good: step current +/-1 toward base
+WNPDFT
+ LDA #0
+ STA STI
+WNNPC
+ LDA #0
+ STA MTMP
+WNGOOD
+* offset = NPC*128 + good*2 (NGNPC=2: 0,1 only)
+ LDA #0
+ STA RADL
+ LDA STI
+ BEQ WNN0
+ LDA #128
+ STA RADL
+WNN0
+ LDA MTMP
+ ASL
+ CLC
+ ADC RADL
+ STA RADL
+ LDA RADL
+ LDY #>WNPC
+ JSR RDB
+ STA MVAL
+ LDA RADL
+ LDY #>WNPCB
+ JSR RDB
+ STA EVP1
+ LDA MVAL
+ CMP EVP1
+ BEQ WNNX
+ BCC WNUP
+ DEC MVAL
+ JMP WNWR
+WNUP
+ INC MVAL
+WNWR
+ LDX MVAL
+ LDA RADL
+ LDY #>WNPC
+ JSR WRB
+WNNX
+ INC MTMP
+ LDA MTMP
+ CMP #NRECIP
+ BNE WNGOOD
+ INC STI
+ LDA STI
+ CMP #NGNPC
+ BNE WNNPC
+ RTS
+* known-craft failChance base per rarity /256
+FAILBASE DFB 48,80,112,144
+
+ PUT PORTLIB
+ PUT EVLIB

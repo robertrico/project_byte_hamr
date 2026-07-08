@@ -19,7 +19,7 @@
 //   $C0C6    W   DATA         write -> SDRAM write at {bank,addr}
 //            R   DATA         read  -> last SDRAM read result
 //   $C0C9    W   CP_LADDR_LO  low byte of coproc BRAM load address
-//   $C0CA    W   CP_LADDR_HI  high 5 bits of 13-bit load address
+//   $C0CA    W   CP_LADDR_HI  high 8 bits of 16-bit load address
 //   $C0CB    W   CP_WDATA     write -> coproc BRAM[laddr], laddr++
 //   $C0CC    R   CP_RDATA     read  -> coproc BRAM[laddr], laddr++
 //   $C0CD    W   CP_COUNT     write -> coproc task count
@@ -287,7 +287,7 @@ module project_obscurus_top (
     wire status_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'h5);
 
     // ---- C1 coproc load port ($C0C9-CD) ----
-    reg  [12:0] m_laddr = 13'd0;
+    reg  [15:0] m_laddr = 16'd0;
     wire        cp_wdata_wr = reg_wr & (wr_addr_latch == 4'hB);   // CP_WDATA write
     wire        cp_rdata_rd = nds_rise & wr_rw_latch & (wr_addr_latch == 4'hC); // CP_RDATA read
     wire        cp_count_wr = reg_wr & (wr_addr_latch == 4'hD);   // CP_COUNT write
@@ -396,8 +396,9 @@ module project_obscurus_top (
     // ---- coproc port-B mux: restore > save > host ----
     // RESTORE writes BRAM ($0200-$0FFF). SAVE only reads (drives save_laddr; lwr=0).
     // HOST drives the $C0C9-CD load path otherwise.
-    wire [12:0] cp_laddr_mux = restore_busy ? rst_laddr
-                             : save_busy    ? save_laddr
+    // cflash engines are 13-bit (cover $0200-$0FFF only); zero-extend to 16-bit.
+    wire [15:0] cp_laddr_mux = restore_busy ? {3'b0, rst_laddr}
+                             : save_busy    ? {3'b0, save_laddr}
                              :                m_laddr;
     wire [7:0]  cp_ldata_mux = restore_busy ? rst_ldata : wr_data_latch;
     wire        cp_lwr_mux   = restore_busy ? rst_lwr
@@ -417,10 +418,10 @@ module project_obscurus_top (
     );
 
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) m_laddr <= 13'd0;
+        if (!rst_n) m_laddr <= 16'd0;
         else begin
             if (reg_wr & (wr_addr_latch == 4'h9)) m_laddr[7:0]  <= wr_data_latch;       // CP_LADDR_LO
-            if (reg_wr & (wr_addr_latch == 4'hA)) m_laddr[12:8] <= wr_data_latch[4:0];  // CP_LADDR_HI
+            if (reg_wr & (wr_addr_latch == 4'hA)) m_laddr[15:8] <= wr_data_latch[7:0];  // CP_LADDR_HI (16-bit)
             if (cp_wdata_wr) m_laddr <= m_laddr + 1'b1;   // write-autoinc
             if (cp_rdata_rd) m_laddr <= m_laddr + 1'b1;   // read-autoinc (separate addr)
         end

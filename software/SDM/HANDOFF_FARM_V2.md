@@ -15,6 +15,87 @@ hardware:
   world preserved — also the blob-upgrade path: soft reset reloads from disk)
 - Memory file `project_farm_event_game.md` has every address/gotcha. Plans in
   `docs/superpowers/plans/2026-06-10-farm-*.md`.
+- **v2 increment 1 SHIPPED (branch farm-v2)**: heartbeat (FHBEAT $0004,
+  task increments every pass; HBV scratch $0E2D, blob now 1312 B) +
+  sell-qty modal prompt (S -> "SELL QTY:" row 20, 2 digits, RETURN sends
+  OPSELL qty, ESC/0 cancels). Spec (READ before increment 2):
+  `docs/superpowers/specs/2026-06-11-farm-v2-sidework-design.md` — 3 review
+  rounds: quiesce invariant, EVLIB scratch param, farm-bank v2 map. Plan:
+  `docs/superpowers/plans/2026-06-11-farm-v2-inc1-sellqty-heartbeat.md`.
+  Next: increment 2 = screen manager + market screen + seeds
+  (FARMTASK_MAXLEN raise to 1792 lands there).
+- **v2 increment 2 SHIPPED (branch farm-v2)**: 4 crops (WHEAT/CARROT/BERRY/
+  PUMPKN, plot byte = crop*8+stage, mask growth off GTICK, per-crop market
+  $0210+c*3, cash $0220, SEEDS[4] $0222, CROPS[4] $0226, EVPRICE=(crop,price),
+  OPPLANT +crop / OPSELL/OPBUY=(crop,qty), FARMTASK_MAXLEN now 1792, blob
+  ~1617 B / 175 B headroom - see inc-4 note) + //e screen manager (M=market
+  text screen, ESC=farm, 1-4 select seed, B/S qty prompts on market; EVPRICE
+  repaints one row, no flash; farm rows: 20 seed+cash, 21 messages, 23
+  legend). COLD START REQUIRED after deploy (bank map moved). Inc-4 budget
+  note: ~37 B reclaimable in FARMTASK via LDY #>page immediates (per-crop
+  addr hi bytes are constant $02 - reviewer-verified). Next: increment 3 =
+  WORKSHOP task (read spec quiesce invariant + EVLIB scratch param +
+  CP_FSTAT restore_done rule FIRST).
+- **v2 increment 3 SHIPPED (branch farm-v2)**: WORKSHOP task — skill 3,
+  bank 33 ("WK"), blob 1240 B ORG $2000 (BRAM GREW 8->16 KB this increment:
+  task space $2000-$3FFF, NOT in cflash snapshots; NEEDS FPGA REFLASH).
+  12 recipes (values <=127), discovery roll < 40+SKILL/2-RARITY*16 (floor 0:
+  FEAST impossible at low skill), 2 stations, WEVDONE=5, RRUIN=$E8.
+  Farm-side OPWDRAW=5/OPADDC=6 (blob 1772/1792). PORTLIB.S + EVLIB scratch
+  param (byte-identical refactor). CVER=1 @ $0005 both banks. //e: W =
+  workshop screen, MIX 1-4 + RETURN craft, D deposit (debit-first), C 1/2
+  collect->OPADDC. QUIESCE rules now load-everything-stage-everything-ring-
+  last in tb AND FARM.S (CP_CALL's stage+ring split — it staged mailboxes
+  through the BRAM port after ring 0). Deploy: FLASH new bitstream, then
+  boot + BRUN (farm world survives if SDRAM kept power; else cold start).
+  Next: increment 4 = world events (FARMTASK has 20 B headroom — use the
+  37 B hi-byte reclaim first).
+- **v2 recipe-shop SHIPPED (branch farm-v2)**: dual-road crafting -
+  market R buys lowest-unowned recipe (price=2xvalue 56..254, debit-first
+  OPSPEND=7 + refund-on-WOPLEARN-reject via OPADDC, guarded SENDCMD);
+  discovery gamble unchanged (RUINED on fail); KNOWN recipes now roll a
+  fail curve (FAILBASE[r]=48/80/112/144 - skill/2, floor 8, RFAIL=$E9
+  'CRAFT FAILED', pinned to WKNOWN branch NOT shared WCGO). New ops
+  WOPLEARN=5 (workshop, double-learn guard). CVER=2 (re-seeds bank 33 on
+  deploy: pantry/skill/recipes reset). PORTLIB extract done inc-3.
+  FARMTASK 1780/1792 (MKADR+4-site addr-hi reclaim + WRCASH helper);
+  **only ~10 B headroom - inc-4 world events MUST find another mechanism
+  (overflow PUT-include, host-side, or 2nd op-handler region) - see
+  RS T3 quality review**. Polish: deposit DEP 1-4? crop-picker (QPCROP,
+  kills hidden-SELCROP bug), farm-screen workshop widget (W:.. station
+  glyphs + done BELL). Deploy: ctrl-reset + BRUN, farm world (bank 32)
+  survives, workshop (bank 33) re-seeds. Next: increment 4 = world events.
+- **v2 goods-inventory SHIPPED (branch farm-v2)**: PANTRY/DEPOSIT DELETED -
+  craft pulls crops straight from the farm (//e prechecks a free STATION
+  via STREC then OPWITHDRAW-debits crops, then OPCRAFT cooks w/o consuming;
+  station-precheck-before-debit avoids RERRFULL crop-loss). Finished crafts
+  AUTO-STORE to GOODS[12] (bank 33 $0228), station auto-idles (no STATE 2,
+  no collect), WEVDONE still fires. WOPCOLL slot ($03) repurposed to SELL:
+  WOPSELL returns PER-UNIT value in WRES1 (WMFIN owns WRES; mailbox too
+  narrow for a 16-bit total), //e multiplies by qty + OPADDC. New paged,
+  SCROLLING INVENTORY screen (key I, PREVSCR return-to-origin, VROWS=16):
+  SEEDS(read-only) / CROPS(sell @ market price OPSELL) / GOODS(sell @ value
+  WOPSELL); TAB pages, up/dn scroll - N-scalable for future multi-plot.
+  CVER=3 SELECTIVE migration (MIGRATE33): preserves DISC/SKILL/recipes,
+  zeros only GOODS + retired pantry. RVALUE table in FARM.S is goods-price
+  DISPLAY only (MUST track RECTAB+5 = the cash authority). Deploy:
+  ctrl-reset + BRUN. **//e FARM.bin now ~12.56 KB of ~13.8 KB ceiling
+  (~1.3 KB headroom) - inc-4 //e additions risk overflow; consider an
+  EXEC/screen split before large new //e features.** Minor deferred:
+  INVDRAW calls INVCLRBOT then CLRROW20 (row 20 cleared twice, harmless);
+  inventory scroll machinery unexercised until a page exceeds 16 items.
+  Tb migrated to no-pantry model (dropped deposit/collect/pantry asserts).
+  Next: increment 4 = world events.
+- **Full-suite gate bug found+fixed (was pre-existing on main)**: after any
+  reset, cflash boot-restore owns coproc BRAM port B until restore_done —
+  host loads during it are silently dropped, and a valid flash snapshot
+  replays stale TABLE/code over $0200-$0FFF. The suite's cflash phases left
+  such a snapshot; the farm reset phase then spawned a stale $0340 stub
+  instead of FARMTASK ("FLAG never cleared", farmonly green / full suite
+  red). HOST RULE: poll CP_FSTAT ($C0CF) bit 1 (restore_done) after reset
+  before any BRAM load. tb farm_reset now waits; FARM.S quiesce reload
+  (increment 3) must do the same. //e exposure today ~nil (ProDOS reboot
+  seconds >> restore ms — why bench never saw it).
 
 ## Working facts (cost of ignoring these: hours)
 

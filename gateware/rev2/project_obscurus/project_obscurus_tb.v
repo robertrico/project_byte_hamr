@@ -86,38 +86,6 @@ module project_obscurus_tb;
     reg       c4ok;
     reg [7:0] r0, r1;
 
-    // ---- Conway's Multiverse TICK1 oracle state ----
-    // LIFE8 skill image (built from software/SDM/LIFE8.S -> life8.mem, copied to
-    // the sim build dir by the Makefile). LSIM=1 sim build => GROWS=8 rows.
-    localparam integer LIFE8LEN = 689;
-    reg [7:0] life8img [0:1023];
-    initial $readmemh("life8.mem", life8img);
-    // LIFE8GR = LIFE8 + 4 GR alters (8 cells/byte, ROWBYTES=5, GWIDTH=40,
-    // MUL5 stride). LSIM=1 sim build => GROWS=8 rows. Loaded over $0300 AFTER
-    // the DHGR oracle (both ORG $0300, can't co-reside) -- BRAM survives a sim
-    // reset, so a plain load-port overwrite re-points the skill.
-    localparam integer LIFE8GRLEN = 680;
-    reg [7:0] life8grimg [0:1023];
-    initial $readmemh("life8gr.mem", life8grimg);
-    // ---- FARM game protocol (skill 2 @ $0600, GBANK=32) ----
-    // Blob length is MEASURED from the readmemh image, not hardcoded:
-    // $readmemh leaves unwritten entries X, so scan for the last defined
-    // byte. A stale constant here once truncated PUTEV off the blob tail
-    // (ring silently dead) - never hardcode this again.
-    reg [7:0] farmimg [0:2047];
-    initial $readmemh("farmtask.mem", farmimg);
-    integer FARMLEN;
-    initial begin
-        #1; FARMLEN = 0;
-        begin : flen_scan
-            integer fi;
-            for (fi = 0; fi < 2048; fi = fi + 1)
-                if (farmimg[fi] !== 8'hxx) FARMLEN = fi + 1;
-        end
-    end
-    reg [7:0] rb [0:639];      // read-back of one 8x80 universe buffer
-    integer   bufsum, mvi;
-
     task wr_reg(input [3:0] r, input [7:0] d);
         begin
             apple_addr = {8'hC0, 4'hC, r}; R_nW=1'b0;
@@ -159,15 +127,30 @@ module project_obscurus_tb;
     endtask
 
     reg [7:0] krn_before, tbl_before;
+    reg [7:0] hibram_z0, hibram_r;   // itr4.1 high-BRAM snapshot + readback
     task load_byte(input [7:0] d); begin wr_reg(4'hB, d); end endtask  // CP_WDATA (auto-inc)
-    task cp_read(input [12:0] a, output [7:0] d); begin
+    task cp_read(input [13:0] a, output [7:0] d); begin
         // CP_RDATA reads auto-increment m_laddr (top.v line 304) AND the coproc's
         // port-B ldata_out continuously tracks bram[m_laddr] (registered, 1 cyc).
         // So once CP_LADDR is set, ldata_out already = bram[a]; the FIRST read
         // returns it. A second read would over-advance (returns bram[a+1]).
         // Re-arm the address before reading so the latch reflects exactly `a`.
-        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {3'b0, a[12:8]});
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, {2'b0, a[13:8]});
         rd_reg(4'hC, d);    // ldata_out already settled to bram[a]
+    end endtask
+
+    // ---- itr4.1: 16-bit load port helpers (48 KB high-BRAM range) ----
+    // cp_read only accepts 14-bit (covers $0000-$3FFF). These extend to the full
+    // 16-bit m_laddr so the $4000-$BFFF region added by itr4 can be exercised.
+    task cp_load_byte16(input [15:0] a, input [7:0] d); begin
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, a[15:8]);
+        load_byte(d);   // CP_WDATA at the new address, then laddr++
+    end endtask
+    task cp_read16(input [15:0] a, output [7:0] d); begin
+        // same re-arm-before-read semantics as cp_read - do NOT rd_reg twice
+        // (port-B ldata_out is registered; a 2nd read advances to bram[a+1])
+        wr_reg(4'h9, a[7:0]); wr_reg(4'hA, a[15:8]);
+        rd_reg(4'hC, d);  // ldata_out settled to bram[a] after addr-set latency
     end endtask
 
     // ---- C4 async-dispatch helpers ----
@@ -203,219 +186,6 @@ module project_obscurus_tb;
         end
     endtask
 
-    // ---- Conway's Multiverse TICK1 helpers ----
-    // A universe lives in SDRAM bank UBASE(=16); buffer A @ $0000, B @ $4000.
-    // Rows are contiguous: row r byte b is at base + r*80 + b => idx r*80+b spans
-    // 0..639 across the 8x80 (sim) grid, so the buffer is 640 sequential bytes.
-    // Both host read- AND write-ports auto-increment m_addr on op completion
-    // (top.v line 467), so we walk the whole buffer with one set_addr + a loop.
-    task mv_seed;     // zero buffer A, then stamp the seed pattern bytes
-        begin
-            for (mvi=0; mvi<640; mvi=mvi+1) begin
-                case (mvi)
-                    95:  sdram_write(10'd16, 16'h0000+95,  8'h01); // glider  r1 b15
-                    175: sdram_write(10'd16, 16'h0000+175, 8'h02); // glider  r2 b15
-                    240: sdram_write(10'd16, 16'h0000+240, 8'h40); // blinkerB r3 b0
-                    241: sdram_write(10'd16, 16'h0000+241, 8'h03); // blinkerB r3 b1
-                    242: sdram_write(10'd16, 16'h0000+242, 8'h40); // blinkerA r3 b2
-                    243: sdram_write(10'd16, 16'h0000+243, 8'h03); // blinkerA r3 b3
-                    254: sdram_write(10'd16, 16'h0000+254, 8'h40); // glider  r3 b14
-                    255: sdram_write(10'd16, 16'h0000+255, 8'h03); // glider  r3 b15
-                    480: sdram_write(10'd16, 16'h0000+480, 8'h03); // torus   r6 b0
-                    559: sdram_write(10'd16, 16'h0000+559, 8'h40); // torus   r6 b79
-                    default: sdram_write(10'd16, 16'h0000+mvi, 8'h00);
-                endcase
-            end
-        end
-    endtask
-    task mv_readback(input [15:0] base);  // slurp 640 bytes -> rb[], sum16 -> bufsum
-        begin
-            set_bank(10'd16); set_addr(base);
-            bufsum = 0;
-            for (mvi=0; mvi<640; mvi=mvi+1) begin
-                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
-                rb[mvi] = tmp; bufsum = bufsum + tmp;
-            end
-        end
-    endtask
-    task mv_chk(input integer i, input [7:0] v);  // assert one packed byte
-        begin
-            if (rb[i] !== v) begin errors=errors+1;
-                $display("FAIL multiverse TICK1 byte[%0d]=%02X want %02X",i,rb[i],v);
-            end
-        end
-    endtask
-    task mv_sum(input integer want);  // assert full-buffer sum16 (catches strays)
-        begin
-            if ((bufsum & 32'hFFFF) !== want) begin errors=errors+1;
-                $display("FAIL multiverse TICK1 sum16=%04X want %04X",bufsum & 32'hFFFF, want);
-            end
-        end
-    endtask
-    task mv_tick;    // ring slot0 SKILL 1 (LIFE1 = one univ-0 gen + DONE)
-        begin
-            stage_mbox(2'd0, 8'h01, 8'h00, 8'h00);
-            ring(2'd0);
-            wait_done(4'b0001, 40000000, c4ok);
-            if (!c4ok) begin errors=errors+1;
-                $display("FAIL multiverse TICK1 skill never reached DONE");
-            end
-            collect(2'd0);
-        end
-    endtask
-
-    // ---- multiverse ROUND-ROBIN helpers (forever-loop proof) ----
-    // Seed `bank` buffer A (640 bytes) with a clean horizontal blinker at
-    // row3 col7..9 (byte1 bits0..2 => idx 241 = $07), interior of an 8x80 grid.
-    task mv_seed_blinker(input [9:0] bank);
-        begin
-            for (mvi=0; mvi<640; mvi=mvi+1)
-                if (mvi==241) sdram_write(bank, 16'h0000+241, 8'h07);
-                else          sdram_write(bank, 16'h0000+mvi, 8'h00);
-        end
-    endtask
-    task mv_readback_bank(input [9:0] bank, input [15:0] base);
-        begin
-            set_bank(bank); set_addr(base);
-            bufsum = 0;
-            for (mvi=0; mvi<640; mvi=mvi+1) begin
-                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
-                rb[mvi] = tmp; bufsum = bufsum + tmp;
-            end
-        end
-    endtask
-    // After halt, assert univ in `bank` evolved its blinker by `front`/`gen`.
-    // The FRONT-selected buffer always holds the latest fully-computed gen:
-    //   front=1 (odd ticks) -> vertical blinker (col8 = byte1 bit1 = $02 at
-    //   rows2,3,4 => idx 161/241/321);  front=0 (even) -> horizontal seed ($07
-    //   at idx 241). Either way GEN>=1 already proved the universe was ticked.
-    task mv_chk_blinker(input [9:0] bank, input [7:0] front, input integer u);
-        begin
-            mv_readback_bank(bank, front ? 16'h4000 : 16'h0000);
-            if (front) begin                    // vertical (evolved)
-                mv_chk(161,8'h02); mv_chk(241,8'h02); mv_chk(321,8'h02);
-                mv_sum(16'h0006);
-            end else begin                       // horizontal (seed, even gen)
-                mv_chk(241,8'h07);
-                mv_sum(16'h0007);
-            end
-        end
-    endtask
-
-    // ---- Conway's Multiverse GR helpers (8 cells/byte, ROWBYTES=5) ----
-    // GR sim universe: GROWS=8 rows x 5 bytes = 40 contiguous bytes; cell
-    // (row,col) is at idx row*5 + col/8, bit col%8 (bit0=leftmost column).
-    // Both buffers live in bank UBASE(=16): A @ $0000, B @ $0400. Readbacks
-    // reuse rb[]/bufsum so mv_chk()/mv_sum() apply unchanged.
-    task mvgr_clear;     // zero buffer A (40 bytes) in bank 16
-        begin
-            for (mvi=0; mvi<40; mvi=mvi+1)
-                sdram_write(10'd16, 16'h0000+mvi, 8'h00);
-        end
-    endtask
-    task mvgr_readback(input [15:0] base);  // slurp 40 bytes -> rb[], sum16
-        begin
-            set_bank(10'd16); set_addr(base);
-            bufsum = 0;
-            for (mvi=0; mvi<40; mvi=mvi+1) begin
-                wr_reg(4'h4, 8'h00); poll_busy; rd_reg(4'h6, tmp);
-                rb[mvi] = tmp; bufsum = bufsum + tmp;
-            end
-        end
-    endtask
-
-    // ---- FARM protocol helpers (skill 2, GBANK=32) ----
-    // load FARMTASK blob -> coproc BRAM $0600, table[2]=$0600
-    task farm_load;
-        integer i;
-    begin
-        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h06);      // CP_LADDR = $0600
-        for (i=0; i<FARMLEN; i=i+1) load_byte(farmimg[i]);
-        wr_reg(4'h9, 8'h04); wr_reg(4'hA, 8'h02);      // table[2] @ $0204
-        load_byte(8'h00); load_byte(8'h06);            // vector = $0600
-    end endtask
-
-    // init GBANK cold-start state. SIG written here too (tb rig writes it
-    // up front; FARM.S cold start writes SIG last - the liveness ordering
-    // matters on hardware, not in this single-threaded rig). SIG also serves
-    // as the lap-test regression net: ring page-wrap bugs land on $0000-$0003.
-    task farm_init;
-        integer i;
-    begin
-        sdram_write(10'd32, 16'h0000, 8'h46);          // SIG 'F'
-        sdram_write(10'd32, 16'h0001, 8'h4D);          // SIG 'M'
-        sdram_write(10'd32, 16'h0002, 8'h00);          // SEQCTR
-        sdram_write(10'd32, 16'h0003, 8'h00);          // HEAD
-        sdram_write(10'd32, 16'h0200, 8'h00);          // MFLAG
-        sdram_write(10'd32, 16'h0210, 8'd10);          // PRICEL=BASE
-        sdram_write(10'd32, 16'h0211, 8'h00);
-        sdram_write(10'd32, 16'h0212, 8'h00);          // SUPPLY
-        sdram_write(10'd32, 16'h0213, 8'd100);         // CASHL
-        sdram_write(10'd32, 16'h0214, 8'h00);
-        sdram_write(10'd32, 16'h0215, 8'd5);           // SEEDS
-        sdram_write(10'd32, 16'h0216, 8'h00);          // CROPS
-        for (i=0; i<400; i=i+1) sdram_write(10'd32, 16'h0300+i, 8'h00);
-    end endtask
-
-    // send one command, poll FLAG clear, return RESULT. ok=0 on timeout.
-    task farm_cmd(input [7:0] op, input [7:0] a0, input [7:0] a1,
-                  input [7:0] a2, output [7:0] res, output ok);
-        integer t; reg [7:0] f;
-    begin
-        sdram_write(10'd32, 16'h0201, op);
-        sdram_write(10'd32, 16'h0202, a0);
-        sdram_write(10'd32, 16'h0203, a1);
-        sdram_write(10'd32, 16'h0204, a2);
-        sdram_write(10'd32, 16'h0200, 8'h01);          // FLAG last
-        ok = 0; res = 8'hFF;
-        for (t=0; t<5000 && !ok; t=t+1) begin
-            sdram_read(10'd32, 16'h0200, f);
-            if (f == 8'h00) ok = 1;
-        end
-        if (ok) sdram_read(10'd32, 16'h0205, res);
-        else $display("farm_cmd timeout op=%02X (FLAG never cleared)", op);
-    end endtask
-
-    // reader-rule drain: from farm_tail/farm_seq, dispatch into ev arrays
-    reg [7:0] farm_tail = 0, farm_seq = 0;
-    integer farm_nev = 0;
-    reg [7:0] ev_type [0:255]; reg [7:0] ev_p0 [0:255]; reg [7:0] ev_p1 [0:255];
-    integer farm_resyncs = 0;
-    task farm_drain;
-        reg [7:0] h, s, s2, rs, rt, rp0, rp1; integer guard; integer rsg;
-    begin
-        sdram_read(10'd32, 16'h0003, h);
-        guard = 0;
-        while (farm_tail !== h && guard < 128) begin
-            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 0, rs);
-            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 1, rt);
-            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 2, rp0);
-            sdram_read(10'd32, 16'h0100 + farm_tail*4 + 3, rp1);
-            if (rs !== farm_seq) begin
-                // overrun -> resync: stable (SEQCTR,HEAD) pair
-                farm_resyncs = farm_resyncs + 1;
-                s2 = 8'hFF; rsg = 0;
-                while (s2 !== s && rsg < 16) begin
-                    sdram_read(10'd32, 16'h0002, s);
-                    sdram_read(10'd32, 16'h0003, h);
-                    sdram_read(10'd32, 16'h0002, s2);
-                    rsg = rsg + 1;
-                end
-                if (s2 !== s) begin
-                    errors = errors + 1;
-                    $display("FAIL farm_drain resync: no stable (SEQCTR,HEAD) pair in 16 tries");
-                end
-                farm_tail = h; farm_seq = s;
-            end else begin
-                ev_type[farm_nev]=rt; ev_p0[farm_nev]=rp0; ev_p1[farm_nev]=rp1;
-                farm_nev = farm_nev + 1;
-                farm_tail = (farm_tail + 1) & 8'h3F;
-                farm_seq = farm_seq + 1;
-            end
-            guard = guard + 1;
-        end
-    end endtask
-
     initial begin
         // VCD only on demand (+vcd): full-suite dumps reach ~20 GB and
         // dominate wall time. make sim PLUSARGS=+vcd when waves are needed.
@@ -425,13 +195,6 @@ module project_obscurus_tb;
         nRES_READ=1'b0; #1000; nRES_READ=1'b1;
         wait (dut.ready);
         $display("[%0t] ready", $time);
-
-        // +farmonly skips every pre-farm phase (kernel boots on reset; the
-        // farm section is self-contained: farm_init/farm_load own all state,
-        // slot 0 is free on a fresh boot). Full suite remains the default
-        // and the pre-merge gate.
-        if ($test$plusargs("farmonly")) $display("--- farmonly: skipping pre-farm phases ---");
-        else begin : prefarm
 
         // 1. W-then-R round trip
         sdram_write(10'd0, 16'h0000, 8'hAA);
@@ -586,6 +349,24 @@ module project_obscurus_tb;
         cp_read(13'h0200, tmp);
         if (tmp!==tbl_before) begin errors=errors+1; $display("FAIL C1 task wrote TABLE $0200"); end
         else $display("PASS C1 TABLE $0200 protected from task");
+
+        // --- itr4.1: high-BRAM ($4000-$BFFF) load + readback ---
+        // Proves the 48 KB array + 16-bit load path are real. Pre-itr4.1
+        // these writes aliased back under $4000 (CP_LADDR_HI capped at 6 bits).
+        cp_read16(16'h0000, hibram_z0);  // snapshot $0000 before high writes
+        cp_load_byte16(16'h4000, 8'hA5); // alt-bit pattern, WORKTASK base
+        cp_load_byte16(16'h8000, 8'h5A); // future-task base
+        cp_load_byte16(16'hBFFF, 8'h3C); // top of task space
+        cp_read16(16'h4000, hibram_r);
+        if (hibram_r!==8'hA5) begin errors=errors+1; $display("FAIL hibram $4000=%h", hibram_r); end
+        cp_read16(16'h8000, hibram_r);
+        if (hibram_r!==8'h5A) begin errors=errors+1; $display("FAIL hibram $8000=%h", hibram_r); end
+        cp_read16(16'hBFFF, hibram_r);
+        if (hibram_r!==8'h3C) begin errors=errors+1; $display("FAIL hibram $BFFF=%h", hibram_r); end
+        // alias guard: the $4000 write must NOT have touched $0000
+        cp_read16(16'h0000, hibram_r);
+        if (hibram_r!==hibram_z0) begin errors=errors+1; $display("FAIL hibram alias $0000 %h->%h", hibram_z0, hibram_r); end
+        else $display("PASS hibram 48KB load/readback");
 
         // ===== C2: cooperative race (NPARAM 4/8 -> order 1/2; re-arm 12/8 -> flip 2/1) =====
         // The C1 tasks above terminate with RTS (not JSR DONE), which is the OLD
@@ -1059,382 +840,6 @@ module project_obscurus_tb;
         end else
             $display("PASS sdram-read: coproc summed host-seeded region (got %02X want 64)",tmp);
         collect(2'd0);
-
-        // ===== CONWAY'S MULTIVERSE: TICK1 (bit-packed Life, sliding window) =====
-        // Oracle: seed universe 0 (bank 16, buffer A) with a blinker (interior),
-        // a second blinker straddling an interior 7-cell BYTE BOUNDARY, a glider
-        // positioned to MOVE across a byte boundary, and a blinker straddling the
-        // col-0 / col-559 TORUS seam. LIFE8 (LSIM=1 => 8 rows) ticks universe 0
-        // once per CALL: read front buf, compute back buf, flip FRONT[0], bump
-        // GEN[0], JMP DONE. We CALL it 4x (gens alternate buffers B,A,B,A via the
-        // FRONT flip) and assert every generation against values computed by an
-        // independent Python reference simulator (same toroidal bit-packed rules).
-        // Per gen: explicit packed-byte asserts (diagnosable) + a full-buffer
-        // sum16 (catches spurious/missing cells anywhere). Blinkers are period-2;
-        // the glider returns to its phase shifted +1 row/+1 col by gen 4 -- the
-        // strongest proof the cross-byte neighbor math is correct.
-        sdram_write(10'd24, 16'h0010, 8'h00);   // FRONT[0] = 0 (buffer A is live)
-        sdram_write(10'd24, 16'h0020, 8'h00);   // GEN[0]   = 0
-        mv_seed;                                 // buffer A (bank 16) := patterns
-
-        // load LIFE8 image @ coproc $0300. Two entries via a fixed JMP table:
-        //   skill 0 -> $0300 = JMP LIFE8 (forever round-robin, never DONE)
-        //   skill 1 -> $0303 = JMP LIFE1 (single univ-0 tick + DONE = oracle)
-        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);            // CP_LADDR = $0300
-        for (mvi=0; mvi<LIFE8LEN; mvi=mvi+1) load_byte(life8img[mvi]);
-        wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);            // CP_LADDR = $0200
-        load_byte(8'h00); load_byte(8'h03);                  // TABLE[0] = $0300
-        load_byte(8'h03); load_byte(8'h03);                  // TABLE[1] = $0303
-        cp_read(13'h0300, tmp);
-        if (tmp!==8'h4C) begin errors=errors+1;
-            $display("FAIL multiverse TICK1 not loaded @ $0300 = %02X",tmp); end
-
-        // --- GEN 1 (front A -> back B, sum16 = $004F) ---
-        mv_tick; mv_readback(16'h4000); mv_sum(16'h004F);
-        mv_chk(161,8'h01); mv_chk(163,8'h01); mv_chk(174,8'h40); mv_chk(175,8'h02);
-        mv_chk(241,8'h01); mv_chk(243,8'h01); mv_chk(255,8'h03);
-        mv_chk(321,8'h01); mv_chk(323,8'h01); mv_chk(335,8'h01);
-        mv_chk(400,8'h01); mv_chk(480,8'h01); mv_chk(560,8'h01);
-
-        // --- GEN 2 (front B -> back A, blinkers+torus back to seed, sum16 = $0110) ---
-        mv_tick; mv_readback(16'h0000); mv_sum(16'h0110);
-        mv_chk(175,8'h02); mv_chk(240,8'h40); mv_chk(241,8'h03); mv_chk(242,8'h40);
-        mv_chk(243,8'h03); mv_chk(254,8'h40); mv_chk(255,8'h02);
-        mv_chk(335,8'h03); mv_chk(480,8'h03); mv_chk(559,8'h40);
-
-        // --- GEN 3 (front A -> back B, sum16 = $0013) ---
-        mv_tick; mv_readback(16'h4000); mv_sum(16'h0013);
-        mv_chk(161,8'h01); mv_chk(163,8'h01); mv_chk(175,8'h01);
-        mv_chk(241,8'h01); mv_chk(243,8'h01); mv_chk(255,8'h06);
-        mv_chk(321,8'h01); mv_chk(323,8'h01); mv_chk(335,8'h03);
-        mv_chk(400,8'h01); mv_chk(480,8'h01); mv_chk(560,8'h01);
-
-        // --- GEN 4 (front B -> back A; glider = seed shifted +1,+1, sum16 = $00D6) ---
-        mv_tick; mv_readback(16'h0000); mv_sum(16'h00D6);
-        mv_chk(175,8'h02); mv_chk(240,8'h40); mv_chk(241,8'h03); mv_chk(242,8'h40);
-        mv_chk(243,8'h03); mv_chk(255,8'h04); mv_chk(335,8'h07);
-        mv_chk(480,8'h03); mv_chk(559,8'h40);
-
-        if (errors==0)
-            $display("PASS multiverse TICK1 (blinker/byte-boundary/glider/torus, 4 gens)");
-        else
-            $display("FAIL multiverse TICK1 %0d errors", errors);
-
-        // ===== CONWAY'S MULTIVERSE: ROUND-ROBIN (forever loop, univ0+univ1) =====
-        // Prove the real LIFE8 (skill 0 @ $0300) free-running loop ticks MULTIPLE
-        // universes round-robin. Seed univ0 (bank16) AND univ1 (bank17) buffer A
-        // with a horizontal blinker, FRONT=GEN=0. Ring skill 0 (budget 0). The
-        // loop NEVER DONEs, so we POLL the GEN counters until BOTH univ0 and univ1
-        // have ticked (GEN[0]>=1 && GEN[1]>=1 = round-robin reached both). Then we
-        // HALT the coproc with an nRES_READ pulse (clears call_req; the sdram_model
-        // array has no reset port so SDRAM survives) and read back each universe's
-        // LIVE buffer (selected by FRONT) and assert the blinker evolved -- proving
-        // per-universe RB/WB derivation (bank=UBASE+u, live/other buffer) + flip +
-        // bump are all correct across more than one universe.
-        begin : multiverse_rr
-            reg [7:0] g0, g1, f0, f1; integer rrg;
-            mv_seed_blinker(10'd16);                 // univ0 buffer A := blinker
-            mv_seed_blinker(10'd17);                 // univ1 buffer A := blinker
-            sdram_write(10'd24, 16'h0010, 8'h00);    // FRONT[0] = 0
-            sdram_write(10'd24, 16'h0011, 8'h00);    // FRONT[1] = 0
-            sdram_write(10'd24, 16'h0020, 8'h00);    // GEN[0]   = 0
-            sdram_write(10'd24, 16'h0021, 8'h00);    // GEN[1]   = 0
-            // skill 0 = forever round-robin; arg0 unused, budget 0 (no watchdog)
-            stage_mbox(2'd0, 8'h00, 8'h00, 8'h00);
-            ring(2'd0);
-            // poll GEN[0] and GEN[1] until both ticked, generous cycle cap
-            rrg = 0; g0 = 0; g1 = 0;
-            while ((g0 < 8'd1) || (g1 < 8'd1)) begin
-                sdram_read(10'd24, 16'h0020, g0);
-                sdram_read(10'd24, 16'h0021, g1);
-                rrg = rrg + 1;
-                if (rrg > 200000) begin errors=errors+1;
-                    $display("FAIL multiverse round-robin GEN stuck g0=%0d g1=%0d",g0,g1);
-                    g0 = 8'd1; g1 = 8'd1; end
-            end
-            // HALT the free-running loop (SDRAM persists across the reset pulse)
-            nRES_READ=1'b0; #500; nRES_READ=1'b1; #200;
-            wait (dut.ready);
-            // read final FRONT for each universe, assert the live buffer evolved
-            sdram_read(10'd24, 16'h0010, f0);
-            sdram_read(10'd24, 16'h0020, g0);
-            sdram_read(10'd24, 16'h0011, f1);
-            sdram_read(10'd24, 16'h0021, g1);
-            $display("multiverse round-robin halt: u0 FRONT=%0d GEN=%0d  u1 FRONT=%0d GEN=%0d",f0,g0,f1,g1);
-            mv_chk_blinker(10'd16, f0, 0);
-            mv_chk_blinker(10'd17, f1, 1);
-            if ((g0 < 8'd1) || (g1 < 8'd1)) begin errors=errors+1;
-                $display("FAIL multiverse round-robin GEN0=%0d GEN1=%0d",g0,g1); end
-            if (errors==0)
-                $display("PASS multiverse round-robin (univ0 + univ1 both ticked + evolved)");
-            else
-                $display("FAIL multiverse round-robin %0d errors", errors);
-        end
-
-        // ===== CONWAY'S MULTIVERSE GR: TICK1 (8 cells/byte, 40x48 GR grid) =====
-        // Re-target proof: reload $0300 with LIFE8GR (overwrites LIFE8 -- both
-        // ORG $0300, can't co-reside; BRAM survives the round-robin reset pulse,
-        // so a load-port overwrite re-points the skill). TABLE[0]=$0300 (LIFE8GR
-        // forever) / TABLE[1]=$0303 (LIFE1 GR = one univ-0 tick + DONE = oracle)
-        // unchanged. Three patterns on the GR dims, expected gens from an
-        // independent torus reference sim: an interior horizontal blinker
-        // (-> vertical, 1 tick); a glider straddling the byte0/byte1 boundary
-        // (-> +1row/+1col after 4 ticks, catches the 8/byte math); a blinker on
-        // the col39<->col0 torus seam (-> vertical col0, exercises GWIDTH-1 wrap).
-        begin : multiverse_gr
-            integer gi;
-            wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h03);            // CP_LADDR=$0300
-            for (gi=0; gi<LIFE8GRLEN; gi=gi+1) load_byte(life8grimg[gi]);
-            wr_reg(4'h9, 8'h00); wr_reg(4'hA, 8'h02);            // CP_LADDR=$0200
-            load_byte(8'h00); load_byte(8'h03);                  // TABLE[0]=$0300
-            load_byte(8'h03); load_byte(8'h03);                  // TABLE[1]=$0303
-            cp_read(13'h0300, tmp);
-            if (tmp!==8'h4C) begin errors=errors+1;
-                $display("FAIL multiverse-GR not loaded @ $0300 = %02X",tmp); end
-
-            // --- A: interior horizontal blinker row2 c10-12 -> vertical col11 ---
-            sdram_write(10'd24, 16'h0010, 8'h00);    // FRONT[0]=0
-            sdram_write(10'd24, 16'h0020, 8'h00);    // GEN[0]=0
-            mvgr_clear;
-            sdram_write(10'd16, 16'h0000+11, 8'h1C); // row2 byte1 = c10,11,12
-            mv_tick;                                 // 1 tick -> live buffer B
-            mvgr_readback(16'h0400);
-            mv_sum(16'h0018);
-            mv_chk(6,8'h08); mv_chk(11,8'h08); mv_chk(16,8'h08);
-
-            // --- C: torus-seam blinker row4 c39,0,1 -> vertical col0 ---
-            sdram_write(10'd24, 16'h0010, 8'h00);
-            sdram_write(10'd24, 16'h0020, 8'h00);
-            mvgr_clear;
-            sdram_write(10'd16, 16'h0000+24, 8'h80); // row4 byte4 = col39
-            sdram_write(10'd16, 16'h0000+20, 8'h03); // row4 byte0 = col0,1
-            mv_tick;                                 // 1 tick -> live buffer B
-            mvgr_readback(16'h0400);
-            mv_sum(16'h0003);
-            mv_chk(15,8'h01); mv_chk(20,8'h01); mv_chk(25,8'h01);
-
-            // --- B: glider straddling byte0/byte1 -> seed shifted +1,+1 @ gen4 --
-            sdram_write(10'd24, 16'h0010, 8'h00);
-            sdram_write(10'd24, 16'h0020, 8'h00);
-            mvgr_clear;
-            sdram_write(10'd16, 16'h0000+10, 8'h80); // (2,7)
-            sdram_write(10'd16, 16'h0000+16, 8'h01); // (3,8)
-            sdram_write(10'd16, 16'h0000+20, 8'hC0); // (4,6),(4,7)
-            sdram_write(10'd16, 16'h0000+21, 8'h01); // (4,8)
-            mv_tick; mv_tick; mv_tick; mv_tick;      // 4 ticks -> live buffer A
-            mvgr_readback(16'h0000);
-            mv_sum(16'h0086);
-            mv_chk(16,8'h01); mv_chk(21,8'h02); mv_chk(25,8'h80); mv_chk(26,8'h03);
-
-            if (errors==0)
-                $display("PASS multiverse-GR TICK1 (blinker/glider-byte-boundary/torus-seam, GWIDTH-1 wrap + MUL5)");
-            else
-                $display("FAIL multiverse-GR TICK1 %0d errors", errors);
-        end
-
-        end // prefarm (+farmonly skips to here)
-
-        // ===== FARM: event ring + mailbox protocol (skill 2, GBANK 32) =====
-        // NOTE: farm phases m1/econ/lap are one ordered narrative -
-        // do not reorder or skip (later phases consume earlier state).
-        $display("--- FARM protocol tests ---");
-        farm_init;
-        farm_load;
-        rd_reg(4'h1, tmp);                    // ACTIVE: slot 0 must be free
-        if (tmp[0]) begin errors=errors+1;
-            $display("FAIL farm slot0 busy before spawn ACTIVE=%02X", tmp); end
-        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);   // skill 2, budget 0 forever
-        ring(2'd0);
-        // (a)-(e): named block - V2005 needs names for local declarations
-        begin : farm_m1
-        reg [7:0] r; reg ok;
-        // (a) STATUS probe
-        farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm STATUS r=%h ok=%b", r, ok); end
-        else $display("PASS farm STATUS");
-        // (b) PLANT 3,3 -> plot $033F = 1, SEEDS 4
-        farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL farm PLANT r=%h", r); end
-        sdram_read(10'd32, 16'h033F, r);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(3,3)=%h want 01", r); end
-        sdram_read(10'd32, 16'h0215, r);
-        if (r!==8'h04) begin errors=errors+1; $display("FAIL SEEDS=%h want 04", r); end
-        // PLANT corner 19,19 -> $048F (PLOTADR 16-bit math)
-        farm_cmd(8'h01, 8'd19, 8'd19, 8'h00, r, ok);
-        sdram_read(10'd32, 16'h048F, r);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL plot(19,19)=%h", r); end
-        // (d) errors: PLANT occupied, HARVEST unripe
-        // (must run before 5 grow ticks elapse - see FSIM divider note)
-        farm_cmd(8'h01, 8'd3, 8'd3, 8'h00, r, ok);
-        if (r!==8'hE1) begin errors=errors+1; $display("FAIL occupied r=%h want E1", r); end
-        farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
-        if (r!==8'hE2) begin errors=errors+1; $display("FAIL unripe r=%h want E2", r); end
-        // (d cont.) SELL qty=0 / BUYSEED qty=0 -> ERR_BAD
-        farm_cmd(8'h03, 8'd0, 8'h00, 8'h00, r, ok);
-        if (r!==8'hE6) begin errors=errors+1; $display("FAIL sell-0 r=%h want E6", r); end
-        farm_cmd(8'h04, 8'd0, 8'h00, 8'h00, r, ok);
-        if (r!==8'hE6) begin errors=errors+1; $display("FAIL buy-0 r=%h want E6", r); end
-        // (b cont.) wait on (19,19) - the LAST plot planted; watching (3,3)
-        // races a grow tick landing between the two PLANT commands
-        begin : farm_ripen
-        integer t; reg [7:0] pv;
-        pv = 0; t = 0;
-        while (pv !== 8'h06 && t < 400) begin
-            repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h048F, pv); t = t + 1;
-        end
-        if (pv!==8'h06) begin errors=errors+1; $display("FAIL plot never ripened"); end
-        end
-        // drain-with-retry: DOGROW writes the plot byte (poll target) BEFORE
-        // PUTEV finishes - a single drain can race the in-flight publish of
-        // the LAST-scanned plot's event. Re-drain until both events land.
-        begin : farm_evwait
-        integer t;
-        farm_drain;
-        t = 0;
-        while (farm_nev < 2 && t < 100) begin
-            repeat (10000) @(posedge clk100);
-            farm_drain; t = t + 1;
-        end
-        end
-        if (farm_nev < 2) begin errors=errors+1; $display("FAIL want 2 EV_RIPE got %0d", farm_nev); end
-        else begin
-            if (ev_type[0]!==8'h01 || ev_p0[0]!==8'd3 || ev_p1[0]!==8'd3)
-                begin errors=errors+1; $display("FAIL EV_RIPE[0] %h %d,%d", ev_type[0], ev_p0[0], ev_p1[0]); end
-            else $display("PASS EV_RIPE 3,3 then %0d,%0d", ev_p0[1], ev_p1[1]);
-        end
-        // (c) HARVEST -> CROPS=0-3 (LFSR yield; 0 = rare crop-death roll),
-        // plot 0. Yield is LFSR-phase-dependent: cycle-deterministic in
-        // sim but fragile to tb edits, so assert the honest 0-3 range.
-        farm_cmd(8'h02, 8'd3, 8'd3, 8'h00, r, ok);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL HARVEST r=%h", r); end
-        sdram_read(10'd32, 16'h0216, r);
-        if (r > 8'h03) begin errors=errors+1; $display("FAIL CROPS=%h want 0-3 (LFSR yield)", r); end
-        end
-
-        // ===== FARM economy: SELL/BUYSEED + clamps + price walk (M1 c) =====
-        begin : farm_econ
-        reg [7:0] r, r2; reg ok; integer nc, want;
-        // yield is 0-3 (LFSR, 0 = rare death roll), so SELL the ACTUAL
-        // crop count to empty the barn, then assert E5. Expected cash
-        // scales with yield. nc==0 (death) -> skip the sell leg.
-        sdram_read(10'd32, 16'h0216, r); nc = r;
-        if (nc > 3) begin errors=errors+1; $display("FAIL pre-sell CROPS=%0d want 0-3", nc); end
-        want = 100;
-        if (nc > 0) begin
-            farm_cmd(8'h03, nc[7:0], 8'h00, 8'h00, r, ok);
-            if (r!==8'h01) begin errors=errors+1; $display("FAIL SELL r=%h", r); end
-            want = 100 + nc*10;
-            sdram_read(10'd32, 16'h0213, r); sdram_read(10'd32, 16'h0214, r2);
-            if ({r2,r}!==want[15:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", {r2,r}, want); end
-            sdram_read(10'd32, 16'h0212, r);
-            if (r!==nc[7:0]) begin errors=errors+1; $display("FAIL SUPPLY=%h want %0d", r, nc); end
-        end else $display("note: death roll at m1 harvest, sell leg skipped");
-        // SELL with no crops -> E5
-        farm_cmd(8'h03, 8'd1, 8'h00, 8'h00, r, ok);
-        if (r!==8'hE5) begin errors=errors+1; $display("FAIL no-crops r=%h want E5", r); end
-        // BUYSEED 2 @ cost 3 -> CASH want-6, SEEDS 5
-        farm_cmd(8'h04, 8'd2, 8'h00, 8'h00, r, ok);
-        if (r!==8'h01) begin errors=errors+1; $display("FAIL BUYSEED r=%h", r); end
-        want = want - 6;
-        sdram_read(10'd32, 16'h0213, r);
-        if (r!==want[7:0]) begin errors=errors+1; $display("FAIL CASH=%d want %0d", r, want); end
-        sdram_read(10'd32, 16'h0215, r);
-        if (r!==8'd5) begin errors=errors+1; $display("FAIL SEEDS=%d want 5", r); end
-        // BUYSEED overflow guard: force SEEDS=254, buy 5 -> E7, SEEDS unchanged
-        // (tb-only direct poke: rig deliberately bypasses single-writer rule)
-        sdram_write(10'd32, 16'h0215, 8'd254);
-        farm_cmd(8'h04, 8'd5, 8'h00, 8'h00, r, ok);
-        if (r!==8'hE7) begin errors=errors+1; $display("FAIL seed-full r=%h want E7", r); end
-        sdram_read(10'd32, 16'h0215, r);
-        if (r!==8'd254) begin errors=errors+1; $display("FAIL SEEDS clobbered=%d", r); end
-        sdram_write(10'd32, 16'h0215, 8'd5);   // restore
-        // EV_PRICE drift: force SUPPLY=10 -> TGT=5. Supply decays while the
-        // price walks (DECAYDIV=4), so the target RISES under it and the
-        // price recovers - assert the MINIMUM seen, not the endpoint.
-        sdram_write(10'd32, 16'h0212, 8'd10);
-        begin : farm_pwalk
-        integer t; reg [7:0] pv, pmin;
-        pmin = 8'd255;
-        for (t=0; t<200; t=t+1) begin
-            repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h0210, pv);
-            if (pv < pmin) pmin = pv;
-        end
-        if (pmin > 8'd7) begin errors=errors+1; $display("FAIL price min=%d want <=7", pmin); end
-        end
-        farm_drain;
-        begin : farm_evcount
-        integer i; integer sawprice;
-        sawprice = 0;
-        for (i=0; i<farm_nev; i=i+1) if (ev_type[i]===8'h02) sawprice = sawprice + 1;
-        if (sawprice < 3) begin errors=errors+1; $display("FAIL want >=3 EV_PRICE got %0d", sawprice); end
-        else $display("PASS economy: sell/buy/clamps + %0d EV_PRICE", sawprice);
-        end
-        end
-
-        // ===== FARM lap recovery: >64 events with stale reader cursor =====
-        begin : farm_lap
-        reg [7:0] r, r2; reg ok; integer i, baseresync; integer t;
-        baseresync = farm_resyncs;
-        // plant 70 plots (rows 5..8, cols 0..19 = 80 available; use 70)
-        sdram_write(10'd32, 16'h0215, 8'd255);          // plenty of seeds (tb poke)
-        for (i=0; i<70; i=i+1)
-            farm_cmd(8'h01, i%20, 8'd5 + i/20, 8'h00, r, ok);
-        // wait until the LAST-planted plot (9,8) ripens -> 70 EV_RIPE, ring lapped
-        t = 0; r = 0;
-        while (r !== 8'h06 && t < 600) begin
-            repeat (10000) @(posedge clk100);
-            sdram_read(10'd32, 16'h0300 + 8*20 + 9, r);  // plot (9,8) = $03A9
-            t = t + 1;
-        end
-        if (r!==8'h06) begin errors=errors+1; $display("FAIL lap: plots never ripened"); end
-        farm_drain;
-        if (farm_resyncs < baseresync + 1)
-            begin errors=errors+1; $display("FAIL lap: resyncs=%0d want >=%0d", farm_resyncs, baseresync+1); end
-        // SIG regression net: a ring page-wrap bug writes records over
-        // $0000-$0003 - SIG must survive 70+ publishes including indexes 60-63
-        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
-        if (r!==8'h46 || r2!==8'h4D)
-            begin errors=errors+1; $display("FAIL lap: SIG destroyed %h %h (ring wrapped into page 0)", r, r2); end
-        // post-resync: cursor must be live -> one more event drains clean
-        sdram_write(10'd32, 16'h0212, 8'd20);            // kick price -> EV_PRICE soon
-        begin : farm_postsync
-        integer n0; n0 = farm_nev;
-        t = 0;
-        while (farm_nev == n0 && t < 200) begin
-            repeat (10000) @(posedge clk100);
-            farm_drain; t = t + 1;
-        end
-        if (farm_nev == n0)
-            begin errors=errors+1; $display("FAIL lap: post-resync drain dirty"); end
-        else $display("PASS lap recovery: resync + SIG intact + clean drain");
-        end
-        end
-
-        // ===== FARM soft-reset survival: kernel reset clears slots but
-        // SDRAM world survives -> respawn task, keep world (FARM.S SPAWNT
-        // path). Mirrors a //e ctrl-reset mid-game.
-        begin : farm_reset
-        reg [7:0] r, r2; reg ok;
-        $display("--- FARM soft-reset survival ---");
-        nRES_READ = 1'b0; #1000; nRES_READ = 1'b1;
-        wait (dut.ready);
-        repeat (2000) @(posedge clk100);   // kernel RESET -> idle spin
-        sdram_read(10'd32, 16'h0000, r); sdram_read(10'd32, 16'h0001, r2);
-        if (r!==8'h46 || r2!==8'h4D) begin errors=errors+1; $display("FAIL reset: SIG lost %h %h", r, r2); end
-        rd_reg(4'h1, r);                   // CP_ACTIVE: reset must clear slots
-        if (r[3:0]!==4'h0) begin errors=errors+1; $display("FAIL reset: slots not cleared %h", r); end
-        sdram_read(10'd32, 16'h03A9, r);   // plot (9,8) ripe from lap phase
-        if (r!==8'h06) begin errors=errors+1; $display("FAIL reset: grid lost %h", r); end
-        // respawn exactly as FARM.S SPAWNT does: reload blob+table, ring
-        farm_load;
-        stage_mbox(2'd0, 8'd2, 8'd0, 8'd0);
-        ring(2'd0);
-        farm_cmd(8'h00, 8'h00, 8'h00, 8'h00, r, ok);
-        if (!ok || r!==8'h01) begin errors=errors+1; $display("FAIL reset: respawn STATUS r=%h ok=%b", r, ok); end
-        else $display("PASS soft-reset survival: SIG+grid intact, slots cleared, task respawned");
-        end
 
         if (errors==0) $display("PASS"); else $display("FAIL: %0d errors", errors);
         $finish;
