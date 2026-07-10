@@ -57,6 +57,9 @@ help:
 	@echo "Build targets:"
 	@echo "  make              - Build bitstream (default: signal_check)"
 	@echo "  make DESIGN=xxx   - Build specific design"
+	@echo "  make DESIGN=b8008_hamr REV=rev2 ...  - b8008_hamr lives under gateware/rev2/;"
+	@echo "                      needs REV=rev2, fusesoc, and a sibling intel-8008-vhdl"
+	@echo "                      checkout (INTEL8008_DIR)"
 	@echo "  make synth        - Synthesize only"
 	@echo "  make pnr          - Place and route"
 	@echo "  make bit          - Generate bitstream"
@@ -142,7 +145,7 @@ FUSESOC       ?= fusesoc
 B8008_NETLIST := $(BUILD_DIR)/b8008_core.v
 B8008_GATES   := $(BUILD_DIR)/ghdl_gates.v
 
-$(B8008_NETLIST): gateware/rev2/b8008_hamr/b8008_hamr.core | $(BUILD_DIR)
+$(B8008_NETLIST): gateware/rev2/b8008_hamr/b8008_hamr.core $(wildcard $(INTEL8008_DIR)/src/b8008/*.vhdl $(INTEL8008_DIR)/src/components/*.vhdl) $(INTEL8008_DIR)/b8008.core | $(BUILD_DIR)
 	@echo "=== Generating b8008 netlist via FuseSoC ==="
 	rm -rf $(BUILD_DIR)/fusesoc
 	$(FUSESOC) --cores-root $(INTEL8008_DIR) --cores-root gateware/rev2/b8008_hamr \
@@ -150,6 +153,9 @@ $(B8008_NETLIST): gateware/rev2/b8008_hamr/b8008_hamr.core | $(BUILD_DIR)
 	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name b8008_core.v | head -1)" $(B8008_NETLIST)
 	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name ghdl_gates.v | head -1)" $(B8008_GATES)
 	@head -3 $(B8008_NETLIST)
+
+$(B8008_GATES): $(B8008_NETLIST)
+	@test -f $@ || { rm -f $(B8008_NETLIST); $(MAKE) $(B8008_NETLIST); }
 
 ifeq ($(DESIGN),b8008_hamr)
 VERILOG_SRC += $(B8008_NETLIST) $(B8008_GATES)

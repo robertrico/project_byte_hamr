@@ -182,6 +182,11 @@ make wave                           # Run simulation and open GTKWave
 make help                           # Show all available targets
 ```
 
+`b8008_hamr` lives under `gateware/rev2/` and always needs `REV=rev2`; it also
+needs `fusesoc` installed and a sibling `intel-8008-vhdl` checkout
+(`INTEL8008_DIR`, default `~/Development/intel-8008-vhdl`) to generate its
+netlist at build time, e.g. `make DESIGN=b8008_hamr REV=rev2 bit`.
+
 ### Programming
 
 ```bash
