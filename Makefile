@@ -940,19 +940,19 @@ b8run:
 hello8:
 	cd $(B8008_DIR) && printf ' TYP $$06\n DSK HELLO8\n' | cat - HELLO8.S > .H8W.S \
 	    && $(MERLIN32) $(MERLIN_LIB) .H8W.S && rm -f .H8W.S
-	scripts/validate_mac8008.sh $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm
+	scripts/validate_mac8008.sh $(INTEL8008_DIR)/test_programs/samples/hello_8008_ram.asm
 
 # Regenerate MAC8008.S from the b8008 core's isa.json + revalidate 6 samples
 mac8008:
 	python3 scripts/gen_mac8008.py \
-	    $(HOME)/Development/intel-8008-vhdl/docs/isa.json $(B8008_DIR)/MAC8008.S
+	    $(INTEL8008_DIR)/docs/isa.json $(B8008_DIR)/MAC8008.S
 	scripts/validate_mac8008.sh \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/rotate_carry_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/conditional_call_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/alu_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/rst_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/mov_rr_test_as.asm
+	    $(INTEL8008_DIR)/test_programs/samples/hello_8008_ram.asm \
+	    $(INTEL8008_DIR)/test_programs/rotate_carry_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/conditional_call_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/alu_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/rst_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/mov_rr_test_as.asm
 
 # ASM8 — native 8008 assembler (true syntax, no MAC8008 dialect).
 # Table generated from isa.json; design validated on the Mac by the
@@ -960,7 +960,7 @@ mac8008:
 # ASM8.S/B8CMP.S are //e-editable (no TYP/DSK) — wrapper like hello8.
 asm8tab:
 	python3 scripts/gen_asm8_table.py \
-	    $(HOME)/Development/intel-8008-vhdl/docs/isa.json $(B8008_DIR)/ASM8TAB.S
+	    $(INTEL8008_DIR)/docs/isa.json $(B8008_DIR)/ASM8TAB.S
 
 asm8check:
 	python3 scripts/asm8_check.py \
