@@ -57,6 +57,9 @@ help:
 	@echo "Build targets:"
 	@echo "  make              - Build bitstream (default: signal_check)"
 	@echo "  make DESIGN=xxx   - Build specific design"
+	@echo "  make DESIGN=b8008_hamr REV=rev2 ...  - b8008_hamr lives under gateware/rev2/;"
+	@echo "                      needs REV=rev2, fusesoc, and a sibling intel-8008-vhdl"
+	@echo "                      checkout (INTEL8008_DIR)"
 	@echo "  make synth        - Synthesize only"
 	@echo "  make pnr          - Place and route"
 	@echo "  make bit          - Generate bitstream"
@@ -131,6 +134,32 @@ JSON := $(BUILD_DIR)/$(DESIGN).json
 CFG  := $(BUILD_DIR)/$(DESIGN).config
 BIT  := $(BUILD_DIR)/$(DESIGN).bit
 SVF  := $(BUILD_DIR)/$(DESIGN).svf
+
+# ---------------------------------------------------------------------------
+# b8008_hamr: the 8008 core netlist is generated at build time from the
+# intel-8008-vhdl repo via FuseSoC (was: vendored b8008_core.v).
+# Only this design needs fusesoc; every other design builds without it.
+# ---------------------------------------------------------------------------
+INTEL8008_DIR ?= $(HOME)/Development/intel-8008-vhdl
+FUSESOC       ?= fusesoc
+B8008_NETLIST := $(BUILD_DIR)/b8008_core.v
+B8008_GATES   := $(BUILD_DIR)/ghdl_gates.v
+
+$(B8008_NETLIST): gateware/rev2/b8008_hamr/b8008_hamr.core $(wildcard $(INTEL8008_DIR)/src/b8008/*.vhdl $(INTEL8008_DIR)/src/components/*.vhdl) $(INTEL8008_DIR)/b8008.core | $(BUILD_DIR)
+	@echo "=== Generating b8008 netlist via FuseSoC ==="
+	rm -rf $(BUILD_DIR)/fusesoc
+	$(FUSESOC) --cores-root $(INTEL8008_DIR) --cores-root gateware/rev2/b8008_hamr \
+	    run --setup --tool icarus --build-root $(BUILD_DIR)/fusesoc greygiant:retro:b8008-hamr
+	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name b8008_core.v | head -1)" $(B8008_NETLIST)
+	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name ghdl_gates.v | head -1)" $(B8008_GATES)
+	@head -3 $(B8008_NETLIST)
+
+$(B8008_GATES): $(B8008_NETLIST)
+	@test -f $@ || { rm -f $(B8008_NETLIST); $(MAKE) $(B8008_NETLIST); }
+
+ifeq ($(DESIGN),b8008_hamr)
+VERILOG_SRC += $(B8008_NETLIST) $(B8008_GATES)
+endif
 
 # Report files
 SYNTH_LOG    := $(REPORT_DIR)/$(DESIGN)_synth.log
@@ -217,7 +246,7 @@ $(B8008_SLOT_MEM): $(B8008_SLOT_SRC)
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/b8008_hamr/b8fw.bin $@ 0xC000 256 0x00
 
 ifeq ($(DESIGN),b8008_hamr)
-$(JSON): $(B8008_SLOT_MEM)
+$(JSON): $(B8008_SLOT_MEM) $(B8008_NETLIST)
 endif
 
 # Flash Hamr menu volume (picker + ProDOS)
@@ -394,6 +423,11 @@ endif
 MODULE ?=
 UNIT_TB  := $(DESIGN_DIR)/$(MODULE)_tb.v
 UNIT_OUT := $(BUILD_DIR)/$(MODULE)_tb.vvp
+
+ifeq ($(DESIGN),b8008_hamr)
+$(UNIT_OUT): $(B8008_NETLIST)
+endif
+
 UNIT_VCD := $(BUILD_DIR)/$(MODULE)_tb.vcd
 
 unit: $(UNIT_OUT)
@@ -912,19 +946,19 @@ b8run:
 hello8:
 	cd $(B8008_DIR) && printf ' TYP $$06\n DSK HELLO8\n' | cat - HELLO8.S > .H8W.S \
 	    && $(MERLIN32) $(MERLIN_LIB) .H8W.S && rm -f .H8W.S
-	scripts/validate_mac8008.sh $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm
+	scripts/validate_mac8008.sh $(INTEL8008_DIR)/test_programs/samples/hello_8008_ram.asm
 
 # Regenerate MAC8008.S from the b8008 core's isa.json + revalidate 6 samples
 mac8008:
 	python3 scripts/gen_mac8008.py \
-	    $(HOME)/Development/intel-8008-vhdl/docs/isa.json $(B8008_DIR)/MAC8008.S
+	    $(INTEL8008_DIR)/docs/isa.json $(B8008_DIR)/MAC8008.S
 	scripts/validate_mac8008.sh \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/samples/hello_8008_ram.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/rotate_carry_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/conditional_call_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/alu_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/rst_test_as.asm \
-	    $(HOME)/Development/intel-8008-vhdl/test_programs/mov_rr_test_as.asm
+	    $(INTEL8008_DIR)/test_programs/samples/hello_8008_ram.asm \
+	    $(INTEL8008_DIR)/test_programs/rotate_carry_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/conditional_call_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/alu_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/rst_test_as.asm \
+	    $(INTEL8008_DIR)/test_programs/mov_rr_test_as.asm
 
 # ASM8 — native 8008 assembler (true syntax, no MAC8008 dialect).
 # Table generated from isa.json; design validated on the Mac by the
@@ -932,7 +966,7 @@ mac8008:
 # ASM8.S/B8CMP.S are //e-editable (no TYP/DSK) — wrapper like hello8.
 asm8tab:
 	python3 scripts/gen_asm8_table.py \
-	    $(HOME)/Development/intel-8008-vhdl/docs/isa.json $(B8008_DIR)/ASM8TAB.S
+	    $(INTEL8008_DIR)/docs/isa.json $(B8008_DIR)/ASM8TAB.S
 
 asm8check:
 	python3 scripts/asm8_check.py \

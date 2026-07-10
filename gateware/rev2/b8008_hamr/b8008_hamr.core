@@ -1,0 +1,22 @@
+CAPI=2:
+name: greygiant:retro:b8008-hamr:0.1
+description: >
+  Byte Hamr b8008 coprocessor design — netlist consumer. Regenerates what
+  was previously vendored as b8008_core.v (ghdl --synth @ defaults,
+  CLK_FREQ_HZ=25MHz, monitor memory map).
+filesets:
+  b8008_deps:
+    depend: [greygiant:retro:b8008]
+generate:
+  b8008_netlist:
+    generator: ghdl_synth_verilog
+    parameters:
+      top: b8008_top
+      output: b8008_core.v
+      generics:
+        CLK_FREQ_HZ: 25000000
+targets:
+  default:
+    filesets: [b8008_deps]
+    generate: [b8008_netlist]
+    toplevel: b8008_top
