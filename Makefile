@@ -132,6 +132,29 @@ CFG  := $(BUILD_DIR)/$(DESIGN).config
 BIT  := $(BUILD_DIR)/$(DESIGN).bit
 SVF  := $(BUILD_DIR)/$(DESIGN).svf
 
+# ---------------------------------------------------------------------------
+# b8008_hamr: the 8008 core netlist is generated at build time from the
+# intel-8008-vhdl repo via FuseSoC (was: vendored b8008_core.v).
+# Only this design needs fusesoc; every other design builds without it.
+# ---------------------------------------------------------------------------
+INTEL8008_DIR ?= $(HOME)/Development/intel-8008-vhdl
+FUSESOC       ?= fusesoc
+B8008_NETLIST := $(BUILD_DIR)/b8008_core.v
+B8008_GATES   := $(BUILD_DIR)/ghdl_gates.v
+
+$(B8008_NETLIST): gateware/rev2/b8008_hamr/b8008_hamr.core | $(BUILD_DIR)
+	@echo "=== Generating b8008 netlist via FuseSoC ==="
+	rm -rf $(BUILD_DIR)/fusesoc
+	$(FUSESOC) --cores-root $(INTEL8008_DIR) --cores-root gateware/rev2/b8008_hamr \
+	    run --setup --tool icarus --build-root $(BUILD_DIR)/fusesoc greygiant:retro:b8008-hamr
+	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name b8008_core.v | head -1)" $(B8008_NETLIST)
+	cp "$$(find $(BUILD_DIR)/fusesoc -path '*/src/*' -name ghdl_gates.v | head -1)" $(B8008_GATES)
+	@head -3 $(B8008_NETLIST)
+
+ifeq ($(DESIGN),b8008_hamr)
+VERILOG_SRC += $(B8008_NETLIST) $(B8008_GATES)
+endif
+
 # Report files
 SYNTH_LOG    := $(REPORT_DIR)/$(DESIGN)_synth.log
 SYNTH_STAT   := $(REPORT_DIR)/$(DESIGN)_synth_stat.txt
@@ -217,7 +240,7 @@ $(B8008_SLOT_MEM): $(B8008_SLOT_SRC)
 	python3 scripts/rom2mem.py $(GATEWARE_DIR)/b8008_hamr/b8fw.bin $@ 0xC000 256 0x00
 
 ifeq ($(DESIGN),b8008_hamr)
-$(JSON): $(B8008_SLOT_MEM)
+$(JSON): $(B8008_SLOT_MEM) $(B8008_NETLIST)
 endif
 
 # Flash Hamr menu volume (picker + ProDOS)
@@ -394,6 +417,11 @@ endif
 MODULE ?=
 UNIT_TB  := $(DESIGN_DIR)/$(MODULE)_tb.v
 UNIT_OUT := $(BUILD_DIR)/$(MODULE)_tb.vvp
+
+ifeq ($(DESIGN),b8008_hamr)
+$(UNIT_OUT): $(B8008_NETLIST)
+endif
+
 UNIT_VCD := $(BUILD_DIR)/$(MODULE)_tb.vcd
 
 unit: $(UNIT_OUT)
