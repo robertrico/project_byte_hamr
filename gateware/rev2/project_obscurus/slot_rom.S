@@ -1,22 +1,24 @@
 * =============================================================================
-* slot_rom.S - project_obscurus $C400 slot ROM (Merlin32)
+* slot_rom.S - project_obscurus slot ROM (Merlin32)
 * =============================================================================
-* PR#4 -> JSR $C400 -> ENTRY: ARM $C800 ($C0C7<-$AA), restore CSW=COUT1, JMP $C800.
+* PR#n -> JSR $Cn00 -> ENTRY: ARM $C800 (ROMARM<-$AA), restore CSW=COUT1, JMP $C800.
 * DISARM (fixed $C420) lives in the ALWAYS-LIVE slot ROM (gated only by
 * nI_O_SELECT, never rom_armed) so it keeps executing after it disarms $C800.
-* The monitor's Q JMPs here: disarm ($C0C8<-$AA), then RTS to BASIC over PR#'s
+* The monitor's Q JMPs here: disarm (ROMDIS<-$AA), then RTS to BASIC over PR#'s
 * JSR return address.
 * =============================================================================
  TYP $06
  DSK slot_rom.bin
- ORG $C400
+SLOT = 4
+ ORG SLOT*256+$C000
+SLOTBASE = SLOT*16+$C080
 
 CSWL = $36
 CSWH = $37
 COUT1 = $FDF0
 MONITOR = $C800
-ROMARM = $C0C7
-ROMDIS = $C0C8
+ROMARM = SLOTBASE+7
+ROMDIS = SLOTBASE+8
 MAGIC = $AA
 
 ENTRY LDA #MAGIC

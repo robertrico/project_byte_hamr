@@ -1,6 +1,6 @@
 * CPSAVE.S - C-flash host SAVE. Registers ONE service (racetask3 @ $0300) into
 * the coproc registry exactly like CPRACE3.S (LOADBLK + TABLE entries), then
-* triggers SAVE-to-flash (CP_SAVE=$5A @ $C0CF) and polls bit7 (save_busy) until
+* triggers SAVE-to-flash (CP_SAVE=$5A @ SLOTBASE+15) and polls bit7 (save_busy) until
 * it clears. Does NOT issue a GO (no CP_COUNT write) - CPSAVE only registers +
 * persists. After a power-cycle the gateware auto-restores the registry; run
 * CPBOOT to confirm + execute the service from flash.
@@ -9,12 +9,13 @@
  TYP $06
  DSK CPSAVE
  ORG $6000
+ PUT SLOTDEF
 
-CPLADDRLO = $C0C9
-CPLADDRHI = $C0CA
-CPWDATA   = $C0CB
-CPCOUNT   = $C0CD
-CPSAVE    = $C0CF
+CPLADDRLO = SLOTBASE+9
+CPLADDRHI = SLOTBASE+10
+CPWDATA   = SLOTBASE+11
+CPCOUNT   = SLOTBASE+13
+CPSAVE    = SLOTBASE+15
 PRBYTE    = $FDDA
 CROUT     = $FD8E
 COUT      = $FDED

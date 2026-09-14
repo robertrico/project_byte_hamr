@@ -6,8 +6,10 @@
 // SDRAM monitor register port. The sdram_ctrl controller owns init + access;
 // the 6502 drives byte-addressed SDRAM through the $C0Cx register window.
 //
-// Apple II side (slot 4 hardcoded):
-//   $C400-$C4FF  slot ROM     6502 driver (slot_rom.mem)
+// Apple II side (addresses shown for slot 4; the gateware decodes from
+// nDEVICE_SELECT/nI_O_SELECT so it follows whatever slot the card is in,
+// but slot_rom.S/monitor.S must be reassembled per slot -- see SLOT there):
+//   $Cn00-$CnFF  slot ROM     6502 driver (slot_rom.mem)
 //   $C800-$CFFF  expansion ROM (monitor.mem) — enabled by nI_O_SELECT, released
 //                on $CFFF access
 //   $C0C0    W   ADDR_LO      low byte of 16-bit offset within bank

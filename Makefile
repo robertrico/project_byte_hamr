@@ -31,6 +31,32 @@ GATEWARE_DIR  := gateware/$(REV)
 CONSTRAINT_DIR := $(GATEWARE_DIR)/constraints
 REPORT_DIR    := reporting
 
+# =============================================================================
+# Slot binding
+# =============================================================================
+# 6502 sources carry "SLOT = n" as their single slot knob; everything else
+# derives from it (SLOT*16+$C080 register base, and b8fw.S derives its ORG
+# too). Rewritten here at parse time so every target agrees on one slot, and
+# ONLY when the value actually differs -- an unconditional sed would touch
+# mtimes on every make and defeat freshness checks.
+# NOTE: this edits the sources in place, so `make SLOT=2` leaves a visible
+# diff. That is deliberate: the file states which slot its artifact is for.
+SLOT ?= 4
+SLOT_SRCS := gateware/rev2/b8008_hamr/b8fw.S \
+             software/SDM/SLOTDEF.S \
+             software/B8008/B8LIB.S \
+             software/LOGICHAMR/LOGIC.S \
+             software/LOGICHAMR/CAPTEST.S \
+             software/ASM/LOGIC5.S \
+             software/ASM/PERIPHERAL.S \
+             gateware/rev2/project_obscurus/slot_rom.S \
+             gateware/rev2/project_obscurus/monitor.S
+$(shell for f in $(wildcard $(SLOT_SRCS)); do \
+          grep -q "^SLOT = $(SLOT)$$" $$f || \
+            sed -i '' -E 's/^SLOT = [0-9]+$$/SLOT = $(SLOT)/' $$f; \
+        done)
+
+
 # Constraints: use design-specific LPF if it exists, otherwise use base
 LPF_BASE    := $(CONSTRAINT_DIR)/byte_hamr.lpf
 LPF_DESIGN  := $(GATEWARE_DIR)/$(DESIGN)/$(DESIGN).lpf

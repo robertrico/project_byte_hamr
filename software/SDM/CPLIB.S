@@ -3,15 +3,15 @@
 * ABSOLUTE STA/LDA $C0Cx ONLY (NEVER ,X WRITES TO $C0Cx)
 *
 * REGISTERS (SLOT 4):
-*  CP_DONE     $C0C0  R  bit S = slot S completed + uncollected
-*  CP_ACTIVE   $C0C1  R  bit S = slot S busy (call_req|running|done)
-*  CP_TIMEDOUT $C0C2  R  bit S = slot S killed by run-budget watchdog
-*  CP_RING     $C0C5  W  write slot# -> kernel spawns that slot's skill
-*  CP_LADDRLO  $C0C9  W  set coproc BRAM load address lo
-*  CP_LADDRHI  $C0CA  W  set coproc BRAM load address hi
-*  CP_WDATA    $C0CB  W  write byte -> BRAM[laddr], laddr++
-*  CP_RDATA    $C0CC  R  read  byte <- BRAM[laddr], laddr++   ($C0CC READ face)
-*  CP_COLLECT  $C0CC  W  write slot# -> free slot             ($C0CC WRITE face)
+*  CP_DONE     SLOTBASE+0  R  bit S = slot S completed + uncollected
+*  CP_ACTIVE   SLOTBASE+1  R  bit S = slot S busy (call_req|running|done)
+*  CP_TIMEDOUT SLOTBASE+2  R  bit S = slot S killed by run-budget watchdog
+*  CP_RING     SLOTBASE+5  W  write slot# -> kernel spawns that slot's skill
+*  CP_LADDRLO  SLOTBASE+9  W  set coproc BRAM load address lo
+*  CP_LADDRHI  SLOTBASE+10  W  set coproc BRAM load address hi
+*  CP_WDATA    SLOTBASE+11  W  write byte -> BRAM[laddr], laddr++
+*  CP_RDATA    SLOTBASE+12  R  read  byte <- BRAM[laddr], laddr++   (SLOTBASE+12 READ face)
+*  CP_COLLECT  SLOTBASE+12  W  write slot# -> free slot             (SLOTBASE+12 WRITE face)
 *
 * MAILBOX in coproc BRAM at $0F80+slot*32:
 *  +0  skill_id  +1  run_budget  +2  arg0  +16  result
@@ -22,15 +22,15 @@
 *  CP_WAIT    A=handle      spin until done (no timeout)
 *  CP_RESULT  A=handle   -> A=result; frees the slot
 
-CP_DONE     = $C0C0
-CP_ACTIVE   = $C0C1
-CP_TIMEDOUT = $C0C2
-CP_RING     = $C0C5
-CP_LADDRLO  = $C0C9
-CP_LADDRHI  = $C0CA
-CP_WDATA    = $C0CB
-CP_RDATA    = $C0CC
-CP_COLLECT  = $C0CC
+CP_DONE     = SLOTBASE+0
+CP_ACTIVE   = SLOTBASE+1
+CP_TIMEDOUT = SLOTBASE+2
+CP_RING     = SLOTBASE+5
+CP_LADDRLO  = SLOTBASE+9
+CP_LADDRHI  = SLOTBASE+10
+CP_WDATA    = SLOTBASE+11
+CP_RDATA    = SLOTBASE+12
+CP_COLLECT  = SLOTBASE+12
 
 * CP_CALL: A=skill_id, X=arg0, Y=budget.
 * Returns handle in A (and CPLSLOT). Returns $FF if no slot free.
@@ -115,7 +115,7 @@ CP_RESULT
  LDA CP_RDATA     ; read result byte (laddr autoincs, but we only need 1 byte)
  STA CPLRES
  LDA CPLSLOT
- STA CP_COLLECT   ; free the slot (write face of $C0CC)
+ STA CP_COLLECT   ; free the slot (write face of SLOTBASE+12)
  LDA CPLRES       ; return result
  RTS
 

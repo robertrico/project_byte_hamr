@@ -2,23 +2,24 @@
 * auto-restores the registry (service code + TABLE) from SPI flash into coproc
 * BRAM at boot. CPBOOT does NOT load racetask3 and does NOT write the TABLE -
 * the whole point is that they came from FLASH. It only: confirms restore_valid
-* (CP_SAVE bit0 @ $C0CF), sets the per-task budgets NPARAM @ coproc $00E8
+* (CP_SAVE bit0 @ SLOTBASE+15), sets the per-task budgets NPARAM @ coproc $00E8
 * (50/200, matching CPRACE3), zeroes the result cells, then GOs (CP_COUNT=2)
 * and prints the finish order (bank0 $0061/$0062 -> expect 01 02).
 *
 * NPARAM is NOT persisted by the registry, so the host re-supplies it here.
-* CP_SVCNT ($C0CE) currently reads 0 in gateware - we hardcode COUNT=2 instead.
+* CP_SVCNT (SLOTBASE+14) currently reads 0 in gateware - we hardcode COUNT=2 instead.
 *
 * All STA CPWDATA / CPCOUNT are NON-INDEXED.
  TYP $06
  DSK CPBOOT
  ORG $6000
+ PUT SLOTDEF
 
-CPLADDRLO = $C0C9
-CPLADDRHI = $C0CA
-CPWDATA   = $C0CB
-CPCOUNT   = $C0CD
-CPSAVE    = $C0CF
+CPLADDRLO = SLOTBASE+9
+CPLADDRHI = SLOTBASE+10
+CPWDATA   = SLOTBASE+11
+CPCOUNT   = SLOTBASE+13
+CPSAVE    = SLOTBASE+15
 PRBYTE    = $FDDA
 CROUT     = $FD8E
 COUT      = $FDED
@@ -121,7 +122,7 @@ MAIN JSR SDM_READY     ; card present + SDRAM ready
  STA CPWDATA          ; NPARAM[0]
  LDA #200
  STA CPWDATA          ; NPARAM[1]
-* --- zero result cells, then GO (COUNT=2, hardcoded - $C0CE reads 0) ---
+* --- zero result cells, then GO (COUNT=2, hardcoded - SLOTBASE+14 reads 0) ---
  JSR ZEROCELLS
  LDA #$02
  STA CPCOUNT

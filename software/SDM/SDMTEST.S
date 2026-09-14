@@ -9,6 +9,7 @@
  TYP $06
  DSK SDMTEST
  ORG $2000
+ PUT SLOTDEF
 
  JMP MAIN
  PUT SDRAMLIB ; lib code + its DS vars live here

@@ -231,7 +231,10 @@ module b8008_hamr_top #(
         .reset(cpu_rst),
         .run_enable(run_flag),
         .interrupt(bootstrap_int | host_int_req),
-        .int_vector(cpu_int_vec),
+        // Core takes the jammed instruction, not a vector number:
+        // 8008 RST n encodes as 00 nnn 101 (RST 0 = $05, the
+        // core's own default). FuseSoC netlist renamed this port.
+        .int_instruction({2'b00, cpu_int_vec, 3'b101}),
         .ready_in(1'b1),
         .phi1_out(),
         .phi2_out(phi2),

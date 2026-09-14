@@ -1,17 +1,24 @@
-* =============================================================================
-* b8fw.S - b8008_hamr $C400 slot ROM: PR#4 -> 8008 terminal (Merlin32)
-* =============================================================================
-* PR#4 -> JSR $C400 (via CSW). ENTRY restores CSW=COUT1 (else our own COUT
-* calls would re-enter $C400), prints the banner, then runs the glass TTY
-* against the FIFO registers. Whole terminal lives in the 256-byte slot ROM:
-* no $C800, no arm/disarm, no SEI. Ctrl-Q RTSes back to BASIC over PR#'s
-* JSR return (obscurus slot_rom.S exit pattern). Ctrl-R reboots the 8008.
-* No OS required: from the monitor prompt, PR#4 works the same; exit via
-* Ctrl-Reset if there is nothing to RTS to.
-* =============================================================================
+* b8fw.S - b8008_hamr SLOT ROM (MRLN32)
+* PR#n -> 8008 GLASS TERMINAL.
+* ENTRY RESTORES CSW=COUT1 (ELSE OUR
+* COUT CALLS RE-ENTER THE ROM), PRINTS
+* BANNER, THEN RUNS TTY ON THE FIFOS.
+* WHOLE TERMINAL FITS THE 256-BYTE ROM:
+* NO $C800, NO ARM/DISARM, NO SEI.
+* ^Q RTSES TO BASIC OVER PR#'S JSR
+* RETURN (OBSCURUS SLOT_ROM.S PATTERN).
+* ^R REBOOTS THE 8008.
+* NO OS NEEDED: PR#n WORKS FROM THE
+* MONITOR PROMPT TOO; EXIT VIA CTRL-
+* RESET IF THERE IS NOTHING TO RTS TO.
+* SLOT EQUATE SETS ORG AND REG BASE.
+* MAKEFILE OVERRIDES IT: make SLOT=n.
+* CODE IS NOT POSITION INDEPENDENT -
+* REASSEMBLE PER SLOT.
  TYP $06
  DSK b8fw.bin
- ORG $C400
+SLOT = 4
+ ORG SLOT*256+$C000
 
 CSWL = $36
 CSWH = $37
@@ -19,10 +26,11 @@ COUT1 = $FDF0
 COUT = $FDED
 KBD = $C000
 KBDSTRB = $C010
-TXST = $C0C0
-TXDAT = $C0C1
-RXST = $C0C2
-CTL = $C0C5
+B8BASE = SLOT*16+$C080
+TXST = B8BASE+0
+TXDAT = B8BASE+1
+RXST = B8BASE+2
+CTL = B8BASE+5
 
 ENTRY LDA #<COUT1
  STA CSWL
@@ -37,7 +45,7 @@ ENTRY LDA #<COUT1
  INX
  BNE :b
 
-* GLASS TTY: KBD -> RX FIFO, TX FIFO -> COUT
+* GLASS TTY: KBD->RX FIFO, TX FIFO->COUT
 LOOP LDA KBD
  BPL :notx
  STA KBDSTRB

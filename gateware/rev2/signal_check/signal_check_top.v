@@ -363,7 +363,7 @@ module signal_check_top (
     end
 
     wire [7:0] read_data  = slot_reg[apple_addr[3:0]];
-    wire       data_drive = R_nW;  // drive bus when CPU is reading from us
+    wire       data_drive = device_selected & R_nW;  // our slot + CPU read
 
     assign D0 = data_drive ? read_data[0] : 1'bZ;
     assign D1 = data_drive ? read_data[1] : 1'bZ;
@@ -390,7 +390,10 @@ module signal_check_top (
     // Active-low. Enable whenever our slot is addressed so U12 passes the data
     // bus through. Disabled otherwise to stay off shared-bus cycles.
     // =========================================================================
-    wire slot_active = ~nDEVICE_SELECT | ~nI_O_SELECT | ~nI_O_STROBE;
+    // nI_O_STROBE is BUS-WIDE (every slot sees any $C800-$CFFF access),
+    // so it must NOT gate DATA_OE without an IOSEL-latch/$CFFF-release.
+    // This design has no $C800 ROM, so drop it entirely (cf. b8008_hamr).
+    wire slot_active = ~nDEVICE_SELECT | ~nI_O_SELECT;
     assign DATA_OE = ~slot_active;
 
     // =========================================================================
