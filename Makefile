@@ -275,6 +275,36 @@ ifeq ($(DESIGN),b8008_hamr)
 $(JSON): $(B8008_SLOT_MEM) $(B8008_NETLIST)
 endif
 
+# irq_check slot ROM (512 bytes, 2 pages at $Cn00): PR#n runs the U14
+# contention test. ORG $1000 (runs from a RAM copy, so one image fits any
+# slot); base 0xC000 puts the bin at mem[0].
+IRQ_CHECK_ROM_MEM := gateware/rev2/irq_check/irq_rom.mem
+IRQ_CHECK_ROM_SRC := gateware/rev2/irq_check/irqrom.S
+
+$(IRQ_CHECK_ROM_MEM): $(IRQ_CHECK_ROM_SRC)
+	@echo "=== Assembling irq_check slot ROM (Merlin32) ==="
+	cd gateware/rev2/irq_check && $(MERLIN32) $(MERLIN_LIB) irqrom.S
+	python3 scripts/rom2mem.py gateware/rev2/irq_check/irqrom.bin $@ 0xC000 512 0x00
+
+ifeq ($(DESIGN),irq_check)
+$(JSON): $(IRQ_CHECK_ROM_MEM)
+$(BUILD_DIR)/$(DESIGN)_tb.vvp: $(IRQ_CHECK_ROM_MEM)
+endif
+
+# irq_check system sim: Arlet 6502 runs the real slot ROM against two
+# real cards (slots 4 + 5) and a fake monitor. Prints what the //e shows.
+IRQ_SYS_DIR := gateware/rev2/irq_check/tbsys
+.PHONY: irqsyssim
+irqsyssim: $(IRQ_CHECK_ROM_MEM) | $(BUILD_DIR)
+	cd $(IRQ_SYS_DIR) && $(MERLIN32) $(MERLIN_LIB) tbmon.S
+	python3 scripts/rom2mem.py $(IRQ_SYS_DIR)/tbmon.bin $(BUILD_DIR)/tbmon.mem 0xC000 2048 0x00
+	cp $(IRQ_CHECK_ROM_MEM) $(BUILD_DIR)/
+	$(IVERILOG) -g2005 -o $(BUILD_DIR)/irq_check_sys.vvp -s irq_check_sys \
+		gateware/rev2/irq_check/irq_check_top.v $(IRQ_SYS_DIR)/irq_check_sys.v \
+		gateware/rev2/project_obscurus/arlet_cpu.v \
+		gateware/rev2/project_obscurus/arlet_alu.v
+	cd $(BUILD_DIR) && $(VVP) irq_check_sys.vvp
+
 # Flash Hamr menu volume (picker + ProDOS)
 FLASH_HAMR_DIR := $(GATEWARE_DIR)/flash_hamr
 PICKER_SRC     := $(FLASH_HAMR_DIR)/picker.S
