@@ -53,6 +53,11 @@ interrupts, a clock card), and any other card's ~DMA or ~INH (Z-80
 SoftCard, RAM/ROM cards), whenever a Byte Hamr is plugged in. One Byte
 Hamr can't interrupt while a second one is in the machine.
 
+Seen 2026-11-03: a Z-80 card freezes at CP/M boot with both Byte Hamrs in
+and boots immediately with them pulled. The Z-80 card holds ~DMA low for
+as long as the Z-80 runs, so that is a continuous fight against U14:
+don't leave it powered in that state.
+
 ### Why a resistor doesn't fix it
 
 - **Pull-up:** the line is already driven high. It changes nothing.
@@ -88,33 +93,65 @@ Rejected alternatives to the diode:
   and every design needs OE logic plus a GPIO. DIR's only win is
   readback, which needs break-before-make so U14 and the FPGA don't fight.
 
-### Bodge
+### No-surgery option: tape the fingers
 
-Per line, bottom side (B.Cu), between the via and the edge finger. Don't do
-it at U14: the pins are 0.635 mm apart.
+If the card doesn't need to interrupt or DMA (true of every Rev 2 design
+except `irq_check` and the hypervisor's NMI trap), insulate its fingers
+with thin Kapton (1 mil). U14 then drives nothing on those lines, and the
+card is electrically absent on them, the same as with the card pulled.
+Reversible; clean residue with IPA.
 
-| Line | Via (mm) | B.Cu run x | Finger | Do it? |
+| Finger | Side | Slot pin | Note |
+|---|---|---|---|
+| pad 30 | back (B.Cu) | 30 ~IRQ | opposite pad 21 RDY: tape the back only |
+| pad 29 | back (B.Cu) | 29 ~NMI | directly opposite pad 22 |
+| pad 22 | front (F.Cu) | 22 ~DMA | one strip wrapped over the edge covers 29 + 22 |
+
+Fingers are 1.4 mm wide on 2.54 mm pitch: cut strips about 1.2 mm so they
+don't touch neighbors. Check after each insertion that the strip hasn't
+slid.
+
+### Bodge (card keeps the ability to assert)
+
+Per line, between U14's via and the edge finger (~DMA has no via: top
+side). Don't do it at U14: the pins are 0.635 mm apart.
+
+Full repair is four lines per card. Every net below touches only U14 and
+the finger, except ~RES (see its row).
+
+| Line | U14 pin | Finger | Cut where | Repair? |
 |---|---|---|---|---|
-| ~IRQ | 216.6, 119 | 216.44 | pad 30 | yes |
-| ~NMI | 217.35, 119 | 218.98 | pad 29 | yes |
-| ~DMA | none, F.Cu to finger | 218.98 | | only if a DMA card is used |
-| ~INH | 214.6, 118.25 | 211.36 | | only if an INH card is used |
-| ~RES | 214.85, 119 | 213.9 | | no, works as is |
+| ~IRQ | 5 | pad 30, back | B.Cu, via (216.6, 119) to finger, x 216.44, about 2.1 mm | yes |
+| ~NMI | 6 | pad 29, back | B.Cu, via (217.35, 119) to finger, x 218.98 | yes |
+| ~DMA | 7 | pad 22, front | F.Cu, no via: pin 7 down x 217.92 to y 119.57, diagonal to (218.98, 120.63), then to the finger. Cut the diagonal (higher up it's 0.64 mm from the NMI stub) | yes (Z-80 card confirmed) |
+| ~INH | 3 | pad 32, back | B.Cu, via (214.6, 118.25), then a 3.9 mm diagonal to (211.36, 120.99): roomiest run of the four | yes |
+| ~RES | 4 | pad 31, back | no: U13 pin 8 (nRES_READ) taps it at the via (214.85, 119), so a cut must go on the F.Cu stub at U14 pins | no, Ctrl-Reset works |
 
 The bare trace from the via ring to the top of the finger (y about 121.4)
 is only about 2.1 mm. The top of the finger is about 0.4 mm above the
 card-edge shoulder, so keep parts up by the via, clear of the slot
 connector housing.
 
-**SMD (SOD-523, about 1.6 mm with leads):** RB751S40 or BAT54XV2.
+**Parts:** 4 per card, 8 for two cards; buy spares. Schottky only (a
+silicon diode's 0.7 V leaves no margin under the 0.8 V VIL). Leakage must
+be low (under 1 uA at 5 V) so an idle card stays invisible.
+
+**Wire method (recommended for hand work): BAT85 (DO-34 axial).** Cut the
+trace (two scalpel cuts 0.5 mm apart, lift the sliver, meter open). Glue the
+diode flat in open board area within 1 to 2 cm, band toward U14. 32 to 36
+AWG solderable-enamel magnet wire from the via (DMA: a scraped spot on the
+U14 side) to the band end, and from a scraped stub just above the finger to
+the other end. Flux, 1 s touch per joint. Anchor every wire with UV resin or
+epoxy plus Kapton right away; a snagged wire lifts the trace. Meter finger
+to via: about 0.2 to 0.3 V one way, open the other.
+
+**Direct on the trace (microscope / microsoldering shop): SOD-523,
+about 1.6 mm with leads, RB751S40 or BAT54XV2.** No wires, cleanest result,
+but it needs a stereo microscope and practice.
 1. Cut the trace just below the via ring.
 2. Scrape the mask on the finger-side stub. Keep solder off the finger and
    off the pour next to it.
 3. Cathode to the via side, anode to the finger-side stub.
-
-**Wire (any Schottky, e.g. BAT85 axial):** cut the same trace. 30 AWG Kynar
-from the via to the cathode, diode glued in open board area, second wire
-from the anode back to the finger-side stub.
 
 Every card that can sit idle while another pulls needs the bodge, so in
 practice every card.
