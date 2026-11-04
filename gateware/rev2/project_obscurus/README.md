@@ -153,7 +153,7 @@ To program flash (only when you intend to flash):
 8. After `Q`: `CATALOG` / copy a file again → still clean (card re-disarmed).
 9. Ctrl-Reset mid-monitor → back to BASIC, card silent, disks fine.
 
-Capture via the `obs-screenshot` skill.
+Capture via the `screencap` skill.
 
 ## Why "obscurus"
 

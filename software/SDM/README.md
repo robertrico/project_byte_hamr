@@ -117,7 +117,7 @@ BRUN SDMTEST
    sdmdisk` → expect `FAILURES` count `2800` (hex = 10240) with the first 16
    mismatch lines, then revert.
 4. Card absent at boot → `NO CARD` (not a hang, not a fail count).
-5. Capture the screen via the `obs-screenshot` skill.
+5. Capture the screen via the `screencap` skill.
 
 ## Notes
 
