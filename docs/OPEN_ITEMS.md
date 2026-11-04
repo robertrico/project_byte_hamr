@@ -9,7 +9,7 @@ Nothing here is verified on the bench today.
 
 | Branch | vs main | Remote | Note |
 |--------|---------|--------|------|
-| `slot-parameterization` (current) | +1 | pushed | SLOT param + b8008 netlist fix (2026-09-14). Merge candidate. |
+| `slot-parameterization` (current) | 0 | pushed | Fast-forwarded into main 2026-11-03. Deletable. |
 | `obscurus-sdram-monitor` | +51 unmerged | **local only** | Hypervisor 5a–5c-2b bench-verified work. Not backed up. |
 | `smartport-host` | +19 unmerged | **local only** | Phase 4 done, Phase 5 built, never benched. Not backed up. |
 | `write` | +1 unmerged | pushed | PicoPort WRITEBLOCK (2026-03-10). Never merged. |
@@ -22,9 +22,9 @@ farm-v2 recipe shop WIP, `stash@{2}` conway-multiverse WIP. Decide keep/drop.
 
 ### Rev 2 hardware
 - **E1 (bench 2026-11-03):** U14 drives ~IRQ/~NMI/~INH/~RES/~DMA push-pull;
-  an idle Byte Hamr blocks every other card's interrupts. Bodge (series
-  Schottky) + Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`. Bodge not
-  yet done.
+  an idle Byte Hamr blocks every other card's interrupts. Possible repairs
+  + Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`. None done. Rev 3
+  draft spec: `hardware/byte_hamr/rev3_spec.md`.
 
 ### smart_hamr_rev2 (FujiNet; Byte Hamr as Liron) — active
 Bench plan: `gateware/rev2/smart_hamr_rev2/HANDOFF.md`. **Step 0 (A2M2053 known-good device) before FujiNet.**
