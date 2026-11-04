@@ -98,8 +98,7 @@ drill (a 0.075 mm ring, probably tented under mask), U14 pins 0.3 mm on
 | B. Kapton on fingers | IRQ, NMI, DMA | no | none, reversible |
 | C. Series Schottky per line | IRQ, NMI (+ DMA, INH) | yes | 1 cut + 2 joints per line |
 | D. OE (pin 22) to a GPIO | all seven | yes | 1 pin lift + 3 wires, 2 parts |
-| E. Interposer | IRQ, NMI, DMA, INH | yes | none on the card |
-| F. OE (pin 22) to +5 V | all seven | no | 1 pin lift + 1 wire |
+| E. OE (pin 22) to +5 V | all seven | no | 1 pin lift + 1 wire |
 
 #### A. Cut ~DMA
 
@@ -189,14 +188,7 @@ Circuit, no inversion:
   Most cards ignore the chain; if one doesn't, 10 k to +5 V on each.
 - 5 V from the 2x3 power breakout.
 
-#### E. Interposer
-
-An Apple II slot extender between the slot and the card, with the lines cut
-on the extender and a through-hole Schottky in each. Large joints, the Byte
-Hamr is untouched, reversible. Raises the card by the extender's height:
-check the lid. Unbuilt.
-
-#### F. OE (pin 22) to +5 V
+#### E. OE (pin 22) to +5 V
 
 Lift pin 22, pull it to +5 V. U14 is off for good: the card never asserts
 anything, and the daisy chain floats as in D.
@@ -205,10 +197,10 @@ anything, and the daisy chain floats as in D.
 
 1. Repair one card. Meter each repaired line with the card idle: about 5 V
    from the motherboard pull-up. If one floats, add 3.3 to 10 k to +5 V.
-2. Z-80 card plus the repaired card: CP/M boots (A, B, C, D, E, F).
+2. Z-80 card plus the repaired card: CP/M boots (A, B, C, D, E).
 3. Both Byte Hamrs in, `PR#` on the unrepaired card: IRQ and NMI PASS
-   (B, C, D, E, F).
-4. Where the card can still assert (C, D, E): `PR#` on the repaired card,
+   (B, C, D, E).
+4. Where the card can still assert (C, D): `PR#` on the repaired card,
    with the other card repaired too, all four lines PASS. D needs the OE
    drive added to `irq_check`.
 

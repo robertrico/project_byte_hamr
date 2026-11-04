@@ -34,7 +34,7 @@ one Byte Hamr pulling ~IRQ or ~NMI low against an idle Byte Hamr is never
 seen by the 6502 (0/100). Both pulling together works (100/100). See Status.
 
 RTL cannot fix it (OE/DIR not on the FPGA). Possible repairs (cut ~DMA,
-Kapton on the fingers, series Schottky per line, OE to a GPIO, interposer)
+Kapton on the fingers, series Schottky per line, OE to a GPIO)
 with steps, and Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`, E1. None
 done yet.
 - **Rev3:** those five lines on a 5V-tolerant open-drain buffer (e.g.
