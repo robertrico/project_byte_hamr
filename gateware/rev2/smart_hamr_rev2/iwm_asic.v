@@ -198,12 +198,12 @@ module iwm_asic (
     //   edge AND bitTimer ≥ oneThreshold  → shift in 1, reset bitTimer
     //   no edge AND bitTimer ≥ zeroThreshold → shift in 0, reset bitTimer
     //
-    // Latch mode (modeLatch=1): byte boundary every 8 bit events after
-    // initial sync. Sync is the first $FF (shifter == 8'hFF) — once in
-    // sync, count 8 events per byte and load buffer.
-    //
-    // GCR mode (modeLatch=0): byte boundary on shifter[7]==1 (MSB-based
-    // framing). Buffer loaded, x7 set.
+    // Byte framing is MSB-based in every mode (spec p9: "the data register
+    // will latch the shift register when a one is shifted into the MSB").
+    // Leading 0s fall out of the empty shifter, so the stream self-syncs:
+    // the 10-bit $FFs in the SmartPort preamble (3F CF F3 FC) frame as
+    // FF FF FF FF from any start bit. Latch mode only changes how the
+    // data register MSB is held (see rr7 below), not the framing.
     reg [1:0] rddataSync;
     always @(posedge fclk or negedge nRES) begin
         if (~nRES) rddataSync <= 2'b11;
@@ -213,19 +213,30 @@ module iwm_asic (
 
     reg [7:0] shifter;
     reg [5:0] bitTimer;
-    reg [2:0] bitCounter;
-    reg       latchSynced;
 
     // =========================================================================
     // Buffer + x7 (patent col 8 lines 60-67)
     // =========================================================================
     // Buffer holds the most recently latched read byte. x7 is the data-
     // ready flop; it overrides D7 of the data register on the bus. x7
-    // sets when shifter loads buffer; clears 14 fclk after a valid bus
-    // read (/DEV low, x7=1). Spec/patent — no other delays.
+    // sets when shifter loads buffer; clears 14 fclk after a valid data
+    // read (spec p9: /DEV low and D7 outputting a one from the data
+    // register for at least one FCLK).
+    //
+    // Latch mode holds D7 while /DEV is low (spec p8: "the msb of the read
+    // data is latched internally during /DEV low ... then used for the
+    // determination of a valid data read"). rr7 follows x7 only while
+    // /DEV is high, so the CPU and the clear logic see the same D7 for the
+    // whole access. Without the hold, x7 set on the last fclk edge before
+    // PHI0 falls can reach the CPU without starting the clear, and the
+    // next poll reads the same nibble again.
     reg [7:0] buffer;
     reg       x7;
+    reg       rr7;
     reg [3:0] clrX7Timer;
+
+    wire d7_out       = modeLatch ? rr7 : x7;
+    wire data_reg_sel = ~q7 & ~q6 & motorOn;
 
     // =========================================================================
     // Write serializer (spec p2)
@@ -251,10 +262,9 @@ module iwm_asic (
             modeReg          <= 8'h07;          // latch=1, async=1, timer-off=1
             shifter          <= 8'd0;
             bitTimer         <= 6'd0;
-            bitCounter       <= 3'd0;
-            latchSynced      <= 1'b0;
             buffer           <= 8'd0;
             x7               <= 1'b0;
+            rr7              <= 1'b0;
             clrX7Timer       <= 4'd0;
             writeShifter     <= 8'd0;
             writeBitTimer    <= 6'd0;
@@ -266,6 +276,8 @@ module iwm_asic (
         end
         else begin
             q7_d <= q7;
+            if (nDEVICE_SELECT)
+                rr7 <= x7;
 
             // ===== x7 clear timer (patent col 8) =====
             if (clrX7Timer != 4'd0) begin
@@ -276,77 +288,45 @@ module iwm_asic (
                 else
                     clrX7Timer <= clrX7Timer + 4'd1;
             end
-            else if (~nDEVICE_SELECT && x7) begin
-                // /DEV asserted while x7=1 → 6502 is reading the data
-                // register with x7 latched. Start the 14-fclk countdown.
+            else if (~nDEVICE_SELECT && d7_out && data_reg_sel) begin
+                // Valid data read: start the 14-fclk countdown.
                 clrX7Timer <= 4'd1;
             end
 
             // ===== Read shifter (q7 = 0) =====
+            // A shift that puts a 1 in the MSB completes a byte: load the
+            // data register, set x7, clear the shifter.
             if (~q7) begin
                 if (rddata_fall) begin
                     if (bitTimer >= oneThreshold) begin
-                        shifter <= {shifter[6:0], 1'b1};
-                        if (modeLatch) begin
-                            if (latchSynced) begin
-                                if (bitCounter == 3'd7) begin
-                                    buffer     <= {shifter[6:0], 1'b1};
-                                    x7         <= 1'b1;
-                                    shifter    <= 8'd0;
-                                    bitCounter <= 3'd0;
-                                end
-                                else
-                                    bitCounter <= bitCounter + 3'd1;
-                            end
-                            else if ({shifter[6:0], 1'b1} == 8'hFF) begin
-                                // First $FF — enter latch-synced framing.
-                                buffer      <= 8'hFF;
-                                x7          <= 1'b1;
-                                shifter     <= 8'd0;
-                                bitCounter  <= 3'd0;
-                                latchSynced <= 1'b1;
-                            end
-                        end
-                        else if (shifter[6] == 1'b1) begin
-                            // GCR: MSB=1 latch (after this shift the new MSB).
+                        if (shifter[6]) begin
                             buffer  <= {shifter[6:0], 1'b1};
                             x7      <= 1'b1;
                             shifter <= 8'd0;
                         end
+                        else
+                            shifter <= {shifter[6:0], 1'b1};
                         bitTimer <= 6'd0;
                     end
                     // bitTimer < oneThreshold → glitch, ignore (do not reset).
                 end
                 else if (bitTimer >= zeroThreshold) begin
-                    shifter <= {shifter[6:0], 1'b0};
-                    if (modeLatch && latchSynced) begin
-                        if (bitCounter == 3'd7) begin
-                            buffer     <= {shifter[6:0], 1'b0};
-                            x7         <= 1'b1;
-                            shifter    <= 8'd0;
-                            bitCounter <= 3'd0;
-                        end
-                        else
-                            bitCounter <= bitCounter + 3'd1;
-                    end
-                    bitTimer <= oneThreshold;
-                end
-                else begin
-                    // No edge yet, timer counting. GCR MSB=1 latch path.
-                    if (~modeLatch && shifter[7] == 1'b1) begin
-                        buffer  <= shifter;
+                    if (shifter[6]) begin
+                        buffer  <= {shifter[6:0], 1'b0};
                         x7      <= 1'b1;
                         shifter <= 8'd0;
                     end
-                    bitTimer <= bitTimer + 6'd1;
+                    else
+                        shifter <= {shifter[6:0], 1'b0};
+                    bitTimer <= oneThreshold;
                 end
+                else
+                    bitTimer <= bitTimer + 6'd1;
             end
             else begin
-                // q7 = 1 (write mode) — reset read framing for next read.
-                shifter     <= 8'd0;
-                bitTimer    <= 6'd0;
-                bitCounter  <= 3'd0;
-                latchSynced <= 1'b0;
+                // q7 = 1 (write mode) — reset the shifter for the next read.
+                shifter  <= 8'd0;
+                bitTimer <= 6'd0;
             end
 
             // ===== Write serializer (q7 = 1) =====
@@ -421,7 +401,7 @@ module iwm_asic (
     // =========================================================================
     always @(*) begin
         case ({q7, q6})
-            2'b00:   data_out = motorOn ? {x7, buffer[6:0]} : 8'hFF;
+            2'b00:   data_out = motorOn ? {d7_out, buffer[6:0]} : 8'hFF;
             2'b01:   data_out = {sense, 1'b0, enableActive, modeReg[4:0]};
             2'b10:   data_out = {writeBufferEmpty, _underrun, 6'b000000};
             2'b11:   data_out = 8'hFF;
