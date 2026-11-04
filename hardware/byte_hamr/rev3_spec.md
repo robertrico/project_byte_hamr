@@ -1,8 +1,8 @@
 # Byte Hamr Rev 3 spec (DRAFT)
 
-**Draft, 2026-11-03. Rico has not settled the full design.** This captures
+**Draft, 2026-11-03. I haven't settled the full design.** This captures
 what came out of the Rev 2 errata session (`rev2_errata.md`, E1). Items are
-split into Decided (Rico said so), Leaning (current direction, not
+split into Decided, Leaning (current direction, not
 committed), and Open.
 
 Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
@@ -190,7 +190,7 @@ Not yet estimated with Lattice's power calculator. Apple budget: +5 V is
 
 ## RAM
 
-| Option | Capacity | Cost (Rico, 2026-11-03) | FPGA pins | Fits 96 with SmartPort? |
+| Option | Capacity | Cost (1 off, 2026-11-03) | FPGA pins | Fits 96 with SmartPort? |
 |---|---|---|---|---|
 | AS4C32M16SB (Rev 2 part, x16) | 64 MB | $30 | 39 | no (104) |
 | AS4C16M16SA-6TCN (x16) | 32 MB | $16.91 | 39 | no (104) |
@@ -242,8 +242,8 @@ irq_check runs at 100 and would move to 40 ns steps.
 | BGA forces two-sided assembly (10 caps + U7 on the back) | board file | TQFP, all top side |
 | 85F far larger than needed (max 8% LUT) | `reporting/` | 25F |
 | 100 MHz only divided to 25 | gateware | 25 MHz |
-| 0603 too small | Rico | 1206 |
-| IDC-40 didn't fit physically | Rico | header placement |
+| 0603 too small | hand assembly | 1206 |
+| IDC-40 didn't fit physically | Rev 2 build | header placement |
 | Micro-B tore off (DP051FY9) | bytehamr page | through-hole shell tabs |
 | USB blocked the lid (Rev 1), hard to reach (Rev 2) | bytehamr page | reachable from outside the case |
 | Protection diodes fitted backwards (Rev 1) | bytehamr log 2026-01-17 | polarity marks on silk, check assembly drawing |
@@ -254,7 +254,7 @@ irq_check runs at 100 and would move to 40 ns steps.
 | ECP5 power-up order | datasheet | cascaded regulators |
 | KiCad Value drifted from MPN (U2 says MT48LC16M16A2TG, built AS4C32M16SB-7TCNTR) | fab BOM | Value matches MPN on every part |
 | LPF generator script lived in `/tmp` | bring-up notes | commit the netlist-to-LPF script |
-| Bit-bang JTAG takes minutes | Rico | accepted (FT231X kept) |
+| Bit-bang JTAG takes minutes | Rev 2 flashing | accepted (FT231X kept) |
 | 25F has 2 PLLs (85F had 4) | datasheet | check no design needs more |
 
 ## Open
