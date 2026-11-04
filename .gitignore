@@ -107,3 +107,10 @@ gateware/**/b8008_hamr/_FileInformation.txt
 # handoffs, build tools. Session fodder stays out of the repo;
 # READMEs + committed HANDOFF_*.md carry durable state.
 docs/superpowers/
+
+# Merlin32 outputs / verilator build
+gateware/rev2/irq_check/**/_FileInformation.txt
+gateware/rev2/irq_check/_FileInformation.txt
+gateware/rev2/irq_check/irqrom.bin
+gateware/rev2/irq_check/tbsys/tbmon.bin
+gateware/rev2/smart_hamr_rev2/vtb/build/
