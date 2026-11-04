@@ -33,10 +33,10 @@ IRQ). **Bench 2026-11-03 confirmed it is a real failure for card-to-card:**
 one Byte Hamr pulling ~IRQ or ~NMI low against an idle Byte Hamr is never
 seen by the 6502 (0/100). Both pulling together works (100/100). See Status.
 
-RTL cannot fix it (OE/DIR not on the FPGA). Options (full write-up, bodge
-steps and Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`, E1):
-- **Bodge:** Schottky in series with ~IRQ and ~NMI (and ~DMA/~INH if a
-  card uses them), cathode toward U14. Needed: the test showed the problem.
+RTL cannot fix it (OE/DIR not on the FPGA). Possible repairs (cut ~DMA,
+Kapton on the fingers, series Schottky per line, OE to a GPIO, interposer)
+with steps, and Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`, E1. None
+done yet.
 - **Rev3:** those five lines on a 5V-tolerant open-drain buffer (e.g.
   74LVC07A on 3.3V). INT_OUT/DMA_OUT stay push-pull (daisy chain is driven).
 
@@ -132,8 +132,8 @@ they crash or stall the machine.
 5. **Scope:** monitor `C0C0:03`, probe ~IRQ at the slot, trigger GPIO_1. One
    card: ~0 V. Two cards: look for a mid-level (2 to 3 V expected for matched
    LVC drivers). `C0C0:00` stops.
-6. **Bodge check:** diode on the slot 2 card's ~IRQ only, `PR#4`: expect
-   `IRQ` PASS, `NMI` FAIL. Steps in `hardware/byte_hamr/rev2_errata.md`.
+6. **After a repair:** see "Verifying a repair" in
+   `hardware/byte_hamr/rev2_errata.md`.
 
 ## Status
 

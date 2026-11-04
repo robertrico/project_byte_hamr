@@ -3,7 +3,8 @@
 ## E1: U14 drives the slot's wired-OR lines push-pull
 
 **Status:** confirmed on the bench 2026-11-03 (`gateware/rev2/irq_check/`).
-Bodge below; proper fix is Rev 3.
+No repair done; boards in use as they are. Possible Rev 2 repairs below;
+proper fix is Rev 3.
 
 ### Fault
 
@@ -70,7 +71,7 @@ don't leave it powered in that state.
   5 V x 1k/4.3k = 1.2 V, above the 6502's 0.8 V VIL. Two bodged cards, one
   low and one high, sit at about 2.5 V. Fails both ways.
 
-Only a part that conducts one way makes it open-drain: a series Schottky,
+The only per-line fix is a part that conducts one way: a series Schottky,
 cathode toward U14. U14 low pulls the line to about 0.4 V (0.1 V LVC VOL
 + 0.3 V Schottky at about 1.5 mA). U14 high reverse-biases the diode, and
 the motherboard pull-up owns the high.
@@ -81,25 +82,42 @@ Only OE turns the A side off, and OE is on GND copper. The FPGA can't see
 ~IRQ or ~NMI either (the nets touch only U14 and the finger), so "join in
 when someone else pulls" isn't possible.
 
-Rejected alternatives to the diode:
-- **OE (pin 22) to +5 V:** turns all of U14 off. The card can never assert
-  any of these lines, and the INT/DMA daisy chain to the slots below
-  floats.
-- **OE or DIR (pin 2) to a GPIO:** one enable shared by all seven channels.
-  Enabling to assert IRQ also drives INH/RES/NMI/DMA high for as long as
-  IRQ is held. When disabled, the daisy chain floats. DIR and OE look to be
-  referenced to VCCA (5 V; check the datasheet), so 3.3 V is marginal and
-  needs a 2N7002 inverter plus a pull-up. Pin 22/2 is a 0.635 mm pin lift,
-  and every design needs OE logic plus a GPIO. DIR's only win is
-  readback, which needs break-before-make so U14 and the FPGA don't fight.
+### Possible repairs
 
-### No-surgery option: tape the fingers
+None done. The boards are in use as they are; with a Byte Hamr in the
+machine, other cards' IRQ/NMI/DMA/INH don't work. Each option below is a
+possible repair, not a plan.
 
-If the card doesn't need to interrupt or DMA (true of every Rev 2 design
-except `irq_check` and the hypervisor's NMI trap), insulate its fingers
-with thin Kapton (1 mil). U14 then drives nothing on those lines, and the
-card is electrically absent on them, the same as with the card pulled.
-Reversible; clean residue with IPA.
+Feature sizes for all of them: traces 0.15 mm, vias 0.35 mm outer / 0.2 mm
+drill (a 0.075 mm ring, probably tented under mask), U14 pins 0.3 mm on
+0.635 mm pitch. The edge fingers (1.4 x 7.1 mm) are the only large copper.
+
+| Repair | Lines | Card can still assert? | Work per card |
+|---|---|---|---|
+| A. Cut ~DMA | DMA | no (Rev 2 can't bus-master anyway) | 1 trace cut, no solder |
+| B. Kapton on fingers | IRQ, NMI, DMA | no | none, reversible |
+| C. Series Schottky per line | IRQ, NMI (+ DMA, INH) | yes | 1 cut + 2 joints per line |
+| D. OE (pin 22) to a GPIO | all seven | yes | 1 pin lift + 3 wires, 2 parts |
+| E. Interposer | IRQ, NMI, DMA, INH | yes | none on the card |
+| F. OE (pin 22) to +5 V | all seven | no | 1 pin lift + 1 wire |
+
+#### A. Cut ~DMA
+
+Rev 2 can't drive an address (U8, U11, U13 are input-only), so the card has
+no use for ~DMA. Cutting the trace takes the card off ~DMA for good and
+fixes the Z-80 card. ~DMA (U14 pin 7, finger pad 22) runs on the top side
+(F.Cu) with no via: pin 7 down x 217.92 to y 119.57, diagonal to
+(218.98, 120.63), then to the finger. Cut the diagonal (higher up it is
+0.64 mm from the NMI stub). Two scalpel cuts 0.5 mm apart, lift the sliver,
+meter U14 pin 7 to the finger: open.
+
+The same logic applies to ~INH only if no design will ever use it (the
+hypervisor's trap plan did: NMI + INH).
+
+#### B. Kapton on the fingers
+
+Thin Kapton (1 mil) over the finger takes the card off that line, the same
+as pulling it. Reversible; clean residue with IPA.
 
 | Finger | Side | Slot pin | Note |
 |---|---|---|---|
@@ -107,63 +125,92 @@ Reversible; clean residue with IPA.
 | pad 29 | back (B.Cu) | 29 ~NMI | directly opposite pad 22 |
 | pad 22 | front (F.Cu) | 22 ~DMA | one strip wrapped over the edge covers 29 + 22 |
 
-Fingers are 1.4 mm wide on 2.54 mm pitch: cut strips about 1.2 mm so they
-don't touch neighbors. Check after each insertion that the strip hasn't
-slid.
+Strips about 1.2 mm wide so they don't touch neighbors. Check after each
+insertion that the strip hasn't slid.
 
-### Bodge (card keeps the ability to assert)
+#### C. Series Schottky per line
 
-Per line, between U14's via and the edge finger (~DMA has no via: top
-side). Don't do it at U14: the pins are 0.635 mm apart.
+Cut the trace between U14's via and the finger, put a Schottky across the
+cut, cathode toward U14. Don't do it at U14.
 
-Full repair is four lines per card. Every net below touches only U14 and
-the finger, except ~RES (see its row).
-
-| Line | U14 pin | Finger | Cut where | Repair? |
-|---|---|---|---|---|
-| ~IRQ | 5 | pad 30, back | B.Cu, via (216.6, 119) to finger, x 216.44, about 2.1 mm | yes |
-| ~NMI | 6 | pad 29, back | B.Cu, via (217.35, 119) to finger, x 218.98 | yes |
-| ~DMA | 7 | pad 22, front | F.Cu, no via: pin 7 down x 217.92 to y 119.57, diagonal to (218.98, 120.63), then to the finger. Cut the diagonal (higher up it's 0.64 mm from the NMI stub) | yes (Z-80 card confirmed) |
-| ~INH | 3 | pad 32, back | B.Cu, via (214.6, 118.25), then a 3.9 mm diagonal to (211.36, 120.99): roomiest run of the four | yes |
-| ~RES | 4 | pad 31, back | no: U13 pin 8 (nRES_READ) taps it at the via (214.85, 119), so a cut must go on the F.Cu stub at U14 pins | no, Ctrl-Reset works |
+| Line | U14 pin | Finger | Cut where |
+|---|---|---|---|
+| ~IRQ | 5 | pad 30, back | B.Cu, via (216.6, 119) to finger, x 216.44, about 2.1 mm |
+| ~NMI | 6 | pad 29, back | B.Cu, via (217.35, 119) to finger, x 218.98 |
+| ~DMA | 7 | pad 22, front | as in A (or just do A) |
+| ~INH | 3 | pad 32, back | B.Cu, via (214.6, 118.25), then a 3.9 mm diagonal to (211.36, 120.99) |
+| ~RES | 4 | pad 31, back | not possible here: U13 pin 8 (nRES_READ) taps it at the via (214.85, 119); Ctrl-Reset works anyway |
 
 The bare trace from the via ring to the top of the finger (y about 121.4)
-is only about 2.1 mm. The top of the finger is about 0.4 mm above the
-card-edge shoulder, so keep parts up by the via, clear of the slot
-connector housing.
+is about 2.1 mm, and the finger top is about 0.4 mm above the card-edge
+shoulder, so keep parts up by the via, clear of the slot connector housing.
 
-**Parts:** 4 per card, 8 for two cards; buy spares. Schottky only (a
-silicon diode's 0.7 V leaves no margin under the 0.8 V VIL). Leakage must
-be low (under 1 uA at 5 V) so an idle card stays invisible.
+Parts: Schottky only (a silicon diode's 0.7 V leaves no margin under the
+0.8 V VIL), leakage under 1 uA at 5 V.
+- Wire: BAT85 (DO-34 axial) glued flat within 1 to 2 cm, band toward U14,
+  32 to 36 AWG solderable-enamel magnet wire to the via and to a scraped
+  stub just above the finger. 1 s touch per joint, anchor every wire with
+  UV resin or epoxy plus Kapton.
+- Direct: SOD-523 (RB751S40 or BAT54XV2, about 1.6 mm with leads) across
+  the cut. Needs a stereo microscope.
 
-**Wire method (recommended for hand work): BAT85 (DO-34 axial).** Cut the
-trace (two scalpel cuts 0.5 mm apart, lift the sliver, meter open). Glue the
-diode flat in open board area within 1 to 2 cm, band toward U14. 32 to 36
-AWG solderable-enamel magnet wire from the via (DMA: a scraped spot on the
-U14 side) to the band end, and from a scraped stub just above the finger to
-the other end. Flux, 1 s touch per joint. Anchor every wire with UV resin or
-epoxy plus Kapton right away; a snagged wire lifts the trace. Meter finger
-to via: about 0.2 to 0.3 V one way, open the other.
+Meter finger to via: about 0.2 to 0.3 V one way, open the other. Every card
+that can sit idle while another pulls needs it.
 
-**Direct on the trace (microscope / microsoldering shop): SOD-523,
-about 1.6 mm with leads, RB751S40 or BAT54XV2.** No wires, cleanest result,
-but it needs a stereo microscope and practice.
-1. Cut the trace just below the via ring.
-2. Scrape the mask on the finger-side stub. Keep solder off the finger and
-   off the pour next to it.
-3. Cathode to the via side, anode to the finger-side stub.
+#### D. OE (pin 22) to a GPIO
 
-Every card that can sit idle while another pulls needs the bodge, so in
-practice every card.
+Lift pin 22 (its GND trace runs under the chip, so the pad stays
+grounded) and let the FPGA enable U14 only while it asserts. Idle, all
+seven U14 outputs are off: the card is absent from every line.
 
-### Verifying the bodge
+From the datasheet (TI SN74LVC8T245, SCES584): control inputs are
+referenced to VCCA; at VCCA 4.5 to 5.5 V, VIH = 0.7 x VCCA (3.5 V at 5 V)
+and VIL = 0.3 x VCCA (1.5 V). "Pull OE high to place all outputs in
+3-state mode." 3.3 V from the FPGA can't hold OE off; 0 V turns it on fine.
+Circuit, no inversion:
 
-1. Bodge ~IRQ only, on the slot 2 card.
-2. Meter ~IRQ with the card idle: about 5 V from the motherboard pull-up. If
-   it floats, add 3.3 to 10 k to +5 V.
-3. `PR#4`. Expect `IRQ` PASS, `NMI` FAIL (control, not bodged), `IRQ+`
-   S=64 (slot 4 now wins alone).
-4. Bodge ~NMI, `PR#4` and `PR#2`: all four lines PASS on both.
+```
+ +5V --[10k]--+-- U14 pin 22 (OE, lifted)
+              |
+            BAT85, band toward FPGA
+              |
+ GPIO_n ------+   (header pin, 3.3 V)
+```
+
+- GPIO 0: OE about 0.3 V, U14 on.
+- GPIO 1, Z, or FPGA unconfigured: diode off, OE 5 V, U14 off. Off is the
+  default through power-up and in any design that never drives the pin.
+  The ECP5 pin never sees 5 V.
+- RTL: designs that assert drive GPIO_n low while any U14 line is
+  asserted (and for nRES, if a design resets the Apple). tPZL about 24 ns.
+- While on, the other U14 lines drive high for the length of the pulse
+  (microseconds).
+- U14 pins 8/9 (INT/DMA daisy chain to the next slot) float while off.
+  Most cards ignore the chain; if one doesn't, 10 k to +5 V on each.
+- 5 V from the 2x3 power breakout.
+
+#### E. Interposer
+
+An Apple II slot extender between the slot and the card, with the lines cut
+on the extender and a through-hole Schottky in each. Large joints, the Byte
+Hamr is untouched, reversible. Raises the card by the extender's height:
+check the lid. Unbuilt.
+
+#### F. OE (pin 22) to +5 V
+
+Lift pin 22, pull it to +5 V. U14 is off for good: the card never asserts
+anything, and the daisy chain floats as in D.
+
+### Verifying a repair
+
+1. Repair one card. Meter each repaired line with the card idle: about 5 V
+   from the motherboard pull-up. If one floats, add 3.3 to 10 k to +5 V.
+2. Z-80 card plus the repaired card: CP/M boots (A, B, C, D, E, F).
+3. Both Byte Hamrs in, `PR#` on the unrepaired card: IRQ and NMI PASS
+   (B, C, D, E, F).
+4. Where the card can still assert (C, D, E): `PR#` on the repaired card,
+   with the other card repaired too, all four lines PASS. D needs the OE
+   drive added to `irq_check`.
 
 ## Rev 3 notes
 
