@@ -1,0 +1,99 @@
+signal,pin,pad,bank,dual_function,reason
+PSRAM_SIO3,1,PL5C,7,-,placement-optimized 2026-11-04
+PSRAM_SCLK,2,PL5D,7,-,placement-optimized 2026-11-04
+PSRAM_SIO0,3,PL5B,7,-,placement-optimized 2026-11-04
+~{SP_ENBL2},4,PL8A,7,-,placement-optimized 2026-11-04
+~{SP_ENBL1},5,PL8C,7,-,placement-optimized 2026-11-04
+~{SP_WRREQ},6,PL8B,7,-,placement-optimized 2026-11-04
+SP_WRDATA,7,PL8D,7,-,placement-optimized 2026-11-04
+SP_PH3,10,PL14A,7,-,placement-optimized 2026-11-04
+SP_PH2,11,PL14C,7,VREF1_7,placement-optimized 2026-11-04
+SP_PH1,12,PL14B,7,-,placement-optimized 2026-11-04
+~{SP_OE},13,PL14D,7,-,placement-optimized 2026-11-04
+SP_PH0,14,PL23D,7,PCLKC7_0,placement-optimized 2026-11-04
+GPIO_1,18,PL32B,6,-,placement-optimized 2026-11-04
+GPIO_2,19,PL35B,6,VREF1_6,placement-optimized 2026-11-04
+GPIO_3,22,PL35C,6,-,placement-optimized 2026-11-04
+GPIO_4,23,PL35D,6,-,placement-optimized 2026-11-04
+GPIO_5,24,PL38A,6,-,placement-optimized 2026-11-04
+GPIO_6,25,PL38B,6,-,placement-optimized 2026-11-04
+GPIO_7,26,PL41C,6,-,placement-optimized 2026-11-04
+GPIO_8,27,PL41D,6,-,placement-optimized 2026-11-04
+SPARE_28,28,PL44A,6,-,placement-optimized 2026-11-04
+SPARE_30,30,PL44B,6,-,placement-optimized 2026-11-04
+SPARE_31,31,PL44C,6,-,placement-optimized 2026-11-04
+SPARE_33,33,PL44D,6,-,placement-optimized 2026-11-04
+SPARE_34,34,PL47A,6,-,placement-optimized 2026-11-04
+SPARE_35,35,PL47B,6,-,placement-optimized 2026-11-04
+GPIO_CLK2,37,PL47C,6,LLC_GPLL0T_IN,"LLC_GPLL0T_IN, header clock-capable"
+SPARE_39,39,PB6A,8,D5/MISO2/IO5,placement-optimized 2026-11-04
+SPARE_40,40,PB4A,8,D7/IO7,placement-optimized 2026-11-04
+DATA_OE,41,PB6B,8,D4/MOSI2/IO4,placement-optimized 2026-11-04
+D0_3V3,44,PB4B,8,D6/IO6,placement-optimized 2026-11-04
+D1_3V3,45,PB9A,8,D3/IO3,placement-optimized 2026-11-04
+FLASH_MISO,46,PB11A,8,D1/MISO/IO1,config SPI MISO
+FLASH_MOSI,47,PB11B,8,D0/MOSI/IO0,config SPI MOSI
+DATA_DIR,48,PB13A,8,SN/CSN,placement-optimized 2026-11-04
+~{FLASH_CS},49,PB15A,8,HOLDN/DI/BUSY/CSSPIN/CEN,config SPI CSSPIN
+D2_3V3,50,PB13B,8,CS1N,placement-optimized 2026-11-04
+D3_3V3,51,PB15B,8,DOUT/CSON,placement-optimized 2026-11-04
+D4_3V3,52,PB18A,8,WRITEN,placement-optimized 2026-11-04
+D5_3V3,67,PR47B,3,-,placement-optimized 2026-11-04
+D6_3V3,68,PR47D,3,LRC_GPLL0C_IN,placement-optimized 2026-11-04
+CLK_25MHz,69,PR47C,3,LRC_GPLL0T_IN,"LRC_GPLL0T_IN, PLL input"
+D7_3V3,71,PR47A,3,-,placement-optimized 2026-11-04
+A0_3V3,72,PR44C,3,-,placement-optimized 2026-11-04
+A1_3V3,73,PR41D,3,-,placement-optimized 2026-11-04
+A2_3V3,74,PR41C,3,-,placement-optimized 2026-11-04
+A3_3V3,76,PR41B,3,-,placement-optimized 2026-11-04
+A4_3V3,77,PR41A,3,-,placement-optimized 2026-11-04
+ADDR_OE,78,PR35D,3,-,placement-optimized 2026-11-04
+A5_3V3,79,PR35B,3,VREF1_3,placement-optimized 2026-11-04
+A6_3V3,80,PR35C,3,-,placement-optimized 2026-11-04
+A7_3V3,81,PR35A,3,-,placement-optimized 2026-11-04
+A8_3V3,82,PR32D,3,-,placement-optimized 2026-11-04
+ADDR_DIR,84,PR32C,3,-,placement-optimized 2026-11-04
+A9_3V3,88,PR23D,2,PCLKC2_0,placement-optimized 2026-11-04
+A10_3V3,89,PR23B,2,PCLKC2_1,placement-optimized 2026-11-04
+7M_3V3,90,PR23C,2,PCLKT2_0,PCLKT2_0 clock input
+PHI0_3V3,91,PR23A,2,PCLKT2_1,PCLKT2_1 clock input
+A11_3V3,92,PR20D,2,-,placement-optimized 2026-11-04
+~{PSRAM_CS2},93,PR20B,2,-,placement-optimized 2026-11-04
+A12_3V3,94,PR20C,2,GR_PCLK2_0,placement-optimized 2026-11-04
+A13_3V3,95,PR20A,2,GR_PCLK2_1,placement-optimized 2026-11-04
+A14_3V3,97,PR14B,2,-,placement-optimized 2026-11-04
+A15_3V3,98,PR14C,2,VREF1_2,placement-optimized 2026-11-04
+~{PSRAM_CS3},99,PR14A,2,-,placement-optimized 2026-11-04
+R{slash}~{W}_3V3,102,PR8D,2,-,placement-optimized 2026-11-04
+~{I{slash}O_SELECT}_3V3,103,PR8B,2,-,placement-optimized 2026-11-04
+~{I{slash}O_STROBE}_3V3,104,PR8C,2,-,placement-optimized 2026-11-04
+PSRAM_SIO1,105,PR8A,2,-,placement-optimized 2026-11-04
+~{DEVICE_SELECT}_3V3,106,PR2D,2,-,placement-optimized 2026-11-04
+Q3_3V3,107,PR2C,2,-,placement-optimized 2026-11-04
+PHI1_3V3,108,PR2B,2,S0_IN,placement-optimized 2026-11-04
+PSRAM_SIO2,110,PT67A,1,-,placement-optimized 2026-11-04
+~{PSRAM_CS0},111,PT62B,1,-,placement-optimized 2026-11-04
+µSync_3V3,112,PT62A,1,-,placement-optimized 2026-11-04
+SYNC_3V3,113,PT60B,1,-,placement-optimized 2026-11-04
+COLOR_REF_3V3,114,PT60A,1,-,placement-optimized 2026-11-04
+INT_IN_3V3,115,PT58B,1,-,placement-optimized 2026-11-04
+DMA_IN_3V3,116,PT58A,1,-,placement-optimized 2026-11-04
+RDY_READ_3V3,117,PT56B,1,-,placement-optimized 2026-11-04
+~{PSRAM_CS1},118,PT56A,1,-,placement-optimized 2026-11-04
+RDY_3V3,119,PT53B,1,-,placement-optimized 2026-11-04
+~{DMA}_READ_3V3,120,PT53A,1,-,placement-optimized 2026-11-04
+~{NMI}_READ_3V3,121,PT51A,1,-,placement-optimized 2026-11-04
+~{DMA}_3V3,124,PT42B,1,-,placement-optimized 2026-11-04
+~{IRQ}_READ_3V3,125,PT42A,1,-,placement-optimized 2026-11-04
+~{NMI}_3V3,126,PT40B,1,-,placement-optimized 2026-11-04
+~{RES}_READ_3V3,127,PT40A,1,-,placement-optimized 2026-11-04
+GPIO_CLK1,128,PT29A,0,PCLKT0_0,"PCLKT0_0, header clock-capable"
+~{INH}_READ_3V3,133,PT15B,0,-,placement-optimized 2026-11-04
+SP_RDDATA,134,PT15A,0,-,"header, side 4 + bank 8"
+SP_SENSE,135,PT13B,0,-,"header, side 4 + bank 8"
+R{slash}~{W}_OUT_3V3,136,PT13A,0,-,placement-optimized 2026-11-04
+INT_OUT_3V3,139,PT9B,0,-,placement-optimized 2026-11-04
+~{INH}_3V3,140,PT9A,0,-,placement-optimized 2026-11-04
+~{RES}_3V3,141,PT6B,0,-,placement-optimized 2026-11-04
+~{IRQ}_3V3,142,PT4B,0,-,placement-optimized 2026-11-04
+DMA_OUT_3V3,143,PT6A,0,-,placement-optimized 2026-11-04

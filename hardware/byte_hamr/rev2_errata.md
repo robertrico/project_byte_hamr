@@ -204,6 +204,36 @@ anything, and the daisy chain floats as in D.
    with the other card repaired too, all four lines PASS. D needs the OE
    drive added to `irq_check`.
 
+## E2: INT/DMA daisy chain wired in reverse
+
+**Status:** found 2026-11-04 in the Rev 3 schematic review, from the slot
+pinout. Not measured on the bench.
+
+### Fault
+
+The card should read INT IN (pin 28) and DMA IN (pin 27) from the
+higher-priority slot and drive INT OUT (pin 23) and DMA OUT (pin 24) to
+the lower-priority slot (MAME `src/devices/bus/a2bus/a2bus.cpp`: "DMA IN -
+daisy chain of DMA signal from higher priority devices"; the //e Reference
+Manual pinout says the same). Rev 2 does the opposite: U14 pins 8/9 drive
+`INT_IN_5V` and `DMA_IN_5V` (slot pins 28/27) push-pull, and the FPGA reads
+`INT_OUT_5V` and `DMA_OUT_5V` (pins 23/24). `docs/pinout.md` had the
+directions swapped, which is where the error came from.
+
+### Effect
+
+- The card drives the same line as the card one slot higher (its INT OUT /
+  DMA OUT feeds this card's pins 28/27): a push-pull fight whenever a
+  higher card is in the slot above.
+- The card never passes priority on through pins 23/24, so lower slots see
+  whatever the floating or pulled level is.
+- None of the Rev 2 designs use interrupts or DMA, so no failure was seen.
+
+### Repair
+
+No Rev 2 repair planned. Rev 3 reads 27/28 through an input buffer and
+drives 23/24 from a 74LVC125A.
+
 ## Rev 3 notes
 
 Rev 3 isn't scheduled. These are what it should carry if it happens.
@@ -222,8 +252,9 @@ Rev 3 isn't scheduled. These are what it should carry if it happens.
   shifter channels for ~IRQ and ~NMI (~DMA and ~INH if there's room) so
   the FPGA can see who holds a line: debugging, sharing, stuck-line
   detection.
-- **Daisy chain stays push-pull.** INT_IN/DMA_IN (the card's outputs to
-  the next slot) are point to point with one driver: 74AHCT1G125 at 5 V
+- **Daisy chain stays push-pull.** INT OUT/DMA OUT (slot pins 23/24, the
+  card's outputs to the next slot; see E2) are point to point with one
+  driver: 74AHCT1G125 at 5 V
   (TTL input takes 3.3 V) or 74LVC1T45. Always driven, so the chain never
   floats.
 - **DMA.** Address transceivers U8, U11 and U13 need DIR and OE on FPGA
