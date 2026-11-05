@@ -24,7 +24,7 @@ number; merge them when ordering.
 - Commodity, multi-source parts only (Nexperia / TI second source on
   every logic part).
 - Fewest unique part numbers: one transceiver (74LVC245A) does the
-  address, data, input and SmartPort jobs (7 off).
+  address, data and input jobs (6 off).
 - 1206 passives, one value per job where the circuit allows.
 - Every part on the top side.
 - Proven Rev 2 circuits kept as is: power, config, JTAG header.
@@ -36,8 +36,8 @@ number; merge them when ordering.
 | | Rev 2 | Rev 3 draft |
 |---|---|---|
 | Part numbers (same value merged) | 27 | 25 |
-| ICs (incl. oscillator) | 15 | 19 |
-| R / C / L (placed) | 70 | 113 (+10 DNP) |
+| ICs (incl. oscillator) | 15 | 18 |
+| R / C / L (placed) | 70 | 100 |
 
 More placements than Rev 2, but no BGA, no two-sided assembly, no 8T245s
 and no USB.
@@ -53,6 +53,7 @@ and no USB.
 | 100 MHz oscillator | 25 MHz |
 | FT231X, micro-B, 27 R x2, R9, D1 | no USB on the card: every FTDI USB part is out of stock at DigiKey and Mouser; an external Pico 2 per card does JTAG |
 | J6 2x3 power breakout | folded into the 2x20 header |
+| (planned) SmartPort '245, 10x 0R, 10x DNP C | SmartPort level shifting, pulls and R/C live on the daughterboard; J1 is plain 3.3 V GPIO + power |
 | 22 nF 0603 decoupling | 100 nF 1206 |
 
 ## Design consequences found while writing the BOM
@@ -60,7 +61,7 @@ and no USB.
 - **R/W' needs two FPGA pins** (out through the 74LVC125A, in through an
   input buffer). The pin budget in `rev3_spec.md` counts both.
 - **Every 5 V input is buffered.** ECP5 inputs aren't 5 V tolerant, so
-  all 19 slot inputs plus 2 SmartPort inputs go through 74LVC245A
+  all 19 slot inputs go through 74LVC245A
   (VCC 3.3 V, 5 V tolerant I/O).
 - **Chain outputs (INT OUT, DMA OUT) need a defined level while the FPGA is
   unconfigured.** 10k pull-ups on the '125 inputs pass priority on to
@@ -69,12 +70,12 @@ and no USB.
   card is off: 1.1 k in series with TCK, TDI and TMS (about 3 mA into an
   unpowered FPGA), 4.7 k pull-up on TDO.
 
-## Pricing (DigiKey, 2026-11-04, `dkp bom`)
+## Pricing (DigiKey, 2026-11-05, `dkp bom`)
 
 | Boards | Total | Per board |
 |---|---|---|
-| 1 | $52.05 | $52.05 |
-| 5 | $232.80 | $46.56 |
+| 1 | $51.34 | $51.34 |
+| 5 | $230.31 | $46.06 |
 
 Parts only: no PCB, stencil or assembly, and not the external Pico 2s.
 Same-value rows merged. All 25 lines in stock.
@@ -83,9 +84,9 @@ Same-value rows merged. All 25 lines in stock.
 |---|---|
 | FPGA | $22.33 (43%) |
 | 4x PSRAM | $7.00 |
-| 7x 74LVC245A | $3.92 |
+| 6x 74LVC245A | $3.36 |
 | Flash | $2.98 |
-| Everything else | $15.82 |
+| Everything else | $15.67 |
 
 Findings:
 
@@ -99,9 +100,9 @@ Findings:
   DigiKey (50 weeks) and Mouser (210 to 294 days). That is why USB left
   the card.
 
-### Mouser comparison (2026-11-04, `mouser bom`)
+### Mouser comparison (2026-11-05, `mouser bom`)
 
-5 boards: $249.32 ($49.86 a board) against DigiKey's $232.80 ($46.56),
+5 boards: $247.04 ($49.41 a board) against DigiKey's $230.31 ($46.06),
 with 3 lines Mouser doesn't carry (Jauch oscillator, both Sullins
 headers) and 2 at 0 stock (74LVC07A, Murata inductor). One DigiKey order
 covers everything.

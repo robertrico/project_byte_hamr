@@ -15,17 +15,17 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 | FPGA | **LFE5U-25F-7TG144C**. Any speed grade is fast enough for the Apple IIe, so the rule is cheapest in stock; on DigiKey (2026-11-04) -7 is the only grade stocked (103, $22.33 @1; -6 and -8 MOQ 300, 40 weeks): TQFP-144, 24K LUT, 56 EBR (18 Kb), 2 PLL, 98 user I/O, 20 x 20 mm body, 0.5 mm pitch. Listed in `docs/FPGA-DS-02012-3-4-ECP5-ECP5G-Family-Data-Sheet.pdf` (Rev 3.4, Sept 2025). Same Yosys/nextpnr-ecp5 flow: `--25k --package TQFP144 --speed 7` (Trellis database has `TQFP144` for the 25F). |
 | Assembly | All parts on the top side. No two-sided assembly. Stencil on the next order. |
 | Passives | 1206 preferred everywhere. Inductors stay Murata DFE322520 2.2 uH (1008). |
-| Board | 170 x 67 mm above the finger tab (left edge x 66.5; laid out 2026-11-04, DRC 0 errors / 0 unconnected): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, top, fingers and notches as Rev 2. 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane, In2 power (+3V3 with +1V1/+2V5 pours). |
+| Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 2d 2026-11-05, DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1 and R3 courtyards (0.5 mm-pitch FPGA pads cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, top, fingers and notches as Rev 2. 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with +1V1 and +2V5 islands; +2V5 also runs as a B.Cu ring under the FPGA. |
 | Clock | 25 MHz (Rev 2's 100 MHz was only ever divided down to 25) |
 | Programming | No USB on the card (decided 2026-11-04). The 2x3 JTAG header (Rev 2's J4 pinout: 3V3, GND, TCK, TDI, TMS, TDO) is the only programming port. Each card gets its own external Pico 2 running pico-dirtyJtag on a short ribbon; a long USB cable runs from the Pico out of the case. The FT231X circuit (and every FTDI USB part, all out of stock at DigiKey and Mouser) is gone. |
 | Slot | Full support for all 50 slot pins, every signal working as Apple designed it |
 | Wired-OR lines | IRQ, NMI, INH, RES, DMA (and RDY) open-drain. Fixes Rev 2 E1. |
 | DMA | Must work |
 | RAM | 4x 8 MB QSPI PSRAM (32 MB), one chip-select each |
-| Header | One shrouded 2x20 header on the rear edge (vertical, cable out the back of the case, courtyard at least 3 mm from the edge) carries GPIO and power: 20 signals (10 SmartPort, 10 general), 5 power, 15 GND. IDC-40 was electrically solid on Rev 2; it only failed on physical fit. |
+| Header | One shrouded 2x20 header on the rear edge (vertical, cable out the back of the case, courtyard at least 3 mm from the edge) carries GPIO and power: 20 plain 3.3 V FPGA signals (`GPIO_1`..`GPIO_20`; no clocks on the header, a daughterboard brings its own), 5 power, 15 GND. IDC-40 was electrically solid on Rev 2; it only failed on physical fit. |
 | Power | Rev 2 power circuit unchanged: three TLV62569 bucks (1.1 V, 2.5 V, 3.3 V), each fed from +5 V, EN tied to +5 V, same divider values, 0 R rail jumpers, STPS2L40AF (D2) from Apple +5 V. Rev 2's USB-side diode (D1) goes with USB. |
 | Config flash | 128 Mbit SPI. Disk images live there on designs without an SD card. |
-| SmartPort | At least 10 header signals |
+| SmartPort | Off the card (decided 2026-11-05): a daughterboard on J1 does the 5 V level shifting, pulls, series R and shunt C; J1 gives it 3.3 V GPIO and power. |
 
 ## Leaning
 
@@ -151,7 +151,7 @@ For reference, Rev 2 placed 118 pins on the 85F (20 GPIO, 39 SDRAM, 4 JTAG).
 
 ## Header
 
-2x20, shrouded: 20 signals (10 SmartPort, 10 general), 5 power, 15 GND.
+2x20, shrouded: 20 plain 3.3 V GPIO signals, 5 power, 15 GND.
 About 9 FPGA pins are left for LEDs or test pads.
 
 Power on the same header (Rev 2's separate 2x3 J6 power breakout folds in; J4 is the 2x3 JTAG header and stays):
@@ -162,11 +162,10 @@ Power on the same header (Rev 2's separate 2x3 J6 power breakout folds in; J4 is
 - Shrouded and keyed. Pin order chosen so a one-pin offset can't put 12 V
   on an FPGA pin.
 - Polyfuse per power output.
-- SmartPort devices are 5 V; ECP5 GPIO is not 5 V tolerant. The SmartPort
-  group needs its own level shifter, so that part of the header is 5 V and
-  the rest 3.3 V. Label both on the silkscreen.
-- Footprints for series R or shunt C on the SmartPort lines (Rev 1 needed
-  two 22 pF bodge caps for the ESP32 FujiNet).
+- SmartPort devices are 5 V; ECP5 GPIO is not 5 V tolerant. The level
+  shifter, pulls and the series R / shunt C footprints (Rev 1 needed two
+  22 pF bodge caps for the ESP32 FujiNet) live on the SmartPort
+  daughterboard; every J1 signal pin is 3.3 V.
 
 Final size depends on where it physically fits on the bigger board.
 
@@ -265,8 +264,8 @@ irq_check runs at 100 and would move to 40 ns steps.
 | Protection diodes fitted backwards (Rev 1) | bytehamr log 2026-01-17 | polarity marks on silk, check assembly drawing |
 | nRES read and drive separate | reset notes | keep |
 | USB alone powers the bus side | bytehamr page | dropped with USB: the card powers from the slot only |
-| SmartPort devices are 5 V | smart_hamr_rev2 handoff | level-shifted SmartPort group |
-| FujiNet needed 22 pF bodge caps (Rev 1) | bytehamr page | R/C footprints |
+| SmartPort devices are 5 V | smart_hamr_rev2 handoff | level shifting on the SmartPort daughterboard |
+| FujiNet needed 22 pF bodge caps (Rev 1) | bytehamr page | R/C footprints on the SmartPort daughterboard |
 | ECP5 power-up order | datasheet | Rev 2 tree kept; hold PROGRAMN/INITN if the 25F needs it |
 | KiCad Value drifted from MPN (U2 says MT48LC16M16A2TG, built AS4C32M16SB-7TCNTR) | fab BOM | Value matches MPN on every part |
 | LPF generator script lived in `/tmp` | bring-up notes | commit the netlist-to-LPF script |

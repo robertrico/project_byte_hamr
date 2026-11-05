@@ -6,8 +6,10 @@ pin grouped by package side, cross-checks against the Trellis database,
 and writes hardware/byte_hamr/rev3_pinmap.csv.
 
 NOTE: hardware/byte_hamr/rev3_pinmap.csv now holds the placement-optimized
-map from the Rev 3 pass 1 layout (reason "placement-optimized"). Running this
-script overwrites it with the original side-based map.
+map from the Rev 3 layout passes (reason "placement-optimized ..."). This
+script still encodes the pre-layout signal set (SmartPort header signals,
+GPIO_CLK1/2 on pins 128/37), which the card no longer has. Running it
+overwrites the CSV with that obsolete side-based map; do not run it.
 
 Sides (pin ranges): 1-36 banks 7/6, 37-72 bank 8 + config + bank 3,
 73-108 banks 3/2, 109-144 banks 1/0. Slot bus on sides 1 and 3 plus two

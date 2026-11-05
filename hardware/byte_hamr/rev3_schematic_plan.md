@@ -2,8 +2,8 @@
 
 The rework of `kicad_rev3/` (a copy of Rev 2's `kicad/`) into Rev 3. Parts
 and prices: `rev3_bom.csv`. Requirements: `rev3_spec.md`. FPGA pins:
-`rev3_pinmap.csv`, re-assigned from the pass 1 placement (reason
-"placement-optimized"); the original side-based map came from
+`rev3_pinmap.csv`, re-assigned from the pass 2 placement (reason
+"placement-optimized pass 2"); the original side-based map came from
 `scripts/rev3_pinmap.py` (Lattice pinout CSV, cross-checked against
 Trellis). Re-running the script overwrites the placement-optimized map.
 
@@ -15,8 +15,9 @@ Trellis). Re-running the script overwrites the placement-optimized map.
   `µSync_5V`, `DATA_OE`, `CARD5V`, `JTAG_TCK` ...).
 - Readbacks of open-drain lines: `<line>_READ_3V3` (Rev 2's
   `~{RES}__READ_3V3` becomes `~{RES}_READ_3V3`).
-- Header-side SmartPort nets end `_HDR` (they are 3.3 V levels from the
-  buffer, not 5 V).
+- J1's signal pins are plain 3.3 V FPGA GPIO (`GPIO_1`..`GPIO_20`), no
+  clocks on the header (a daughterboard brings its own). SmartPort level shifting, pulls, series
+  resistors and shunts live on daughterboards, not on the card.
 - Every IC's Value is its manufacturer part number. Every part carries
   `MPN` and `Manufacturer` fields from `rev3_bom.csv`.
 - All passives 1206 (`Resistor_SMD:R_1206_3216Metric`,
@@ -28,15 +29,17 @@ Pinout: 1 DIR, 2-9 A1-A8, 10 GND, 11-18 B8-B1, 19 ~OE, 20 VCC. DIR high
 passes A to B. **A side = slot (`_5V`), B side = FPGA (`_3V3`).** VCC is
 +3V3 on every part (5 V tolerant I/O).
 
+Channels are listed in order 1 to 8 (A1/B1 = pins 2/18 ... A8/B8 = pins 9/11),
+matched to the order of the edge-finger pins under each part (layout pass 2).
+
 | Ref | Job | DIR | ~OE | Channels (A to B) |
 |---|---|---|---|---|
 | U8 | address low | `ADDR_DIR` | `ADDR_OE` | A0-A7 |
 | U9 | address high | `ADDR_DIR` | `ADDR_OE` | A8-A15 |
 | U12 | data | `DATA_DIR` | `DATA_OE` | D0-D7 |
-| U11 | input buffer | +3V3 | GND | R/~W, ~I/O_SELECT, ~I/O_STROBE, ~DEVICE_SELECT, 7M, Q3, PHI1, PHI0 |
-| U13 | input buffer | +3V3 | GND | µSync, SYNC, COLOR_REF, INT_IN (slot pin 28), DMA_IN (slot pin 27), RDY (readback), ~DMA (readback), ~NMI (readback) |
-| U14 | input buffer | +3V3 | GND | ~IRQ (readback), ~RES (readback), ~INH (readback), SP_RDDATA_HDR, SP_SENSE_HDR; 3 unused A inputs to GND |
-| U17 | SmartPort out | +3V3 (A=FPGA, B=header for this part only) | `~{SP_OE}` | SP_PH0-3, SP_WRDATA, ~SP_WRREQ, ~SP_ENBL1, ~SP_ENBL2 |
+| U11 | input buffer | +3V3 | GND | ~I/O_SELECT, ~DEVICE_SELECT, PHI0, µSync, PHI1, Q3, 7M, COLOR_REF |
+| U13 | input buffer | +3V3 | GND | R/~W, ~INH (readback), SYNC, ~RES (readback), ~I/O_STROBE, ~IRQ (readback), RDY (readback), ~DMA (readback) |
+| U14 | input buffer | +3V3 | GND | ~NMI (readback), INT_IN (slot pin 28), DMA_IN (slot pin 27); 5 unused A inputs to GND, their B outputs no-connect |
 
 Readback B outputs go to `<line>_READ_3V3`. Input-buffer B outputs for
 plain inputs go to the `_3V3` name (`7M_3V3`, `PHI0_3V3` ...).
@@ -67,12 +70,11 @@ high).
 | `ADDR_OE` | up | address transceivers off |
 | `DATA_OE` | up | data transceiver off |
 | `DATA_DIR` | up | data slot to FPGA |
-| `~{SP_OE}` | up | SmartPort outputs off |
 | U16 A inputs (6) | up | all open-drain lines released |
 | `INT_OUT_3V3`, `DMA_OUT_3V3` | up | chain passes priority on (my call; spec says "defined level") |
 | `~{PSRAM_CS0..3}` (4) | up | PSRAM deselected |
 
-17 resistors.
+16 resistors.
 
 ## Sheet by sheet
 
@@ -88,14 +90,14 @@ Remove the `usb` sheet. Title block revision: 3.
 - Every I/O pin gets the global label from `rev3_pinmap.csv`. Spare pins
   get a no-connect flag.
 - Y1: 25 MHz oscillator, Jauch `O 25,0-JO32-B-1V3-1-T1-LF`
-  (pin 1 EN to +3V3, 2 GND, 3 OUT to `CLK_25MHz`, 4 +3V3), 100 nF.
+  (pin 1 EN to +3V3, 2 GND, 3 OUT through R3 (33 R series,
+  Stackpole RMCF1206FT33R0) to `CLK_25MHz`, 4 +3V3), 100 nF.
 - J6 (2x3 power breakout): delete.
 - J1: 2x20 shrouded (`Connector_IDC:IDC-Header_2x20_P2.54mm_Vertical`),
   pinout below. F1-F5 polyfuses in series with each power pin.
-- U17 SmartPort output buffer, 10x 0 R series (8 out + 2 in) between the
-  buffer/input-buffer and the header, 10x DNP shunt C header-side to GND.
-- `GPIO_CLK1`, `GPIO_CLK2`: 33 R series from the header (2 of Rev 2's
-  R1/R2/R5/R6; drop the other two).
+- No SmartPort parts on the card: J1's signal pins wire straight to FPGA
+  I/O.
+- No series resistors on J1's signal pins.
 
 J1 pinout (DRAFT):
 
@@ -106,20 +108,20 @@ J1 pinout (DRAFT):
 | 5 | -5 V (`CARD-5V`, F) | 6 | GND |
 | 7 | +5 V (`CARD5V`, F) | 8 | GND |
 | 9 | +3.3 V (F) | 10 | GND |
-| 11 | SP_PH0_HDR | 12 | SP_PH1_HDR |
-| 13 | SP_PH2_HDR | 14 | SP_PH3_HDR |
+| 11 | GPIO_1 | 12 | GPIO_2 |
+| 13 | GPIO_3 | 14 | GPIO_4 |
 | 15 | GND | 16 | GND |
-| 17 | SP_WRDATA_HDR | 18 | ~SP_WRREQ_HDR |
-| 19 | ~SP_ENBL1_HDR | 20 | ~SP_ENBL2_HDR |
+| 17 | GPIO_5 | 18 | GPIO_6 |
+| 19 | GPIO_7 | 20 | GPIO_8 |
 | 21 | GND | 22 | GND |
-| 23 | SP_RDDATA_HDR | 24 | SP_SENSE_HDR |
-| 25 | GPIO_CLK1 | 26 | GPIO_CLK2 |
+| 23 | GPIO_9 | 24 | GPIO_10 |
+| 25 | GPIO_19 | 26 | GPIO_20 |
 | 27 | GND | 28 | GND |
-| 29 | GPIO_1 | 30 | GPIO_2 |
-| 31 | GPIO_3 | 32 | GPIO_4 |
+| 29 | GPIO_11 | 30 | GPIO_12 |
+| 31 | GPIO_13 | 32 | GPIO_14 |
 | 33 | GND | 34 | GND |
-| 35 | GPIO_5 | 36 | GPIO_6 |
-| 37 | GPIO_7 | 38 | GPIO_8 |
+| 35 | GPIO_15 | 36 | GPIO_16 |
+| 37 | GPIO_17 | 38 | GPIO_18 |
 | 39 | GND | 40 | GND |
 
 ### `card`
@@ -161,5 +163,5 @@ J1 pinout (DRAFT):
 Delete (J4 moved to `flash`).
 
 ## Not in this pass
-PCB placement and routing. ERC must pass per sheet; the PCB is left
-alone until the schematic is reviewed.
+PCB placement and routing (done separately in layout passes 1 and 2). ERC
+must pass per sheet.
