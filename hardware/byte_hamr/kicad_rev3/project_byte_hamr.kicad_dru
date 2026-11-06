@@ -4,5 +4,5 @@
 # nets everywhere except inside the courtyards of the parts they land on:
 # U1's 0.5 mm-pitch pins cannot give 0.3 mm to any track.
 (rule "clk_spacing"
-  (condition "A.NetClass == 'CLK' && !A.intersectsCourtyard('U1') && !A.intersectsCourtyard('U11') && !A.intersectsCourtyard('Y1') && !A.intersectsCourtyard('R3')")
+  (condition "A.NetClass == 'CLK' && !A.intersectsCourtyard('U1') && !A.intersectsCourtyard('U11') && !A.intersectsCourtyard('Y1') && !A.intersectsCourtyard('R21')")
   (constraint clearance (min 0.3mm)))

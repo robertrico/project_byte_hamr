@@ -64,7 +64,7 @@ U16 pinout: 1 1A, 2 1Y, 3 2A, 4 2Y, 5 3A, 6 3Y, 7 GND, 8 4Y, 9 4A, 10 5Y,
 matching `_5V` slot nets (open-drain; the Apple's pull-ups hold them
 high).
 
-## Safe defaults while the FPGA is unconfigured (10k each)
+## Safe defaults while the FPGA is unconfigured (1.1k each)
 
 | Net | Pull | Effect |
 |---|---|---|
@@ -76,7 +76,22 @@ high).
 | `INT_IN_3V3`, `DMA_IN_3V3` | up | chain passes priority on (my call; spec says "defined level") |
 | `~{PSRAM_CS0..3}` (4) | up | PSRAM deselected |
 
-16 resistors.
+16 resistors, 1.1k since pass 3d: an ECP5 pin pulls down with up to
+150 uA before and during configuration, and 10k left these nets at 1.8 V
+worst case.
+
+Slot inputs that can float (10k each, pass 3d):
+
+| Net | Pull | Why |
+|---|---|---|
+| `INT_OUT_5V` (R3), `DMA_OUT_5V` (R4) | up to +3V3 | float when the higher-priority slot is empty |
+| `SYNC_5V` (R1), `COLOR_REF_5V` (R2) | down | driven only in slot 7 |
+
+FPGA pins (pass 3d): `ADDR_DIR` on 98 and `ADDR_OE` on 72, whose pair
+partners aren't bonded in the TQFP-144; `Q3_3V3` on 94 and `µSync_3V3` on
+81, so no right-bank A/B or C/D pair holds two always-driven signals
+(the pair pins are joined while VCCIO is up and VCC is below its POR
+trip). `rev3_pinmap.csv` has the full map.
 
 ## Sheet by sheet
 
@@ -92,11 +107,12 @@ Remove the `usb` sheet. Title block revision: 3.
 - Every I/O pin gets the global label from `rev3_pinmap.csv`. Spare pins
   get a no-connect flag.
 - Y1: 25 MHz oscillator, Jauch `O 25,0-JO32-B-1V3-1-T1-LF`
-  (pin 1 EN to +3V3, 2 GND, 3 OUT through R3 (33 R series,
+  (pin 1 EN to +3V3, 2 GND, 3 OUT through R21 (33 R series,
   Stackpole RMCF1206FT33R0) to `CLK_25MHz`, 4 +3V3), 100 nF.
 - J6 (2x3 power breakout): delete.
 - J1: 2x20 shrouded (`Connector_IDC:IDC-Header_2x20_P2.54mm_Vertical`),
-  pinout below. F1-F5 polyfuses in series with each power pin.
+  pinout below. F1-F5 polyfuses in series with each power pin
+  (F1-F3 0ZCJ0025FF2E, F4/F5 0ZCJ0075FF2E).
 - No SmartPort parts on the card: J1's signal pins wire straight to FPGA
   I/O.
 - No series resistors on J1's signal pins.
@@ -145,14 +161,15 @@ J1 pinout (DRAFT):
 - U10 Value `GD25Q128ESIGR`, footprint
   `Package_SO:SOIC-8_5.3x5.3mm_P1.27mm`. Connect to `FLASH_MOSI`,
   `FLASH_MISO`, `~{FLASH_CS}`, and the FPGA's dedicated CCLK pin.
-- Keep the config resistors (R11, R12, R27-R33) on PROGRAMN, INITN,
+- Keep the config resistors (R22-R30) on PROGRAMN, INITN,
   DONE, CFG_0-2 at the new symbol's pins: CCLK 54, INITN 55, DONE 56,
   PROGRAMN 57, CFG_2 58, CFG_1 59, CFG_0 62. Re-check against sysCONFIG
   (`docs/FPGA-TN-02039-2-5-ECP5-and-ECP5-5G-sysCONFIG.pdf`) for SPI
   master mode.
 - Move J4 (JTAG 2x3, Rev 2 pinout) here from `usb`. 1.1k series on TCK,
   TDI, TMS between J4 (`JTAG_*_HDR`) and the FPGA (`JTAG_*`; TCK 63,
-  TDI 61, TDO 60, TMS 64). 4.7k pull-up on `JTAG_TDO`.
+  TDI 61, TDO 60, TMS 64). 4.7k pull-up on `JTAG_TDO`. 4.7k pull-down
+  (R35) on `JTAG_TCK` at the FPGA, per Lattice's hardware checklist.
 
 ### `power`
 - Delete D1 and the `USB5V` net. Keep D2 and everything else.

@@ -14682,17 +14682,6 @@
 		)
 		(uuid "80d42ce3-51af-4ec0-bda5-72b36ffcf1ed")
 	)
-	(global_label "A7_3V3"
-		(shape bidirectional)
-		(at 328.93 71.12 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "9a841f56-9b13-4ce7-8265-a1446aaa1a6b")
-	)
 	(global_label "RDY_READ_3V3"
 		(shape bidirectional)
 		(at 167.64 167.64 180)
@@ -14935,17 +14924,6 @@
 		)
 		(uuid "3c7ed0a4-9971-493f-9454-2fffcac88934")
 	)
-	(global_label "A2_3V3"
-		(shape bidirectional)
-		(at 270.51 71.12 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "d643d69c-67b7-4308-9ea5-b5d128b575a2")
-	)
 	(global_label "A3_3V3"
 		(shape bidirectional)
 		(at 270.51 73.66 180)
@@ -15012,28 +14990,6 @@
 		)
 		(uuid "f42e300d-0af4-48ec-9859-5793fb6f1121")
 	)
-	(global_label "ADDR_OE"
-		(shape bidirectional)
-		(at 328.93 68.58 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "01eb271f-ad34-4f23-bbc1-30723e57cd15")
-	)
-	(global_label "µSync_3V3"
-		(shape bidirectional)
-		(at 328.93 73.66 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "89138d85-2e4f-4c3f-a6f0-13b80ec5288e")
-	)
 	(global_label "PHI1_3V3"
 		(shape bidirectional)
 		(at 328.93 76.2 0)
@@ -15044,28 +15000,6 @@
 			(justify left)
 		)
 		(uuid "c70fa778-e487-4db9-881f-0c6cd1b1aaff")
-	)
-	(global_label "Q3_3V3"
-		(shape bidirectional)
-		(at 393.7 60.96 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "854f3648-fbfa-4124-988c-8df645c5be45")
-	)
-	(global_label "ADDR_DIR"
-		(shape bidirectional)
-		(at 393.7 63.5 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "242b7858-eec8-4109-80f2-aa9c5fa44a6f")
 	)
 	(global_label "A8_3V3"
 		(shape bidirectional)
@@ -15089,17 +15023,6 @@
 		)
 		(uuid "9d30fea7-d8bc-4147-82a1-9193f9ec93c4")
 	)
-	(global_label "A9_3V3"
-		(shape bidirectional)
-		(at 393.7 76.2 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "5e783023-0fa9-4c08-8cf8-742fca0ce975")
-	)
 	(global_label "A10_3V3"
 		(shape bidirectional)
 		(at 393.7 78.74 180)
@@ -15121,17 +15044,6 @@
 			(justify right)
 		)
 		(uuid "a5a7f723-351a-4d1c-b9d6-8d4805b9b7e7")
-	)
-	(global_label "A12_3V3"
-		(shape bidirectional)
-		(at 444.5 60.96 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "e89082f1-ac1a-4ffd-9e75-0c372a90fc57")
 	)
 	(global_label "A13_3V3"
 		(shape bidirectional)
@@ -15825,6 +15737,94 @@
 			(justify left)
 		)
 		(uuid "97adc79e-b7fd-4923-8546-214352bf2927")
+	)
+	(global_label "A9_3V3"
+		(shape bidirectional)
+		(at 393.7 60.96 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9f03b67a-d114-4b7e-93c6-aeaf8076bd28")
+	)
+	(global_label "Q3_3V3"
+		(shape bidirectional)
+		(at 393.7 76.2 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a03cdb6d-6785-40e2-8196-8fb8c1f80cd7")
+	)
+	(global_label "A12_3V3"
+		(shape bidirectional)
+		(at 393.7 63.5 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "4bd9f287-8216-4d15-8e66-0f4ae46c9f89")
+	)
+	(global_label "ADDR_DIR"
+		(shape bidirectional)
+		(at 444.5 60.96 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "2fc6bd8b-2205-4082-9449-86aeec0a58eb")
+	)
+	(global_label "A2_3V3"
+		(shape bidirectional)
+		(at 328.93 68.58 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "6b47db25-b14b-4f37-9454-ff36437c1e76")
+	)
+	(global_label "ADDR_OE"
+		(shape bidirectional)
+		(at 270.51 71.12 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "60e0d72f-4890-4e4c-873d-a9d04564b0ac")
+	)
+	(global_label "A7_3V3"
+		(shape bidirectional)
+		(at 328.93 73.66 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b880bf24-80cc-435f-9d58-f7f6ae053a73")
+	)
+	(global_label "µSync_3V3"
+		(shape bidirectional)
+		(at 328.93 71.12 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f7a5e2b5-325e-48f3-be96-8d1ee61d7520")
 	)
 	(symbol
 		(lib_id "lfe5u25_tqfp144:LFE5U-25F-7TG144C")
@@ -16706,7 +16706,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "4187e47c-4e20-4835-a22e-8df282a2e437")
-		(property "Reference" "C112"
+		(property "Reference" "C50"
 			(at 127.635 238.76 0)
 			(effects
 				(font
@@ -16781,7 +16781,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/918e9909-3a8a-4471-9da8-88449b287653"
-					(reference "C112")
+					(reference "C50")
 					(unit 1)
 				)
 			)
@@ -17151,7 +17151,7 @@
 				)
 			)
 		)
-		(property "Value" "0ZCJ0025FF2E"
+		(property "Value" "0ZCJ0075FF2E"
 			(at 330.2 274.32 90)
 			(effects
 				(font
@@ -17186,7 +17186,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "5923-0ZCJ0025FF2ECT-ND"
+		(property "DigiKey" "5923-0ZCJ0075FF2ECT-ND"
 			(at 330.2 276.86 0)
 			(hide yes)
 			(effects
@@ -17195,7 +17195,7 @@
 				)
 			)
 		)
-		(property "MPN" "0ZCJ0025FF2E"
+		(property "MPN" "0ZCJ0075FF2E"
 			(at 330.2 276.86 0)
 			(hide yes)
 			(effects
@@ -17238,7 +17238,7 @@
 				)
 			)
 		)
-		(property "Value" "0ZCJ0025FF2E"
+		(property "Value" "0ZCJ0075FF2E"
 			(at 330.2 281.94 90)
 			(effects
 				(font
@@ -17273,7 +17273,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "5923-0ZCJ0025FF2ECT-ND"
+		(property "DigiKey" "5923-0ZCJ0075FF2ECT-ND"
 			(at 330.2 284.48 0)
 			(hide yes)
 			(effects
@@ -17282,7 +17282,7 @@
 				)
 			)
 		)
-		(property "MPN" "0ZCJ0025FF2E"
+		(property "MPN" "0ZCJ0075FF2E"
 			(at 330.2 284.48 0)
 			(hide yes)
 			(effects
@@ -18781,7 +18781,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "70cab783-f5ad-429a-b498-2f7d14feae2c")
-		(property "Reference" "R3"
+		(property "Reference" "R21"
 			(at 158.75 239.268 90)
 			(effects
 				(font
@@ -18824,15 +18824,6 @@
 				)
 			)
 		)
-		(instances
-			(project "project_byte_hamr"
-				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/918e9909-3a8a-4471-9da8-88449b287653"
-					(reference "R3")
-					(unit 1)
-				)
-			)
-		)
-	
 		(property "DigiKey" "RMCF1206FT33R0CT-ND"
 			(at 158.75 241.3 0)
 			(hide yes)
@@ -18859,5 +18850,14 @@
 					(size 1.27 1.27)
 				)
 			)
-		))
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/918e9909-3a8a-4471-9da8-88449b287653"
+					(reference "R21")
+					(unit 1)
+				)
+			)
+		)
+	)
 )

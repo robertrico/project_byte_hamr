@@ -8822,6 +8822,17 @@
 		)
 		(uuid "41d9a8cc-3fb3-4679-b815-de1fab7a9574")
 	)
+	(global_label "JTAG_TCK"
+		(shape bidirectional)
+		(at 275.59 115.57 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "fc2202da-7730-479d-b9dd-552821c0887c")
+	)
 	(symbol
 		(lib_id "Memory_EEPROM:25LCxxx")
 		(at 110.49 109.22 0)
@@ -9691,7 +9702,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec4e77")
-		(property "Reference" "R11"
+		(property "Reference" "R25"
 			(at 96.012 64.77 90)
 			(effects
 				(font
@@ -9770,7 +9781,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R11")
+					(reference "R25")
 					(unit 1)
 				)
 			)
@@ -9847,7 +9858,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec4e85")
-		(property "Reference" "R12"
+		(property "Reference" "R26"
 			(at 101.092 64.77 90)
 			(effects
 				(font
@@ -9926,7 +9937,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R12")
+					(reference "R26")
 					(unit 1)
 				)
 			)
@@ -10003,7 +10014,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec68dc")
-		(property "Reference" "R31"
+		(property "Reference" "R22"
 			(at 151.892 63.5 90)
 			(effects
 				(font
@@ -10082,7 +10093,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R31")
+					(reference "R22")
 					(unit 1)
 				)
 			)
@@ -10159,7 +10170,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec68ea")
-		(property "Reference" "R32"
+		(property "Reference" "R23"
 			(at 156.972 63.5 90)
 			(effects
 				(font
@@ -10238,7 +10249,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R32")
+					(reference "R23")
 					(unit 1)
 				)
 			)
@@ -10315,7 +10326,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "00000000-0000-0000-0000-000058ec72fd")
-		(property "Reference" "R33"
+		(property "Reference" "R24"
 			(at 162.052 63.5 90)
 			(effects
 				(font
@@ -10394,7 +10405,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R33")
+					(reference "R24")
 					(unit 1)
 				)
 			)
@@ -10557,7 +10568,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "b9efc75c-a8f3-46e5-acd3-a9d7659149d2")
-		(property "Reference" "R201"
+		(property "Reference" "R31"
 			(at 190.5 91.948 90)
 			(effects
 				(font
@@ -10630,7 +10641,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R201")
+					(reference "R31")
 					(unit 1)
 				)
 			)
@@ -10644,7 +10655,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "684c1dc1-87e2-4b6d-b20d-0405c3bd7e3f")
-		(property "Reference" "R202"
+		(property "Reference" "R32"
 			(at 190.5 99.568 90)
 			(effects
 				(font
@@ -10717,7 +10728,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R202")
+					(reference "R32")
 					(unit 1)
 				)
 			)
@@ -10731,7 +10742,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "501fc797-f288-4c49-b49a-ede46df91527")
-		(property "Reference" "R203"
+		(property "Reference" "R33"
 			(at 190.5 107.188 90)
 			(effects
 				(font
@@ -10804,7 +10815,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R203")
+					(reference "R33")
 					(unit 1)
 				)
 			)
@@ -10818,7 +10829,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "8b97f82b-2fbf-4afd-9bee-baa7cc231b32")
-		(property "Reference" "R204"
+		(property "Reference" "R34"
 			(at 264.922 119.38 90)
 			(effects
 				(font
@@ -10891,7 +10902,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "R204")
+					(reference "R34")
 					(unit 1)
 				)
 			)
@@ -10905,7 +10916,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "dd8d756b-db7d-4783-b521-5aa5d72273b5")
-		(property "Reference" "C201"
+		(property "Reference" "C51"
 			(at 135.255 88.9 0)
 			(effects
 				(font
@@ -10980,7 +10991,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
-					(reference "C201")
+					(reference "C51")
 					(unit 1)
 				)
 			)
@@ -11286,6 +11297,154 @@
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
 					(reference "#PWR605")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 275.59 119.38 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "04693a94-48b0-4e25-b498-d9c7e13a4606")
+		(property "Reference" "R35"
+			(at 277.622 119.38 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "4.7k"
+			(at 275.59 119.38 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "DigiKey" "RMCF1206FT4K70CT-ND"
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206FT4K70"
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 275.59 119.38 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
+					(reference "R35")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 275.59 123.19 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "65b2e28d-d501-4028-b52e-393e9b6fcf73")
+		(property "Reference" "#PWR609"
+			(at 275.59 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 275.59 127 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 275.59 123.19 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 275.59 123.19 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 275.59 123.19 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/ccf97c39-1e18-440a-8249-fc50fb09aced"
+					(reference "#PWR609")
 					(unit 1)
 				)
 			)

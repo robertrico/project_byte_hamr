@@ -42,27 +42,27 @@ D7_3V3,67,PR47B,3,-,placement-optimized pass 2
 A0_3V3,68,PR47D,3,LRC_GPLL0C_IN,placement-optimized pass 2
 CLK_25MHz,69,PR47C,3,LRC_GPLL0T_IN,"LRC_GPLL0T_IN, PLL input"
 A1_3V3,71,PR47A,3,-,placement-optimized pass 2
-A2_3V3,72,PR44C,3,-,placement-optimized pass 2
+ADDR_OE,72,PR44C,3,-,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
 A3_3V3,73,PR41D,3,-,placement-optimized pass 2
 A4_3V3,74,PR41C,3,-,placement-optimized pass 2
 ~{I{slash}O_SELECT}_3V3,76,PR41B,3,-,placement-optimized pass 2
 A5_3V3,77,PR41A,3,-,placement-optimized pass 2
 ~{DEVICE_SELECT}_3V3,78,PR35D,3,-,placement-optimized pass 2
 A6_3V3,79,PR35B,3,VREF1_3,placement-optimized pass 2
-ADDR_OE,80,PR35C,3,-,placement-optimized pass 2
-A7_3V3,81,PR35A,3,-,placement-optimized pass 2
-µSync_3V3,82,PR32D,3,-,placement-optimized pass 2
+A2_3V3,80,PR35C,3,-,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
+µSync_3V3,81,PR35A,3,-,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
+A7_3V3,82,PR32D,3,-,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
 PHI1_3V3,84,PR32C,3,-,placement-optimized pass 2
-Q3_3V3,88,PR23D,2,PCLKC2_0,placement-optimized pass 2
-ADDR_DIR,89,PR23B,2,PCLKC2_1,placement-optimized pass 2
+A9_3V3,88,PR23D,2,PCLKC2_0,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
+A12_3V3,89,PR23B,2,PCLKC2_1,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
 7M_3V3,90,PR23C,2,PCLKT2_0,PCLKT2_0 clock input
 PHI0_3V3,91,PR23A,2,PCLKT2_1,PCLKT2_1 clock input
 A8_3V3,92,PR20D,2,-,placement-optimized pass 2
 COLOR_REF_3V3,93,PR20B,2,-,placement-optimized pass 2
-A9_3V3,94,PR20C,2,GR_PCLK2_0,placement-optimized pass 2
+Q3_3V3,94,PR20C,2,GR_PCLK2_0,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
 A10_3V3,95,PR20A,2,GR_PCLK2_1,placement-optimized pass 2
 A11_3V3,97,PR14B,2,-,placement-optimized pass 2
-A12_3V3,98,PR14C,2,VREF1_2,placement-optimized pass 2
+ADDR_DIR,98,PR14C,2,VREF1_2,"pass 3d: keeps two driven signals off one A/B or C/D pair; control nets on pins with no bonded pair partner"
 A13_3V3,99,PR14A,2,-,placement-optimized pass 2
 A14_3V3,102,PR8D,2,-,placement-optimized pass 2
 A15_3V3,103,PR8B,2,-,placement-optimized pass 2

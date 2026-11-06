@@ -2,8 +2,7 @@
 
 **Draft, 2026-11-03. I haven't settled the full design.** This captures
 what came out of the Rev 2 errata session (`rev2_errata.md`, E1). Items are
-split into Decided, Leaning (current direction, not
-committed), and Open.
+split into Decided and Open.
 
 Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 
@@ -15,7 +14,7 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 | FPGA | **LFE5U-25F-7TG144C**. Any speed grade is fast enough for the Apple IIe, so the rule is cheapest in stock; on DigiKey (2026-11-04) -7 is the only grade stocked (103, $22.33 @1; -6 and -8 MOQ 300, 40 weeks): TQFP-144, 24K LUT, 56 EBR (18 Kb), 2 PLL, 98 user I/O, 20 x 20 mm body, 0.5 mm pitch. Listed in `docs/FPGA-DS-02012-3-4-ECP5-ECP5G-Family-Data-Sheet.pdf` (Rev 3.4, Sept 2025). Same Yosys/nextpnr-ecp5 flow: `--25k --package TQFP144 --speed 7` (Trellis database has `TQFP144` for the 25F). |
 | Assembly | All parts on the top side. No two-sided assembly. Stencil on the next order. |
 | Passives | 1206 preferred everywhere. Inductors stay Murata DFE322520 2.2 uH (1008). |
-| Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 3 2026-11-05 (routed entirely by Freerouting 2.5.0 with its optimizer), DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1 and R3 courtyards (0.5 mm-pitch FPGA pads cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, top, fingers and notches as Rev 2. 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with a +5V strip along the board edges (D2 to the bucks) and a +1V1 island under the FPGA; +2V5 routed at 0.4 mm. |
+| Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 3d 2026-11-06 (routed by Freerouting 2.5.0 with its optimizer, power nets first; 429 vias, 5.69 m of track), DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1 and R21 courtyards (0.5 mm-pitch FPGA pads cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, fingers and notches as Rev 2; the top edge sits 2.55 mm higher than Rev 2's (y 51.95 against 54.5). 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with a +5V strip along the board edges (D2 to the bucks) and a +1V1 island under the FPGA; +2V5 routed at 0.4 mm. |
 | Clock | 25 MHz (Rev 2's 100 MHz was only ever divided down to 25) |
 | Programming | No USB on the card (decided 2026-11-04). The 2x3 JTAG header (Rev 2's J4 pinout: 3V3, GND, TCK, TDI, TMS, TDO) is the only programming port. Each card gets its own external Pico 2 running pico-dirtyJtag on a short ribbon; a long USB cable runs from the Pico out of the case. The FT231X circuit (and every FTDI USB part, all out of stock at DigiKey and Mouser) is gone. |
 | Slot | Full support for all 50 slot pins, every signal working as Apple designed it |
@@ -26,14 +25,9 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 | Power | Rev 2 power circuit unchanged: three TLV62569 bucks (1.1 V, 2.5 V, 3.3 V), each fed from +5 V, EN tied to +5 V, same divider values, 0 R rail jumpers, STPS2L40AF (D2) from Apple +5 V. Rev 2's USB-side diode (D1) goes with USB. |
 | Config flash | 128 Mbit SPI. Disk images live there on designs without an SD card. |
 | SmartPort | Off the card (decided 2026-11-05): a daughterboard on J1 does the 5 V level shifting, pulls, series R and shunt C; J1 gives it 3.3 V GPIO and power. |
-
-## Leaning
-
-| Area | Direction |
-|---|---|
-| Bus transceivers | 74LVC245A (SOIC-20) at 3.3 V: 5 V tolerant inputs, 3.3 V outputs meet the IIe's TTL thresholds. Commodity, multi-source. |
-| Open-drain drivers | 74LVC07A (SOIC-14) class, or one N-MOSFET per line |
-| Chain outputs | Push-pull buffer, always driven |
+| Bus transceivers | 6x 74LVC245AD (SOIC-20) at 3.3 V: 5 V tolerant inputs, 3.3 V outputs meet the IIe's TTL thresholds. Commodity, multi-source. In the schematic, BOM and layout since pass 1. |
+| Open-drain drivers | 74LVC07AD (SOIC-14), one gate per wired-OR line |
+| Chain outputs | 74LVC125AD (SOIC-14), push-pull, always driven; its first gate is the R/W' output for DMA |
 
 ## Apple II slot: all 50 pins
 
@@ -111,6 +105,10 @@ the bus during power-up and configuration:
 - Address 245 DIR pulled to slot-to-FPGA (input), OE either way.
 - R/W' output buffer enable pulled off (it is the address DIR net, pulled to input).
 - Open-drain driver inputs pulled to released.
+- The pulls are 1.1k. An ECP5 pin has a pull-down of 30 to 150 uA before
+  and during configuration, and after it on any pin a design leaves
+  undeclared, so 10k is too weak (1.8 V worst case against the 74LVC
+  2.0 V VIH).
 - Chain outputs: pass-through state or a defined level, never floating.
 - JTAG header: an external Pico 2 can be powered while the card is off,
   so TCK, TDI and TMS have 1.1 k series resistors, limiting current into
@@ -159,7 +157,8 @@ Power on the same header (Rev 2's separate 2x3 J6 power breakout folds in; J4 is
   probed with the supply off.)
 - Shrouded and keyed. Pin order chosen so a one-pin offset can't put 12 V
   on an FPGA pin.
-- Polyfuse per power output.
+- Polyfuse per power output: 0ZCJ0025FF2E (0.25 A, 16 V) on +12 V, -12 V
+  and -5 V; 0ZCJ0075FF2E (0.75 A, 8 V, 0.29 ohm max) on +5 V and +3.3 V.
 - SmartPort devices are 5 V; ECP5 GPIO is not 5 V tolerant. The level
   shifter, pulls and the series R / shunt C footprints (Rev 1 needed two
   22 pF bodge caps for the ESP32 FujiNet) live on the SmartPort
@@ -211,8 +210,8 @@ Part: Espressif ESP-PSRAM64H (8 MB, SOIC-8 150 mil, 2.7 to 3.6 V,
 carry AP Memory's APS6404L; Mouser does (APS6404L-3SQR-SN, 51k in stock,
 $2.90), which makes it the deep-stock fallback. Further fallbacks: ISSI
 IS66WVR8M8FALL ($5.72) and IS66WVS8M8FBLL ($6.14). Distributor listings say "64MB"; that is 64 Mbit.
-Check whether the WVR "continuous operation" parts drop the 8 us CS-low
-limit, and confirm the ESP-PSRAM64H CS-low limit from its datasheet.
+The ESP-PSRAM64H datasheet (V1.0) gives the same 8 us CE#-low limit as
+the APS6404L. Check whether the WVR "continuous operation" parts drop it.
 
 Behavior:
 
@@ -274,12 +273,11 @@ irq_check runs at 100 and would move to 40 ns steps.
 
 1. PSRAM latency: check whether any design answers a random Apple read
    straight from RAM within one bus cycle.
-2. Transceiver and driver part choices (LVC245 / LVC07 / buffer); pricing.
-3. Power: Lattice power estimate for the 25F at 25 MHz; total draw
+2. Power: Lattice power estimate for the 25F at 25 MHz; total draw
    against the Apple's 500 mA.
-4. Programmer: bench-prove a Pico 2 with pico-dirtyJtag on a Rev 2 J4
+3. Programmer: bench-prove a Pico 2 with pico-dirtyJtag on a Rev 2 J4
    (`--detect`, SRAM load, `-f`, timing), per-card USB PID with
    openFPGALoader v1.1.0+ (`--pid`; installed is v1.0.0), and the open
    LFE5U-25F + dirtyJtag IDCODE bug (openFPGALoader issue 727) on a 25F.
-5. PLL count across designs.
-6. Edge fingers: hard gold + bevel vs ENIG.
+4. PLL count across designs.
+5. Edge fingers: hard gold + bevel vs ENIG.

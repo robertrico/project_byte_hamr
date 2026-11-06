@@ -8012,6 +8012,50 @@
 		)
 		(uuid "fe9445e7-562b-416e-a533-09ac2082279a")
 	)
+	(global_label "INT_OUT_5V"
+		(shape input)
+		(at 320.04 176.53 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "bd97824a-9278-4791-a8ff-d6c1a7b6f258")
+	)
+	(global_label "DMA_OUT_5V"
+		(shape input)
+		(at 327.66 176.53 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b060c6fa-9b51-411a-8a5f-63be57ccc482")
+	)
+	(global_label "SYNC_5V"
+		(shape input)
+		(at 304.8 168.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "04c90230-e0d3-4c6e-87f2-621b11de4a63")
+	)
+	(global_label "COLOR_REF_5V"
+		(shape input)
+		(at 312.42 168.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "fdc0fced-14e0-482a-95d6-45e57130b986")
+	)
 	(symbol
 		(lib_id "Device:C")
 		(at 21.59 186.69 0)
@@ -8021,7 +8065,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "0d40dae2-b188-4069-9862-16472e4ccf90")
-		(property "Reference" "C13"
+		(property "Reference" "C1"
 			(at 22.225 184.15 0)
 			(effects
 				(font
@@ -8102,7 +8146,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C13")
+					(reference "C1")
 					(unit 1)
 				)
 			)
@@ -8117,7 +8161,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "139d57da-d5e6-4374-aedc-bcacaf99d7c5")
-		(property "Reference" "C14"
+		(property "Reference" "C2"
 			(at 31.115 184.15 0)
 			(effects
 				(font
@@ -8198,7 +8242,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C14")
+					(reference "C2")
 					(unit 1)
 				)
 			)
@@ -8213,7 +8257,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "1830ee9b-6000-4196-a3cf-be63f899ca39")
-		(property "Reference" "C36"
+		(property "Reference" "C6"
 			(at 66.675 184.15 0)
 			(effects
 				(font
@@ -8294,7 +8338,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C36")
+					(reference "C6")
 					(unit 1)
 				)
 			)
@@ -8309,7 +8353,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "3ab0674a-eb10-4e3c-ac7b-267a23123459")
-		(property "Reference" "C21"
+		(property "Reference" "C5"
 			(at 57.785 184.15 0)
 			(effects
 				(font
@@ -8390,7 +8434,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C21")
+					(reference "C5")
 					(unit 1)
 				)
 			)
@@ -8467,7 +8511,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "a4d53c90-9abb-4bcc-9251-e999935197b4")
-		(property "Reference" "C15"
+		(property "Reference" "C3"
 			(at 40.005 184.15 0)
 			(effects
 				(font
@@ -8548,7 +8592,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C15")
+					(reference "C3")
 					(unit 1)
 				)
 			)
@@ -8563,7 +8607,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "ec28826c-6384-4164-9995-bc86c186a3d6")
-		(property "Reference" "C18"
+		(property "Reference" "C4"
 			(at 48.895 184.15 0)
 			(effects
 				(font
@@ -8644,7 +8688,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C18")
+					(reference "C4")
 					(unit 1)
 				)
 			)
@@ -10294,7 +10338,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "e60f69f4-54ec-4d0d-9357-23bea5e1d5dc")
-		(property "Reference" "R301"
+		(property "Reference" "R5"
 			(at 314.452 204.47 90)
 			(effects
 				(font
@@ -10302,7 +10346,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 312.42 204.47 90)
 			(effects
 				(font
@@ -10337,7 +10381,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 312.42 204.47 0)
 			(hide yes)
 			(effects
@@ -10346,7 +10390,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 312.42 204.47 0)
 			(hide yes)
 			(effects
@@ -10367,7 +10411,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R301")
+					(reference "R5")
 					(unit 1)
 				)
 			)
@@ -10381,7 +10425,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "43739525-fbf6-46f1-a5f0-6c1a948b201c")
-		(property "Reference" "R302"
+		(property "Reference" "R6"
 			(at 322.072 204.47 90)
 			(effects
 				(font
@@ -10389,7 +10433,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 320.04 204.47 90)
 			(effects
 				(font
@@ -10424,7 +10468,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 320.04 204.47 0)
 			(hide yes)
 			(effects
@@ -10433,7 +10477,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 320.04 204.47 0)
 			(hide yes)
 			(effects
@@ -10454,7 +10498,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R302")
+					(reference "R6")
 					(unit 1)
 				)
 			)
@@ -10468,7 +10512,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "f7fd00a5-efb2-4e23-a96e-599cf37a646a")
-		(property "Reference" "R303"
+		(property "Reference" "R7"
 			(at 329.692 204.47 90)
 			(effects
 				(font
@@ -10476,7 +10520,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 327.66 204.47 90)
 			(effects
 				(font
@@ -10511,7 +10555,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 327.66 204.47 0)
 			(hide yes)
 			(effects
@@ -10520,7 +10564,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 327.66 204.47 0)
 			(hide yes)
 			(effects
@@ -10541,7 +10585,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R303")
+					(reference "R7")
 					(unit 1)
 				)
 			)
@@ -10555,7 +10599,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "87e93e70-4d0b-43fd-9135-aaae678bc6a0")
-		(property "Reference" "R304"
+		(property "Reference" "R8"
 			(at 337.312 204.47 90)
 			(effects
 				(font
@@ -10563,7 +10607,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 335.28 204.47 90)
 			(effects
 				(font
@@ -10598,7 +10642,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 335.28 204.47 0)
 			(hide yes)
 			(effects
@@ -10607,7 +10651,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 335.28 204.47 0)
 			(hide yes)
 			(effects
@@ -10628,7 +10672,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R304")
+					(reference "R8")
 					(unit 1)
 				)
 			)
@@ -10642,7 +10686,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "74bde044-37ab-4329-8373-5052af227015")
-		(property "Reference" "R305"
+		(property "Reference" "R9"
 			(at 344.932 204.47 90)
 			(effects
 				(font
@@ -10650,7 +10694,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 342.9 204.47 90)
 			(effects
 				(font
@@ -10685,7 +10729,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 342.9 204.47 0)
 			(hide yes)
 			(effects
@@ -10694,7 +10738,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 342.9 204.47 0)
 			(hide yes)
 			(effects
@@ -10715,7 +10759,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R305")
+					(reference "R9")
 					(unit 1)
 				)
 			)
@@ -10729,7 +10773,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "cbe5e286-8a1d-45eb-98a3-4d20bbc7b495")
-		(property "Reference" "R306"
+		(property "Reference" "R10"
 			(at 352.552 204.47 90)
 			(effects
 				(font
@@ -10737,7 +10781,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 350.52 204.47 90)
 			(effects
 				(font
@@ -10772,7 +10816,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 350.52 204.47 0)
 			(hide yes)
 			(effects
@@ -10781,7 +10825,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 350.52 204.47 0)
 			(hide yes)
 			(effects
@@ -10802,7 +10846,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R306")
+					(reference "R10")
 					(unit 1)
 				)
 			)
@@ -10816,7 +10860,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "7e536cb7-4957-4ff5-8cfa-47e8b994d435")
-		(property "Reference" "R307"
+		(property "Reference" "R11"
 			(at 360.172 204.47 90)
 			(effects
 				(font
@@ -10824,7 +10868,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 358.14 204.47 90)
 			(effects
 				(font
@@ -10859,7 +10903,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 358.14 204.47 0)
 			(hide yes)
 			(effects
@@ -10868,7 +10912,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 358.14 204.47 0)
 			(hide yes)
 			(effects
@@ -10889,7 +10933,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R307")
+					(reference "R11")
 					(unit 1)
 				)
 			)
@@ -10903,7 +10947,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "bb2aeb3b-3292-43a7-b944-f0238e5b73fb")
-		(property "Reference" "R308"
+		(property "Reference" "R12"
 			(at 367.792 204.47 90)
 			(effects
 				(font
@@ -10911,7 +10955,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 365.76 204.47 90)
 			(effects
 				(font
@@ -10946,7 +10990,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 365.76 204.47 0)
 			(hide yes)
 			(effects
@@ -10955,7 +10999,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 365.76 204.47 0)
 			(hide yes)
 			(effects
@@ -10976,7 +11020,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R308")
+					(reference "R12")
 					(unit 1)
 				)
 			)
@@ -10990,7 +11034,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "059abb7e-0cda-4cd6-9f08-3cfa193f9a23")
-		(property "Reference" "R309"
+		(property "Reference" "R13"
 			(at 375.412 204.47 90)
 			(effects
 				(font
@@ -10998,7 +11042,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 373.38 204.47 90)
 			(effects
 				(font
@@ -11033,7 +11077,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 373.38 204.47 0)
 			(hide yes)
 			(effects
@@ -11042,7 +11086,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 373.38 204.47 0)
 			(hide yes)
 			(effects
@@ -11063,7 +11107,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R309")
+					(reference "R13")
 					(unit 1)
 				)
 			)
@@ -11077,7 +11121,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "1f887b29-49c0-4331-9004-0ff6e258aec8")
-		(property "Reference" "R310"
+		(property "Reference" "R14"
 			(at 383.032 204.47 90)
 			(effects
 				(font
@@ -11085,7 +11129,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 381 204.47 90)
 			(effects
 				(font
@@ -11120,7 +11164,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 381 204.47 0)
 			(hide yes)
 			(effects
@@ -11129,7 +11173,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 381 204.47 0)
 			(hide yes)
 			(effects
@@ -11150,7 +11194,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R310")
+					(reference "R14")
 					(unit 1)
 				)
 			)
@@ -11164,7 +11208,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "6657ee2b-3c84-4e79-a8ef-f70634a5d224")
-		(property "Reference" "R311"
+		(property "Reference" "R15"
 			(at 390.652 204.47 90)
 			(effects
 				(font
@@ -11172,7 +11216,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 388.62 204.47 90)
 			(effects
 				(font
@@ -11207,7 +11251,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 388.62 204.47 0)
 			(hide yes)
 			(effects
@@ -11216,7 +11260,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 388.62 204.47 0)
 			(hide yes)
 			(effects
@@ -11237,7 +11281,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R311")
+					(reference "R15")
 					(unit 1)
 				)
 			)
@@ -11251,7 +11295,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "4723e8a9-6c12-4600-893e-3d3d4b302771")
-		(property "Reference" "R312"
+		(property "Reference" "R16"
 			(at 398.272 204.47 90)
 			(effects
 				(font
@@ -11259,7 +11303,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "1.1k"
 			(at 396.24 204.47 90)
 			(effects
 				(font
@@ -11294,7 +11338,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
 			(at 396.24 204.47 0)
 			(hide yes)
 			(effects
@@ -11303,7 +11347,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT10K0"
+		(property "MPN" "RMCF1206FT1K10"
 			(at 396.24 204.47 0)
 			(hide yes)
 			(effects
@@ -11324,7 +11368,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "R312")
+					(reference "R16")
 					(unit 1)
 				)
 			)
@@ -11338,7 +11382,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "cb55f231-328e-4b93-8587-a301a3cbcd57")
-		(property "Reference" "C301"
+		(property "Reference" "C7"
 			(at 75.565 184.15 0)
 			(effects
 				(font
@@ -11413,7 +11457,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C301")
+					(reference "C7")
 					(unit 1)
 				)
 			)
@@ -11427,7 +11471,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "ebe477bf-453e-4eec-819c-caceae7b3d4e")
-		(property "Reference" "C302"
+		(property "Reference" "C8"
 			(at 84.455 184.15 0)
 			(effects
 				(font
@@ -11502,7 +11546,7 @@
 		(instances
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
-					(reference "C302")
+					(reference "C8")
 					(unit 1)
 				)
 			)
@@ -13333,6 +13377,598 @@
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
 					(reference "#PWR031")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 320.04 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c1a8e548-ee19-4f4b-9cbe-c2bfed6be4c8")
+		(property "Reference" "R3"
+			(at 322.072 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 320.04 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206FT10K0"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "R3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 327.66 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "88c44f3b-2b00-42d0-81ab-302063c5fc35")
+		(property "Reference" "R4"
+			(at 329.692 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 327.66 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206FT10K0"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "R4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 304.8 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "490dc757-5f0c-4a4b-8ce1-eba41c6f199a")
+		(property "Reference" "R1"
+			(at 306.832 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 304.8 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206FT10K0"
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 304.8 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "R1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 312.42 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "35b3e16b-0a6a-4723-a0f8-f99f817e70dc")
+		(property "Reference" "R2"
+			(at 314.452 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 312.42 172.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "DigiKey" "RMCF1206FT10K0CT-ND"
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206FT10K0"
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 312.42 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "R2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+3V3")
+		(at 320.04 168.91 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "f9e8573d-179e-4685-962f-51ddf2744c15")
+		(property "Reference" "#PWR032"
+			(at 320.04 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 320.04 165.354 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 320.04 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 320.04 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 320.04 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "#PWR032")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+3V3")
+		(at 327.66 168.91 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3e6773fe-7b3b-4670-90ae-635f5c26b91b")
+		(property "Reference" "#PWR033"
+			(at 327.66 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 327.66 165.354 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 327.66 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 327.66 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 327.66 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "#PWR033")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 304.8 176.53 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "49575dac-4c39-42ba-bca8-c405b364ca92")
+		(property "Reference" "#PWR034"
+			(at 304.8 182.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 304.8 180.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 304.8 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 304.8 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 304.8 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "#PWR034")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 312.42 176.53 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "762e62a2-38ce-46d0-80b6-7963bd1deb79")
+		(property "Reference" "#PWR035"
+			(at 312.42 182.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 312.42 180.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 312.42 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 312.42 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 312.42 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/0046948d-a13f-4806-afcb-93e44e5f5f39"
+					(reference "#PWR035")
 					(unit 1)
 				)
 			)

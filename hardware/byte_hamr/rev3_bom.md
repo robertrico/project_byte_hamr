@@ -35,9 +35,9 @@ number; merge them when ordering.
 
 | | Rev 2 | Rev 3 draft |
 |---|---|---|
-| Part numbers (same value merged) | 27 | 25 |
+| Part numbers (same value merged) | 27 | 26 |
 | ICs (incl. oscillator) | 15 | 18 |
-| R / C / L (placed) | 70 | 100 |
+| R / C / L (placed) | 70 | 98 |
 
 More placements than Rev 2, but no BGA, no two-sided assembly, no 8T245s
 and no USB.
@@ -64,29 +64,41 @@ and no USB.
   all 19 slot inputs go through 74LVC245A
   (VCC 3.3 V, 5 V tolerant I/O).
 - **Chain outputs (INT IN, DMA IN) need a defined level while the FPGA is
-  unconfigured.** 10k pull-ups on the '125 inputs pass priority on to
+  unconfigured.** Pull-ups on the '125 inputs pass priority on to
   lower slots while the FPGA is unconfigured.
+- **Safe-default pull-ups are 1.1k (pass 3d).** An ECP5 pin pulls down
+  with 30 to 150 uA before and during configuration (data sheet pin table
+  and DC table). 10k left a net at 1.8 V worst case, under the 74LVC 2.0 V
+  VIH, and outside the PSRAM's CE# within 200 mV of Vcc at power-up. 1.1k
+  drops 165 mV at 150 uA.
+- **Slot inputs that can float get pulls (pass 3d).** INT OUT and DMA OUT
+  float when the higher-priority slot is empty; SYNC and COLOR REF exist
+  only in slot 7. 10k each: up on 23/24, down on 19/35.
+- **Header fuses are two parts.** The 0.25 A fuse is 0.55 to 2.3 ohm, too
+  much on the +5 V and +3.3 V pins, which get the 0.75 A part (0.29 ohm
+  max, 8 V). The +12 V, -12 V and -5 V pins keep the 16 V part.
 - **JTAG header protection.** The external Pico can be powered while the
   card is off: 1.1 k in series with TCK, TDI and TMS (about 3 mA into an
   unpowered FPGA), 4.7 k pull-up on TDO.
 
-## Pricing (DigiKey, 2026-11-05, `dkp bom`)
+## Pricing (DigiKey, 2026-11-06, `dkp bom`)
 
 | Boards | Total | Per board |
 |---|---|---|
-| 1 | $51.34 | $51.34 |
-| 5 | $230.31 | $46.06 |
+| 1 | $52.62 | $52.62 |
+| 5 | $235.48 | $47.10 |
 
 Parts only: no PCB, stencil or assembly, and not the external Pico 2s.
-Same-value rows merged. All 25 lines in stock.
+Same-value rows merged. All 26 lines in stock. Before pass 3d (2026-11-05)
+it was $51.34 for one and $46.06 a board for five.
 
 | Share of 1-board cost | |
 |---|---|
-| FPGA | $22.33 (43%) |
+| FPGA | $22.33 (42%) |
 | 4x PSRAM | $7.00 |
 | 6x 74LVC245A | $3.36 |
 | Flash | $2.98 |
-| Everything else | $15.67 |
+| Everything else | $16.95 |
 
 Findings:
 
@@ -100,17 +112,19 @@ Findings:
   DigiKey (50 weeks) and Mouser (210 to 294 days). That is why USB left
   the card.
 
-### Mouser comparison (2026-11-05, `mouser bom`)
+### Mouser comparison (2026-11-06, `mouser bom`)
 
-5 boards: $247.04 ($49.41 a board) against DigiKey's $230.31 ($46.06),
-with 3 lines Mouser doesn't carry (Jauch oscillator, both Sullins
-headers) and 2 at 0 stock (74LVC07A, Murata inductor). One DigiKey order
-covers everything.
+Mouser can't supply the whole BOM. For 5 boards, the lines it has in
+stock come to $241.87 ($67.42 as listed, plus the -6 FPGA at $120.25 and
+APS6404L PSRAM at $54.20 in place of the -7 and the ESP-PSRAM64H). It
+doesn't carry the Jauch oscillator or either Sullins header, and the
+74LVC07A and the Murata inductor are at 0 stock. DigiKey's $235.48 covers
+every line.
 
 | Part | DigiKey | Mouser |
 |---|---|---|
-| LFE5U-25F TG144C | -7: 103 in stock, $22.33 | -6: 176 in stock, $24.05 ($21 @25) |
-| PSRAM | ESP-PSRAM64H $1.75 (Adafruit) | APS6404L-3SQR-SN $2.90, 51k in stock |
+| LFE5U-25F TG144C | -7: 103 in stock, $22.33 | -6: 190 in stock, $24.05 ($21 @25) |
+| PSRAM | ESP-PSRAM64H $1.75 (Adafruit) | APS6404L-3SQR-SN $2.90 ($2.71 @20), 49.5k in stock |
 | GD25Q128ESIGR | 11,584, $2.98 | 1,512, $2.88 |
 | IS25LP128F (Rev 2 flash) | 0 | 2,175, $7.18 |
 
@@ -123,9 +137,9 @@ a deep-stock PSRAM fallback.
    (`--detect`, SRAM load, `-f`, timing), per-card USB PID selected with
    openFPGALoader v1.1.0+ `--pid`, and the LFE5U-25F + dirtyJtag IDCODE
    bug (openFPGALoader issue 727) on a 25F.
-2. Polyfuse trip current per rail, once the header pinout is drawn
-   (current row is a 250 mA placeholder).
-3. Decoupling count: final number from the TQFP-144 supply pins.
-4. GD25Q128 with openFPGALoader: confirm the flash ID is supported.
-5. ESP-PSRAM64H: confirm the CS-low limit and QPI commands from its
-   datasheet; it's single source through Adafruit at DigiKey.
+2. GD25Q128E with openFPGALoader: its ID (0xC84018) isn't in the flash
+   table (checked at v1.2.0), so it gets basic protection handling and no
+   sector lock or quad mode. Try it on hardware; W25Q128JVSIQ is in the
+   table if it has to change.
+3. ESP-PSRAM64H is single source through Adafruit at DigiKey. Its
+   datasheet (V1.0) gives CE# low 8 us max, QPI enter 0x35 and exit 0xF5.
