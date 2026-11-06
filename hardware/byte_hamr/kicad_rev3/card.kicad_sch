@@ -7550,72 +7550,6 @@
 		)
 		(uuid "298c6c45-deff-4bfc-adc5-a66863127431")
 	)
-	(global_label "INT_OUT_3V3"
-		(shape input)
-		(at 114.3 218.44 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "1016d272-d07c-4c69-9c81-0176e94f07f8")
-	)
-	(global_label "INT_OUT_5V"
-		(shape input)
-		(at 134.62 218.44 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "43b3e145-2102-490b-8035-d35c933482b5")
-	)
-	(global_label "DMA_OUT_3V3"
-		(shape input)
-		(at 114.3 236.22 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "1a2aaef6-208c-4ede-9e79-d2368fe0befe")
-	)
-	(global_label "DMA_OUT_5V"
-		(shape input)
-		(at 134.62 236.22 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "929260a0-9401-4e88-96b9-02bfc622c69d")
-	)
-	(global_label "INT_OUT_3V3"
-		(shape input)
-		(at 388.62 210.82 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "e418c38c-cad1-49da-94a2-77e9976def6b")
-	)
-	(global_label "DMA_OUT_3V3"
-		(shape input)
-		(at 396.24 210.82 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "806aea22-4042-4511-abc0-58d1fd98cfe4")
-	)
 	(global_label "~{I{slash}O_SELECT}_5V"
 		(shape input)
 		(at 124.46 127 180)
@@ -7968,7 +7902,7 @@
 		)
 		(uuid "d2bbf95e-d763-4d6b-a8f6-f376da06e415")
 	)
-	(global_label "INT_IN_5V"
+	(global_label "INT_OUT_5V"
 		(shape input)
 		(at 335.28 129.54 180)
 		(effects
@@ -7977,9 +7911,9 @@
 			)
 			(justify right)
 		)
-		(uuid "44f4304a-0b28-4bfc-bcfd-445970047af4")
+		(uuid "c55bbb1c-5751-4739-93d3-5179494599b0")
 	)
-	(global_label "INT_IN_3V3"
+	(global_label "INT_OUT_3V3"
 		(shape input)
 		(at 365.76 129.54 0)
 		(effects
@@ -7988,9 +7922,9 @@
 			)
 			(justify left)
 		)
-		(uuid "44def16d-2eaa-4eed-8448-9f9fae46a38d")
+		(uuid "130dc80c-97d0-438c-a5b1-b875f7686fdb")
 	)
-	(global_label "DMA_IN_5V"
+	(global_label "DMA_OUT_5V"
 		(shape input)
 		(at 335.28 132.08 180)
 		(effects
@@ -7999,9 +7933,9 @@
 			)
 			(justify right)
 		)
-		(uuid "1f95a548-8265-45da-a31d-1216fe9d5f6b")
+		(uuid "31a6a3ec-b0d8-4e06-9914-a76b9c3ec853")
 	)
-	(global_label "DMA_IN_3V3"
+	(global_label "DMA_OUT_3V3"
 		(shape input)
 		(at 365.76 132.08 0)
 		(effects
@@ -8010,7 +7944,73 @@
 			)
 			(justify left)
 		)
-		(uuid "b8745c5c-151d-4e6f-a37b-0525e06ed9f4")
+		(uuid "883bb741-21ab-46ac-b9b9-839a187a816b")
+	)
+	(global_label "INT_IN_3V3"
+		(shape input)
+		(at 114.3 218.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "06a66f1f-9519-4b05-8133-da3335a8e380")
+	)
+	(global_label "INT_IN_5V"
+		(shape input)
+		(at 134.62 218.44 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d3e3faf0-183a-4324-9b74-332d0a0ac517")
+	)
+	(global_label "DMA_IN_3V3"
+		(shape input)
+		(at 114.3 236.22 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "778b2ec9-c968-4b13-9c39-93b30183f6b8")
+	)
+	(global_label "DMA_IN_5V"
+		(shape input)
+		(at 134.62 236.22 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "129e56df-aa29-45b6-9ee9-ffc1dc13a8db")
+	)
+	(global_label "INT_IN_3V3"
+		(shape input)
+		(at 388.62 210.82 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e9e1faf1-638f-45df-b6c7-98ae52ef5ef3")
+	)
+	(global_label "DMA_IN_3V3"
+		(shape input)
+		(at 396.24 210.82 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "fe9445e7-562b-416e-a533-09ac2082279a")
 	)
 	(symbol
 		(lib_id "Device:C")

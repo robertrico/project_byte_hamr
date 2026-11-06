@@ -38,7 +38,8 @@ Kapton on the fingers, series Schottky per line, OE to a GPIO)
 with steps, and Rev 3 notes: `hardware/byte_hamr/rev2_errata.md`, E1. None
 done yet.
 - **Rev3:** those five lines on a 5V-tolerant open-drain buffer (e.g.
-  74LVC07A on 3.3V). INT_OUT/DMA_OUT stay push-pull (daisy chain is driven).
+  74LVC07A on 3.3V). The chain outputs INT_IN/DMA_IN (pins 28/27) stay
+  push-pull; INT_OUT/DMA_OUT (23/24) are inputs.
 
 ## What the design does
 

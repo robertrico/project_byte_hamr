@@ -15,12 +15,12 @@ This document describes the 50-pin peripheral slot connector used in the Apple I
 | 20 | I/O STROBE´ | To FPGA | Active low during Ø0 when address is `$C800`–`$CFFF`. |
 | 21 | RDY | To Apple IIe | 6502 RDY input. Pulling low during Ø1 halts the processor with the current address held on the bus. |
 | 22 | DMA´ | To Apple IIe | Pulling low disables the 6502 address bus and halts the processor. Held high by 3kΩ resistor to +5V. |
-| 23 | INT OUT | To Apple IIe | Daisy-chain output to lower-priority slot. Directly connect to INT IN (pin 28), or disable when asserting IRQ´/NMI´. |
-| 24 | DMA OUT | To Apple IIe | Daisy-chain output to lower-priority slot. Directly connect to DMA IN (pin 27), or disable when asserting DMA´. |
+| 23 | INT OUT | To FPGA | Daisy-chain input from higher-priority slot. Active = no higher slot is using interrupts. |
+| 24 | DMA OUT | To FPGA | Daisy-chain input from higher-priority slot. Active = no higher slot is using DMA. |
 | 25 | +5V | — | +5 volt power supply. 500mA available across *all* peripheral cards. |
 | 26 | GND | — | System ground. |
-| 27 | DMA IN | To FPGA | Daisy-chain input from higher-priority slot. Active = no higher slot is using DMA. |
-| 28 | INT IN | To FPGA | Daisy-chain input from higher-priority slot. Active = no higher slot is using interrupts. |
+| 27 | DMA IN | To Apple IIe | Daisy-chain output to lower-priority slot. Directly connect to DMA OUT (pin 24), or disable when asserting DMA´. |
+| 28 | INT IN | To Apple IIe | Daisy-chain output to lower-priority slot. Directly connect to INT OUT (pin 23), or disable when asserting IRQ´/NMI´. |
 | 29 | NMI´ | To Apple IIe | Non-Maskable Interrupt. Pulling low initiates an interrupt cycle; jumps to vector at `$03FB`. This line has a 3.3kΩ pullup to +5v.|
 | 30 | IRQ´ | To Apple IIe | Interrupt Request. Pulling low initiates an interrupt cycle if the 6502's I flag is clear. Vector at `$03FE`–`$03FF`. This line has a 3.3kΩ pullup to +5v. |
 | 31 | RES´ | To Apple IIe | Reset. Pulling low initiates a processor reset cycle. |
@@ -48,16 +48,16 @@ Slot 7 (highest) → 6 → 5 → 4 → 3 → 2 → 1 (lowest)
 ```
 
 **To use interrupts (IRQ´ or NMI´):**
-1. Check INT IN (pin 28) — if active, no higher-priority slot is interrupting
+1. Check INT OUT (pin 23) — if active, no higher-priority slot is interrupting
 2. Assert IRQ´ or NMI´ to request the interrupt
-3. Disable INT OUT (pin 23) — this blocks lower-priority slots until you release
+3. Disable INT IN (pin 28) — this blocks lower-priority slots until you release
 
 **To use DMA:**
-1. Check DMA IN (pin 27) — if active, no higher-priority slot is using DMA
+1. Check DMA OUT (pin 24) — if active, no higher-priority slot is using DMA
 2. Assert DMA´ (pin 22) to take control of the bus
-3. Disable DMA OUT (pin 24) — this blocks lower-priority slots until you release
+3. Disable DMA IN (pin 27) — this blocks lower-priority slots until you release
 
-For the daisy-chain to function, all slots between yours and slot 7 must either have cards that pass INT IN → INT OUT and DMA IN → DMA OUT, or be empty (with the signals connected on the backplane). [1]
+For the daisy-chain to function, all slots between yours and slot 7 must either have cards that pass INT OUT → INT IN and DMA OUT → DMA IN, or be empty (with the signals connected on the backplane). [1]
 
 ---
 

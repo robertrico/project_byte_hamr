@@ -30,7 +30,9 @@ passes A to B. **A side = slot (`_5V`), B side = FPGA (`_3V3`).** VCC is
 +3V3 on every part (5 V tolerant I/O).
 
 Channels are listed in order 1 to 8 (A1/B1 = pins 2/18 ... A8/B8 = pins 9/11),
-matched to the order of the edge-finger pins under each part (layout pass 2).
+matched to the order of the edge-finger pins under each part (layout pass 2;
+pass 3c re-ordered the right-hand buffer row to U15 | U16 | U14 so U14 sits
+over fingers 23/24 and U15 under U1 pins 105/106).
 
 | Ref | Job | DIR | ~OE | Channels (A to B) |
 |---|---|---|---|---|
@@ -39,7 +41,7 @@ matched to the order of the edge-finger pins under each part (layout pass 2).
 | U12 | data | `DATA_DIR` | `DATA_OE` | D0-D7 |
 | U11 | input buffer | +3V3 | GND | ~I/O_SELECT, ~DEVICE_SELECT, PHI0, µSync, PHI1, Q3, 7M, COLOR_REF |
 | U13 | input buffer | +3V3 | GND | R/~W, ~INH (readback), SYNC, ~RES (readback), ~I/O_STROBE, ~IRQ (readback), RDY (readback), ~DMA (readback) |
-| U14 | input buffer | +3V3 | GND | ~NMI (readback), INT_IN (slot pin 28), DMA_IN (slot pin 27); 5 unused A inputs to GND, their B outputs no-connect |
+| U14 | input buffer | +3V3 | GND | ~NMI (readback), INT_OUT (slot pin 23), DMA_OUT (slot pin 24); 5 unused A inputs to GND, their B outputs no-connect |
 
 Readback B outputs go to `<line>_READ_3V3`. Input-buffer B outputs for
 plain inputs go to the `_3V3` name (`7M_3V3`, `PHI0_3V3` ...).
@@ -52,8 +54,8 @@ U15 pinout: 1 1~OE, 2 1A, 3 1Y, 4 2~OE, 5 2A, 6 2Y, 7 GND, 8 3Y, 9 3A,
 | Ch | A | Y | ~OE |
 |---|---|---|---|
 | 1 | `R{slash}~{W}_OUT_3V3` | `R{slash}~{W}_5V` | `ADDR_DIR` (drives R/W' only while the address bus points out, i.e. during DMA) |
-| 2 | `INT_OUT_3V3` | `INT_OUT_5V` (slot pin 23) | GND |
-| 3 | `DMA_OUT_3V3` | `DMA_OUT_5V` (slot pin 24) | GND |
+| 2 | `INT_IN_3V3` | `INT_IN_5V` (slot pin 28) | GND |
+| 3 | `DMA_IN_3V3` | `DMA_IN_5V` (slot pin 27) | GND |
 | 4 | GND | nc | +3V3 |
 
 U16 pinout: 1 1A, 2 1Y, 3 2A, 4 2Y, 5 3A, 6 3Y, 7 GND, 8 4Y, 9 4A, 10 5Y,
@@ -71,7 +73,7 @@ high).
 | `DATA_OE` | up | data transceiver off |
 | `DATA_DIR` | up | data slot to FPGA |
 | U16 A inputs (6) | up | all open-drain lines released |
-| `INT_OUT_3V3`, `DMA_OUT_3V3` | up | chain passes priority on (my call; spec says "defined level") |
+| `INT_IN_3V3`, `DMA_IN_3V3` | up | chain passes priority on (my call; spec says "defined level") |
 | `~{PSRAM_CS0..3}` (4) | up | PSRAM deselected |
 
 16 resistors.

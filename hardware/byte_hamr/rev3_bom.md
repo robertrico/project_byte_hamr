@@ -63,7 +63,7 @@ and no USB.
 - **Every 5 V input is buffered.** ECP5 inputs aren't 5 V tolerant, so
   all 19 slot inputs go through 74LVC245A
   (VCC 3.3 V, 5 V tolerant I/O).
-- **Chain outputs (INT OUT, DMA OUT) need a defined level while the FPGA is
+- **Chain outputs (INT IN, DMA IN) need a defined level while the FPGA is
   unconfigured.** 10k pull-ups on the '125 inputs pass priority on to
   lower slots while the FPGA is unconfigured.
 - **JTAG header protection.** The external Pico can be powered while the

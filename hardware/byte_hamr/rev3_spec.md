@@ -38,12 +38,10 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 ## Apple II slot: all 50 pins
 
 Directions are the card's view. Names are Apple's (`docs/pinout.md`). The
-card **reads** INT IN (28) and DMA IN (27) from the higher-priority slot
-and **drives** INT OUT (23) and DMA OUT (24) to the lower-priority slot
-(MAME `src/devices/bus/a2bus/a2bus.cpp`: "DMA IN - daisy chain of DMA
-signal from higher priority devices"; the //e Reference Manual pinout
-says the same). Rev 2 has it reversed: it reads 23/24 and drives 27/28
-(Rev 2 errata E2).
+daisy chain is named from the Apple's side (Apple IIe reference manual):
+the card **reads** INT OUT (23) and DMA OUT (24) from the higher-priority
+slot and **drives** INT IN (28) and DMA IN (27) to the lower-priority
+slot. Rev 2 already does this correctly.
 
 | Pin | Signal | Card direction | Type | Rev 2 | Rev 3 |
 |---|---|---|---|---|---|
@@ -54,12 +52,12 @@ says the same). Rev 2 has it reversed: it reads 23/24 and drives 27/28
 | 20 | I/O STROBE' | in | | ok | ok |
 | 21 | RDY | out (and read) | open-collector | in only | open-drain out + read |
 | 22 | DMA' | out (and read) | open-collector, 3 k pull-up | push-pull (E1) | open-drain out + read |
-| 23 | INT OUT | out (to lower slot) | push-pull | reversed (E2) | out |
-| 24 | DMA OUT | out (to lower slot) | push-pull | reversed (E2) | out |
+| 23 | INT OUT | in (from higher slot) | | ok | ok |
+| 24 | DMA OUT | in (from higher slot) | | ok | ok |
 | 25 | +5 V | power | 500 mA across all cards | | |
 | 26 | GND | power | | | |
-| 27 | DMA IN | in (from higher slot) | | reversed (E2) | in |
-| 28 | INT IN | in (from higher slot) | | reversed (E2) | in |
+| 27 | DMA IN | out (to lower slot) | push-pull | ok (via U14) | ok |
+| 28 | INT IN | out (to lower slot) | push-pull | ok (via U14) | ok |
 | 29 | NMI' | out (and read) | open-collector, 3.3 k pull-up | push-pull (E1) | open-drain out + read |
 | 30 | IRQ' | out (and read) | open-collector, 3.3 k pull-up | push-pull (E1) | open-drain out + read |
 | 31 | RES' | out and in | open-collector | push-pull out (E1) + read | open-drain out + read |
@@ -126,9 +124,9 @@ the bus during power-up and configuration:
 |---|---|
 | A0-A15 (bidirectional) + R/W' out + R/W' in | 18 |
 | D0-D7 | 8 |
-| Inputs: IOSEL, IOSTROBE, DEVSEL, 7M, Q3, PHI1, uPSYNC, PHI0, INT IN, DMA IN, SYNC, COLOR REF | 12 |
+| Inputs: IOSEL, IOSTROBE, DEVSEL, 7M, Q3, PHI1, uPSYNC, PHI0, INT OUT, DMA OUT, SYNC, COLOR REF | 12 |
 | Open-drain: 6 drives + 6 readbacks (RDY, DMA, NMI, IRQ, RES, INH) | 12 |
-| Chain outputs: INT OUT, DMA OUT | 2 |
+| Chain outputs: INT IN, DMA IN | 2 |
 | Transceiver control: DATA_OE, data DIR, address DIR, address OE | 4 |
 | **Apple bus** | **56** |
 | PSRAM x4 (clock, 4 data, 4 CS) | 9 |

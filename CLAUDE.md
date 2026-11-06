@@ -50,6 +50,18 @@ Rev 2 is frozen at `hardware/byte_hamr/kicad/` (tag `rev2`); Rev 3 lives in
 - **Card envelope (Apple IIe)**: 7.00" max length (slots 1-3), body 2.75",
   3.05" with fingers. Grow only toward the keyboard; rear edge, fingers and
   notches stay as Rev 2. No vias within 9.5 mm of the bottom edge.
+- **Daisy chain direction: SETTLED, do not reopen.** The Apple IIe reference
+  manual names the chain from the motherboard's side. The card **reads**
+  INT OUT (pin 23) and DMA OUT (24) from the higher-priority slot and
+  **drives** INT IN (28) and DMA IN (27) to the lower-priority slot. Every Rev
+  1/2 gateware top has `input INT_OUT, DMA_OUT` / `output INT_IN, DMA_IN` with
+  `assign INT_IN = INT_OUT` passthrough. Rev 3: U14 ('245, A side = slot)
+  reads 23/24 into U1 125/127; U15 ('125) drives 28/27 from U1 105/106, with
+  pull-ups on INT_IN_3V3/DMA_IN_3V3. A comment in MAME's a2bus.cpp reads the
+  other way round; it was followed once (Rev 3 pass 2) and was wrong, and
+  undoing it cost a full layout pass. Never "correct" this from MAME, an
+  emulator, or a forum post. Only the Apple manual counts; if a source
+  disagrees, stop and ask.
 - **J1 is generic**: power + plain 3.3 V GPIO. Interface-specific parts
   (SmartPort level shifting, pulls, R/C) and clocks belong on daughterboards.
 - **Power from zones**, not pre-drawn tracks excluded from the router: In1 GND,
@@ -65,3 +77,13 @@ Rev 2 is frozen at `hardware/byte_hamr/kicad/` (tag `rev2`); Rev 3 lives in
   deletes unlocked ones). `.kicad_dru` rules are not exported to the router.
   Run 3-5 variants in parallel (own folder, own stdout log, `-mt 2`,
   `-Xmx4g`) and keep the best: 0 unrouted, then fewest vias, then track.
+- **Route power first, then signals** (standard practice): `neck_width_um` is
+  one floor for every net in 2.5.0 (no per-class minimum), so a single run lets
+  power nets come out at 0.15 mm. Run the power class alone with the floor at
+  its width (e.g. 400 um), keep that router-made copper fixed, then route all
+  signals. Buck switch nodes stay short and wide per the regulator datasheet.
+- **When routing sticks, move parts, don't lock copper.** Find the bottleneck
+  (failed / ripped-up nets in the router log), then move or rotate ICs and swap
+  transceiver channels or FPGA pins. Hand-drawn or locked pieces cause phantom
+  unrouted (um endpoint mismatches) and keepout-clearance errors. No hand
+  routing to patch a result; re-route instead.
