@@ -1,8 +1,9 @@
 # Byte Hamr Rev 3 spec (DRAFT)
 
-**Draft, 2026-11-03. I haven't settled the full design.** This captures
-what came out of the Rev 2 errata session (`rev2_errata.md`, E1). Items are
-split into Decided and Open.
+**Started 2026-11-03; the design is settled and laid out (pass 3d, branch
+`rev3`), a pre-fab review is in progress.** This captures what came out of
+the Rev 2 errata session (`rev2_errata.md`, E1). Items are split into
+Decided and Open.
 
 Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 

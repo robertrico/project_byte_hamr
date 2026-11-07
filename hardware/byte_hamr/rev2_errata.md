@@ -206,7 +206,8 @@ anything, and the daisy chain floats as in D.
 
 ## Rev 3 notes
 
-Rev 3 isn't scheduled. These are what it should carry if it happens.
+Rev 3 is designed and laid out (`rev3_spec.md`, `kicad_rev3/`). These are
+the carry-overs it was asked to take from Rev 2; all are in it.
 
 - **Wired-OR outputs open-drain.** INH, RES, IRQ, NMI and DMA come off U14
   and go on a 74LVC07A: hex, open-drain, 5.5 V tolerant outputs, powered
