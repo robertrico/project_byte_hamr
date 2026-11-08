@@ -35,9 +35,9 @@ number; merge them when ordering.
 
 | | Rev 2 | Rev 3 draft |
 |---|---|---|
-| Part numbers (same value merged) | 27 | 26 |
+| Part numbers (same value merged) | 27 | 27 |
 | ICs (incl. oscillator) | 15 | 18 |
-| R / C / L (placed) | 70 | 98 |
+| R / C / L (placed) | 70 | 99 |
 
 More placements than Rev 2, but no BGA, no two-sided assembly, no 8T245s
 and no USB.
@@ -78,8 +78,14 @@ and no USB.
   much on the +5 V and +3.3 V pins, which get the 0.75 A part (0.29 ohm
   max, 8 V). The +12 V, -12 V and -5 V pins keep the 16 V part.
 - **JTAG header protection.** The external Pico can be powered while the
-  card is off: 1.1 k in series with TCK, TDI and TMS (about 3 mA into an
-  unpowered FPGA), 4.7 k pull-up on TDO.
+  card is off: 1.1 k in series with TDI and TMS (about 3 mA into an
+  unpowered FPGA), 4.7 k pull-up on TDO. TCK's series part is 330 R
+  (pass 3e): against the 4.7 k pull-down, 1.1 k made a 2.67 V high and
+  25-33 ns edges, so TCK above ~8 MHz never reached VIH; 330 R gives
+  3.08 V and ~8 ns at ~10 mA into an unpowered, hot-socket-rated FPGA.
+- **PSRAM clock series slot.** R36 (0 R fitted, 1206) sits in
+  `PSRAM_SCLK` between U1 pin 26 and the four PSRAMs, so a 22-33 R can go
+  in if the shared clock rings at a higher SPI rate.
 
 ## Pricing (DigiKey, 2026-11-06, `dkp bom`)
 

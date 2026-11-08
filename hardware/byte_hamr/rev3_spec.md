@@ -13,9 +13,9 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 |---|---|
 | Cost | Lowest cost is the #1 constraint |
 | FPGA | **LFE5U-25F-7TG144C**. Any speed grade is fast enough for the Apple IIe, so the rule is cheapest in stock; on DigiKey (2026-11-04) -7 is the only grade stocked (103, $22.33 @1; -6 and -8 MOQ 300, 40 weeks): TQFP-144, 24K LUT, 56 EBR (18 Kb), 2 PLL, 98 user I/O, 20 x 20 mm body, 0.5 mm pitch. Listed in `docs/FPGA-DS-02012-3-4-ECP5-ECP5G-Family-Data-Sheet.pdf` (Rev 3.4, Sept 2025). Same Yosys/nextpnr-ecp5 flow: `--25k --package TQFP144 --speed 7` (Trellis database has `TQFP144` for the 25F). |
-| Assembly | All parts on the top side. No two-sided assembly. Stencil on the next order. |
+| Assembly | All parts on the top side. No two-sided assembly. Stencil on the next order. Solder F1-F5 before J1: they sit 1 mm from the shroud wall, so the iron only reaches them from the board edge once J1 is on. |
 | Passives | 1206 preferred everywhere. Inductors stay Murata DFE322520 2.2 uH (1008). |
-| Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 3d 2026-11-06 (routed by Freerouting 2.5.0 with its optimizer, power nets first; 429 vias, 5.69 m of track), DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1 and R21 courtyards (0.5 mm-pitch FPGA pads cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, fingers and notches as Rev 2; the top edge sits 2.55 mm higher than Rev 2's (y 51.95 against 54.5). 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with a +5V strip along the board edges (D2 to the bucks) and a +1V1 island under the FPGA; +2V5 routed at 0.4 mm. |
+| Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 3e 2026-11-07 (routed by Freerouting 2.5.0 with its optimizer, power nets first; 416 vias, 5.91 m of track), DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK, now including the shared `PSRAM_SCLK`) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1, R21 and PSRAM courtyards (0.5 mm-pitch FPGA pads and the 1.27 mm SOIC pin fields cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, fingers and notches as Rev 2; the top edge sits 2.55 mm higher than Rev 2's (y 51.95 against 54.5). 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with a +5V strip along the board edges (D2 to the bucks) and a +1V1 island under the FPGA; +2V5 routed at 0.4 mm (10.9 mm at 0.2 mm into U1's VCCAUX pads); every header rail including +3V3_HDR in the 0.4 mm PWR class. Decoupling after the 2026-11-07 review: VCC and VCCAUX caps 2.2-3.4 mm from their pins on F.Cu stubs; VCCIO pin 36 2.8 mm (C21), pins 43/70/100 5-6 mm via the plane (C22/C24/C23), pins 9/122/137 5.2-5.6 mm, pin 86 11 mm (no cap fits the clock corridor under U1's bottom row); each PSRAM's VDD pin has its 100 nF 2.1 mm away in the gap beside the chip (row pitch 8.1 mm). |
 | Clock | 25 MHz (Rev 2's 100 MHz was only ever divided down to 25) |
 | Programming | No USB on the card (decided 2026-11-04). The 2x3 JTAG header (Rev 2's J4 pinout: 3V3, GND, TCK, TDI, TMS, TDO) is the only programming port. Each card gets its own external Pico 2 running pico-dirtyJtag on a short ribbon; a long USB cable runs from the Pico out of the case. The FT231X circuit (and every FTDI USB part, all out of stock at DigiKey and Mouser) is gone. |
 | Slot | Full support for all 50 slot pins, every signal working as Apple designed it |
@@ -112,9 +112,13 @@ the bus during power-up and configuration:
   2.0 V VIH).
 - Chain outputs: pass-through state or a defined level, never floating.
 - JTAG header: an external Pico 2 can be powered while the card is off,
-  so TCK, TDI and TMS have 1.1 k series resistors, limiting current into
+  so TDI and TMS have 1.1 k series resistors, limiting current into
   an unpowered FPGA to about 3 mA (same part as the config resistor), and TDO has a 4.7 k pull-up (RP2350 TDO
-  latching, pico-dirtyJtag issue 35). The 3V3 pin on the header lets the
+  latching, pico-dirtyJtag issue 35). TCK's series resistor is 330 R
+  (pass 3e): with the 4.7 k pull-down R35 it forms a divider and an RC,
+  and 1.1 k left a 2.67 V high with 25-33 ns edges (no VIH above ~8 MHz
+  TCK); 330 R gives 3.08 V and ~8 ns at ~10 mA into the unpowered,
+  hot-socket-rated FPGA. The 3V3 pin on the header lets the
   Pico firmware wait for card power before driving.
 
 ## Pin budget (98 user I/O)

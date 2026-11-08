@@ -156,6 +156,9 @@ J1 pinout (DRAFT):
   `Memory_RAM:APS6404L-3SQRx-SN`, same pinout: 1 ~CE, 2 SO/SIO1, 3 SIO2,
   4 VSS, 5 SI/SIO0, 6 SCLK, 7 SIO3, 8 VCC). Shared `PSRAM_SCLK`,
   `PSRAM_SIO0-3`; ~CE to `~{PSRAM_CS0..3}`. 100 nF each, CS pull-ups.
+  `PSRAM_SCLK` leaves U1 pin 26 through R36 (0 R fitted, slot for 22-33 R
+  series termination; the FPGA-side net is `Net-(U1E-PL41C)`, both in
+  netclass CLK).
 
 ### `flash`
 - U10 Value `GD25Q128ESIGR`, footprint
@@ -166,10 +169,12 @@ J1 pinout (DRAFT):
   PROGRAMN 57, CFG_2 58, CFG_1 59, CFG_0 62. Re-check against sysCONFIG
   (`docs/FPGA-TN-02039-2-5-ECP5-and-ECP5-5G-sysCONFIG.pdf`) for SPI
   master mode.
-- Move J4 (JTAG 2x3, Rev 2 pinout) here from `usb`. 1.1k series on TCK,
-  TDI, TMS between J4 (`JTAG_*_HDR`) and the FPGA (`JTAG_*`; TCK 63,
-  TDI 61, TDO 60, TMS 64). 4.7k pull-up on `JTAG_TDO`. 4.7k pull-down
-  (R35) on `JTAG_TCK` at the FPGA, per Lattice's hardware checklist.
+- Move J4 (JTAG 2x3, Rev 2 pinout) here from `usb`. Series resistors
+  between J4 (`JTAG_*_HDR`) and the FPGA (`JTAG_*`; TCK 63, TDI 61,
+  TDO 60, TMS 64): 1.1k on TDI and TMS, 330R on TCK (R31, pass 3e: with
+  the pull-down below, 1.1k made a 2.67 V high and 25-33 ns edges).
+  4.7k pull-up on `JTAG_TDO`. 4.7k pull-down (R35) on `JTAG_TCK` at
+  the FPGA, per Lattice's hardware checklist.
 
 ### `power`
 - Delete D1 and the `USB5V` net. Keep D2 and everything else.

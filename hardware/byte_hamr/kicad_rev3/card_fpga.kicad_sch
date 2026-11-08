@@ -14374,6 +14374,13 @@
 		)
 		(uuid "10b683d8-65b2-4d80-897b-fec2a652df93")
 	)
+	(wire
+		(pts
+			(xy 156.21 76.2)
+			(xy 158.75 76.2)
+		)
+		(uuid "50737dde-e097-479a-ade2-d58a257ecf4b")
+	)
 	(text "CFG[2:0] = 010: Master SPI boot (TN1260 p.17)\nTQFP144 bonds no D2: single SPI config only"
 		(at 414.02 180.34 0)
 		(effects
@@ -14703,17 +14710,6 @@
 			(justify right)
 		)
 		(uuid "5b360186-1a9e-4d61-ad05-015fd9fb7981")
-	)
-	(global_label "PSRAM_SCLK"
-		(shape bidirectional)
-		(at 158.75 76.2 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "6ff30d7c-dbb3-4b1a-a5f8-b98815fc8f27")
 	)
 	(global_label "~{PSRAM_CS0}"
 		(shape bidirectional)
@@ -15825,6 +15821,17 @@
 			(justify left)
 		)
 		(uuid "f7a5e2b5-325e-48f3-be96-8d1ee61d7520")
+	)
+	(global_label "PSRAM_SCLK"
+		(shape bidirectional)
+		(at 148.59 76.2 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "16889240-6dfd-407c-a08f-ae436d6372cf")
 	)
 	(symbol
 		(lib_id "lfe5u25_tqfp144:LFE5U-25F-7TG144C")
@@ -18855,6 +18862,84 @@
 			(project "project_byte_hamr"
 				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/918e9909-3a8a-4471-9da8-88449b287653"
 					(reference "R21")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 152.4 76.2 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c32a58de-128b-4785-b2f1-15a9dad63c6b")
+		(property "Reference" "R36"
+			(at 152.4 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "0"
+			(at 152.4 77.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C17477.pdf"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "0 ohm 1206 jumper resistor, PSRAM_SCLK series slot (22-33R later)"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RMCF1206ZT0R00"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Stackpole"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "project_byte_hamr"
+				(path "/d1b325fc-ebad-476a-a3a3-dff47a9f73d8/918e9909-3a8a-4471-9da8-88449b287653"
+					(reference "R36")
 					(unit 1)
 				)
 			)

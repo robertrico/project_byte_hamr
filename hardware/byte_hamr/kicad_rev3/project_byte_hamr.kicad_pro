@@ -673,6 +673,18 @@
       {
         "netclass": "CLK",
         "pattern": "Net-(Y1-OUT)"
+      },
+      {
+        "netclass": "PWR",
+        "pattern": "/card_fpga/+3V3_HDR"
+      },
+      {
+        "netclass": "CLK",
+        "pattern": "PSRAM_SCLK"
+      },
+      {
+        "netclass": "Default",
+        "pattern": "Net-(U1E-PL41C)"
       }
     ]
   },

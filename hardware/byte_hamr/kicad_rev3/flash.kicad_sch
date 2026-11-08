@@ -10576,7 +10576,7 @@
 				)
 			)
 		)
-		(property "Value" "1.1k"
+		(property "Value" "330R"
 			(at 190.5 93.98 90)
 			(effects
 				(font
@@ -10611,7 +10611,7 @@
 				)
 			)
 		)
-		(property "DigiKey" "738-RMCF1206FT1K10CT-ND"
+		(property "DigiKey" "738-RMCF1206FT330RCT-ND"
 			(at 190.5 93.98 0)
 			(hide yes)
 			(effects
@@ -10620,7 +10620,7 @@
 				)
 			)
 		)
-		(property "MPN" "RMCF1206FT1K10"
+		(property "MPN" "RMCF1206FT330R"
 			(at 190.5 93.98 0)
 			(hide yes)
 			(effects
