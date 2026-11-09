@@ -139,10 +139,11 @@ a deep-stock PSRAM fallback.
 
 ## Still open
 
-1. Programmer bench test: Pico 2 + pico-dirtyJtag on a Rev 2 J4
-   (`--detect`, SRAM load, `-f`, timing), per-card USB PID selected with
-   openFPGALoader v1.1.0+ `--pid`, and the LFE5U-25F + dirtyJtag IDCODE
-   bug (openFPGALoader issue 727) on a 25F.
+1. Programmer bench test: Pico + pico-dirtyJtag on a Rev 2 J4
+   (`--detect`, SRAM load, `-f`, timing). openFPGALoader v1.0.0 (installed)
+   is the version known to work with dirtyJtag + LFE5U-25F; v1.1.1 fails
+   (issue 727, open), and per-card `--pid` needs v1.1.0+. Details and the
+   J4 / Pico pin map: `rev3_spec.md` Open 3.
 2. GD25Q128E with openFPGALoader: its ID (0xC84018) isn't in the flash
    table (checked at v1.2.0), so it gets basic protection handling and no
    sector lock or quad mode. Try it on hardware; W25Q128JVSIQ is in the

@@ -1,7 +1,7 @@
 # Byte Hamr Rev 3 spec (DRAFT)
 
-**Started 2026-11-03; the design is settled and laid out (pass 3d, branch
-`rev3`), a pre-fab review is in progress.** This captures what came out of
+**Started 2026-11-03; the design is settled, reviewed and laid out (pass 3e
+on branch `rev3-review`, 2026-11-07), quoting at PCBWay.** This captures what came out of
 the Rev 2 errata session (`rev2_errata.md`, E1). Items are split into
 Decided and Open.
 
@@ -13,11 +13,11 @@ Rev 3 is close to a clean redesign. **Low cost is the #1 constraint.**
 |---|---|
 | Cost | Lowest cost is the #1 constraint |
 | FPGA | **LFE5U-25F-7TG144C**. Any speed grade is fast enough for the Apple IIe, so the rule is cheapest in stock; on DigiKey (2026-11-04) -7 is the only grade stocked (103, $22.33 @1; -6 and -8 MOQ 300, 40 weeks): TQFP-144, 24K LUT, 56 EBR (18 Kb), 2 PLL, 98 user I/O, 20 x 20 mm body, 0.5 mm pitch. Listed in `docs/FPGA-DS-02012-3-4-ECP5-ECP5G-Family-Data-Sheet.pdf` (Rev 3.4, Sept 2025). Same Yosys/nextpnr-ecp5 flow: `--25k --package TQFP144 --speed 7` (Trellis database has `TQFP144` for the 25F). |
-| Assembly | All parts on the top side. No two-sided assembly. Stencil on the next order. Solder F1-F5 before J1: they sit 1 mm from the shroud wall, so the iron only reaches them from the board edge once J1 is on. |
+| Assembly | All parts on the top side. No two-sided assembly. Stencil ordered with the boards; SMD reflows on the hotplate first, then the through-hole J1 and J4 go on. F1-F5 sit 1 mm from the J1 shroud wall, which only matters for iron rework once J1 is on (reach them from the board edge). |
 | Passives | 1206 preferred everywhere. Inductors stay Murata DFE322520 2.2 uH (1008). |
 | Board | 114.5 x 69.55 mm above the finger tab (left edge x 122, top edge y 51.95, so body plus Rev 2's finger tab stays within Apple's 3.05" total and the body under its 2.75"; length well under the 7.00" slot 1-3 limit; layout pass 3e 2026-11-07 (routed by Freerouting 2.5.0 with its optimizer, power nets first; 416 vias, 5.91 m of track), DRC 0 errors / 0 unconnected / parity clean, clock nets (netclass CLK, now including the shared `PSRAM_SCLK`) held at 0.3 mm to other nets by the `clk_spacing` rule in project_byte_hamr.kicad_dru, except inside the U1, U11, Y1, R21 and PSRAM courtyards (0.5 mm-pitch FPGA pads and the 1.27 mm SOIC pin fields cannot give 0.3 mm)): grows only toward the keyboard (left); no vias within 9.5 mm of the bottom edge (keepout from y 112); rear edge, fingers and notches as Rev 2; the top edge sits 2.55 mm higher than Rev 2's (y 51.95 against 54.5). 4 layers (decided 2026-11-04 after 2 layers would not route): F.Cu/B.Cu signal, In1 GND plane (unbroken), In2 +3V3 plane with a +5V strip along the board edges (D2 to the bucks) and a +1V1 island under the FPGA; +2V5 routed at 0.4 mm (10.9 mm at 0.2 mm into U1's VCCAUX pads); every header rail including +3V3_HDR in the 0.4 mm PWR class. Decoupling after the 2026-11-07 review: VCC and VCCAUX caps 2.2-3.4 mm from their pins on F.Cu stubs; VCCIO pin 36 2.8 mm (C21), pins 43/70/100 5-6 mm via the plane (C22/C24/C23), pins 9/122/137 5.2-5.6 mm, pin 86 11 mm (no cap fits the clock corridor under U1's bottom row); each PSRAM's VDD pin has its 100 nF 2.1 mm away in the gap beside the chip (row pitch 8.1 mm). |
 | Clock | 25 MHz (Rev 2's 100 MHz was only ever divided down to 25) |
-| Programming | No USB on the card (decided 2026-11-04). The 2x3 JTAG header (Rev 2's J4 pinout: 3V3, GND, TCK, TDI, TMS, TDO) is the only programming port. Each card gets its own external Pico 2 running pico-dirtyJtag on a short ribbon; a long USB cable runs from the Pico out of the case. The FT231X circuit (and every FTDI USB part, all out of stock at DigiKey and Mouser) is gone. |
+| Programming | No USB on the card (decided 2026-11-04). The 2x3 JTAG header J4 (Rev 2's pinout, pin 1 to 6: GND, 3V3, TDI, TCK, TMS, TDO; pin 1 is the square pad) is the only programming port. Each card gets its own external Pico 2 running pico-dirtyJtag on a short ribbon; a long USB cable runs from the Pico out of the case. The FT231X circuit (and every FTDI USB part, all out of stock at DigiKey and Mouser) is gone. |
 | Slot | Full support for all 50 slot pins, every signal working as Apple designed it |
 | Wired-OR lines | IRQ, NMI, INH, RES, DMA (and RDY) open-drain. Fixes Rev 2 E1. |
 | DMA | Must work |
@@ -280,9 +280,28 @@ irq_check runs at 100 and would move to 40 ns steps.
    straight from RAM within one bus cycle.
 2. Power: Lattice power estimate for the 25F at 25 MHz; total draw
    against the Apple's 500 mA.
-3. Programmer: bench-prove a Pico 2 with pico-dirtyJtag on a Rev 2 J4
-   (`--detect`, SRAM load, `-f`, timing), per-card USB PID with
-   openFPGALoader v1.1.0+ (`--pid`; installed is v1.0.0), and the open
-   LFE5U-25F + dirtyJtag IDCODE bug (openFPGALoader issue 727) on a 25F.
+3. Programmer: bench-prove pico-dirtyJtag on a Rev 2 J4 (`--detect`,
+   SRAM load, `-f`, timing) before relying on it. Facts checked
+   2026-11-07: openFPGALoader issue 727 is exactly dirtyJtag (RP2040) +
+   LFE5U-25F: `--detect` reads the IDCODE, programming then fails with
+   "mismatch between target's idcode and bitstream idcode" on v1.1.1,
+   works on v1.0.0 (the installed oss-cad-suite build), still open on
+   master; so stay on v1.0.0 until a later release is proven. Per-card
+   `--pid` needs v1.1.0+ and so collides with 727. pico-dirtyJtag master
+   (last commit 2026-08) builds for `PICO_BOARD pico` only, no RP2350
+   target; the Pico 2 port in its issue 35 needed PIO input-pin fixes and
+   the 4.7 k TDO pull-up (RP2350-E9), so the RP2040 Pico is the proven
+   programmer and a Pico 2 needs its own build and test. J4 pin 1 to 6 =
+   GND, 3V3, TDI, TCK, TMS, TDO; Pico (BOARD_PICO) GP18 TCK, GP16 TDI,
+   GP17 TDO, GP19 TMS. J4 pin 2 is a sense input for the Pico only, never
+   tied to the Pico's 3V3 output (it would back-feed the card's 3.3 V
+   rail). J4 is a bare 2x3 header and the ribbon is home-made, so before
+   the first plug-in meter the cable: Pico GND to J4 pin 1 (square pad)
+   must beep; a rotated or miswired cable fails that and would put a Pico
+   output on pin 2. Config status is read at the pull-up pads, no LED or
+   extra pad on the board: R23 is DONE (high = configured), R24 is INITN
+   (low = config error), shorting R22 (PROGRAMN) to GND forces a
+   reconfigure. With the Pico attached `openFPGALoader --detect` reads
+   the same status over JTAG.
 4. PLL count across designs.
 5. Edge fingers: hard gold + bevel vs ENIG.
