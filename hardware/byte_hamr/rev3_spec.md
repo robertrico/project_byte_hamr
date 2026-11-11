@@ -1,7 +1,7 @@
 # Byte Hamr Rev 3 spec (DRAFT)
 
-**Started 2026-11-03; the design is settled, reviewed and laid out (pass 3e
-on branch `rev3-review`, 2026-11-07), quoting at PCBWay.** This captures what came out of
+**Started 2026-11-03; the design is settled, reviewed and laid out (pass 3e,
+2026-11-07, on `main`), in the PCBWay cart as order W936711ASX15.** This captures what came out of
 the Rev 2 errata session (`rev2_errata.md`, E1). Items are split into
 Decided and Open.
 
