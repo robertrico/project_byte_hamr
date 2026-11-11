@@ -43,6 +43,8 @@ docs/FPGA-DS-02012-3-4-ECP5-ECP5G-Family-Data-Sheet.txt
 # Build outputs
 build/
 *.json
+# PCBWay preset files (fab options + saved quotes) are source, not build output
+!*_pcbway.json
 *.config
 *.bit
 *.svf

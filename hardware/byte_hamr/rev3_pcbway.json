@@ -1,0 +1,377 @@
+{
+  "note": "Byte Hamr Rev 3 fab options, as on PCBWay website order W936711ASX15 (2026-11-08, $106.00 for 5): ENIG 1 u\" on board and edge connector, 30 degree bevel, green mask, white silk, tented vias, 1 oz.",
+  "saved": "2026-11-10T20:59:36-08:00",
+  "spec": {
+    "FinishedCopper": "1 oz Cu",
+    "GoldFingerThickness": "1",
+    "GoldFingersBevelling": "Yes (30°)",
+    "GoldPlatingType": "Immersion gold",
+    "GoldThickness": "1",
+    "Goldfingers": "Yes",
+    "Qty": 5,
+    "Silkscreen": "White",
+    "SolderMask": "Green",
+    "SurfaceFinish": "Immersion gold",
+    "ViaProcess": "Tenting vias"
+  },
+  "runs": {
+    "rev3-pass3e": {
+      "note": "Matches website order W936711ASX15 (2026-11-08): $106.00, 4-5 days. Stencil S-X16W936711A ($10.00) is website-only, not in the API.",
+      "saved": "2026-11-10T20:59:37-08:00",
+      "kind": "quote",
+      "host": "https://api-partner.pcbway.com",
+      "command": [
+        "quote",
+        "--kicad",
+        "hardware/byte_hamr/kicad_rev3/project_byte_hamr.kicad_pcb",
+        "--preset",
+        "hardware/byte_hamr/rev3_pcbway.json",
+        "--no-cache",
+        "--save",
+        "rev3-pass3e",
+        "--note",
+        "Matches website order W936711ASX15 (2026-11-08): $106.00, 4-5 days. Stencil S-X16W936711A ($10.00) is website-only, not in the API."
+      ],
+      "spec": {
+        "AddSerialNumbers": "None",
+        "BoardType": "Single PCB",
+        "Buriedblind": "",
+        "CopperLayer": "--",
+        "CopperSilkscreen": "--",
+        "CopperSolderMask": "--",
+        "DateCode": "None",
+        "DesignInPanel": 1,
+        "EdgeRails": "Yes",
+        "FR4Tg": "S1000H TG150",
+        "FinishedCopper": "1 oz Cu",
+        "GoldFingerThickness": "1",
+        "GoldFingersBevelling": "Yes (30°)",
+        "GoldPlatingType": "Immersion gold",
+        "GoldThickness": "1",
+        "GoldThicknessSelective": "1",
+        "Goldfingers": "Yes",
+        "HoleCopperThickness": "None",
+        "InsideThickness": "1",
+        "Layers": 4,
+        "Length": 77.37,
+        "Material": "FR-4",
+        "MinHoleSize": 0.3,
+        "MinTrackSpacing": "5/5mil",
+        "NiHoldSelective": "120",
+        "PackageBox": "No",
+        "PaperBetweenPCBs": "",
+        "PdAUGoldThickness": "2",
+        "PdNiGoldThickness": "200",
+        "PdPdGoldThickness": "2",
+        "PeelableSoldermask": "None",
+        "PinBanNum": 0,
+        "Qty": 5,
+        "RemoveProductNo": "No",
+        "Rogers": "Rogers4003C",
+        "RouteProcess": "--",
+        "SendAUGoldThickness": "10",
+        "SendNiGoldThickness": "200",
+        "SilkSides": 0,
+        "Silkscreen": "White",
+        "SolderMask": "Green",
+        "StructureMCPCB": "middle",
+        "SurfaceFinish": "Immersion gold",
+        "TCE": "1.0",
+        "ThermoelectricSeparation": "",
+        "Thickness": 1.6,
+        "ULMaker": "None",
+        "ViaProcess": "Tenting vias",
+        "Viafilled": "",
+        "Width": 114.55
+      },
+      "explicit": [
+        "FinishedCopper",
+        "GoldFingerThickness",
+        "GoldFingersBevelling",
+        "GoldPlatingType",
+        "GoldThickness",
+        "Goldfingers",
+        "Layers",
+        "Length",
+        "MinHoleSize",
+        "MinTrackSpacing",
+        "Qty",
+        "Silkscreen",
+        "SolderMask",
+        "SurfaceFinish",
+        "Thickness",
+        "ViaProcess",
+        "Width"
+      ],
+      "ship": true,
+      "result": {
+        "kind": "pcb",
+        "spec": {
+          "BoardType": "Single PCB",
+          "DesignInPanel": 1,
+          "FR4Tg": "S1000H TG150",
+          "FinishedCopper": "1 oz Cu",
+          "GoldFingersBevelling": "Yes (30°)",
+          "GoldPlatingType": "Immersion gold",
+          "Goldfingers": "Yes",
+          "Layers": 4,
+          "Length": 77.37,
+          "Material": "FR-4",
+          "MinHoleSize": 0.3,
+          "MinTrackSpacing": "5/5mil",
+          "Qty": 5,
+          "Silkscreen": "White",
+          "SolderMask": "Green",
+          "SurfaceFinish": "Immersion gold",
+          "Thickness": 1.6,
+          "ViaProcess": "Tenting vias",
+          "Width": 114.55
+        },
+        "qty": 5,
+        "options": [
+          {
+            "build_days": 4,
+            "build_text": "4-5 days",
+            "standard": true,
+            "express": false,
+            "price": 106,
+            "unit_price": 21.2
+          },
+          {
+            "build_days": 3,
+            "build_text": "express 72hours",
+            "standard": true,
+            "express": true,
+            "price": 164.57,
+            "unit_price": 32.914
+          },
+          {
+            "build_days": 2,
+            "build_text": "express 48hours",
+            "standard": true,
+            "express": true,
+            "price": 215.4,
+            "unit_price": 43.08
+          }
+        ],
+        "cheapest": {
+          "build_days": 4,
+          "build_text": "4-5 days",
+          "standard": true,
+          "express": false,
+          "price": 106,
+          "unit_price": 21.2
+        },
+        "fastest": {
+          "build_days": 2,
+          "build_text": "express 48hours",
+          "standard": true,
+          "express": true,
+          "price": 215.4,
+          "unit_price": 43.08
+        },
+        "shipping": {
+          "method": "FedEx FICP",
+          "cost": 32.48,
+          "days": "3-5",
+          "weight_kg": 0.6551
+        },
+        "total": 138.48,
+        "unit_total": 27.696,
+        "currency": "USD",
+        "warnings": [
+          "kicad: custom DRC rules (.kicad_dru) and zone fill widths are not read",
+          "priced on PCBWay's sandbox host (api-partner.pcbway.com); production prices may differ"
+        ]
+      }
+    },
+    "rev3-pass3e-qty": {
+      "note": "Quantity steps.",
+      "saved": "2026-11-10T20:59:40-08:00",
+      "kind": "sweep",
+      "host": "https://api-partner.pcbway.com",
+      "command": [
+        "sweep",
+        "--kicad",
+        "hardware/byte_hamr/kicad_rev3/project_byte_hamr.kicad_pcb",
+        "--preset",
+        "hardware/byte_hamr/rev3_pcbway.json",
+        "--vary",
+        "qty=5,10,15,20",
+        "--no-cache",
+        "--save",
+        "rev3-pass3e-qty",
+        "--note",
+        "Quantity steps."
+      ],
+      "spec": {
+        "AddSerialNumbers": "None",
+        "BoardType": "Single PCB",
+        "Buriedblind": "",
+        "CopperLayer": "--",
+        "CopperSilkscreen": "--",
+        "CopperSolderMask": "--",
+        "DateCode": "None",
+        "DesignInPanel": 1,
+        "EdgeRails": "Yes",
+        "FR4Tg": "TG150",
+        "FinishedCopper": "1 oz Cu",
+        "GoldFingerThickness": "1",
+        "GoldFingersBevelling": "Yes (30°)",
+        "GoldPlatingType": "Immersion gold",
+        "GoldThickness": "1",
+        "GoldThicknessSelective": "1",
+        "Goldfingers": "Yes",
+        "HoleCopperThickness": "None",
+        "InsideThickness": "1",
+        "Layers": 4,
+        "Length": 77.37,
+        "Material": "FR-4",
+        "MinHoleSize": 0.3,
+        "MinTrackSpacing": "5/5mil",
+        "NiHoldSelective": "120",
+        "PackageBox": "No",
+        "PaperBetweenPCBs": "",
+        "PdAUGoldThickness": "2",
+        "PdNiGoldThickness": "200",
+        "PdPdGoldThickness": "2",
+        "PeelableSoldermask": "None",
+        "PinBanNum": 0,
+        "Qty": 5,
+        "RemoveProductNo": "No",
+        "Rogers": "Rogers4003C",
+        "RouteProcess": "--",
+        "SendAUGoldThickness": "10",
+        "SendNiGoldThickness": "200",
+        "SilkSides": 0,
+        "Silkscreen": "White",
+        "SolderMask": "Green",
+        "StructureMCPCB": "middle",
+        "SurfaceFinish": "Immersion gold",
+        "TCE": "1.0",
+        "ThermoelectricSeparation": "",
+        "Thickness": 1.6,
+        "ULMaker": "None",
+        "ViaProcess": "Tenting vias",
+        "Viafilled": "",
+        "Width": 114.55
+      },
+      "explicit": [
+        "FinishedCopper",
+        "GoldFingerThickness",
+        "GoldFingersBevelling",
+        "GoldPlatingType",
+        "GoldThickness",
+        "Goldfingers",
+        "Layers",
+        "Length",
+        "MinHoleSize",
+        "MinTrackSpacing",
+        "Qty",
+        "Silkscreen",
+        "SolderMask",
+        "SurfaceFinish",
+        "Thickness",
+        "ViaProcess",
+        "Width"
+      ],
+      "vary": [
+        "qty=5,10,15,20"
+      ],
+      "ship": true,
+      "result": {
+        "base": {
+          "BoardType": "Single PCB",
+          "DesignInPanel": 1,
+          "FR4Tg": "TG150",
+          "FinishedCopper": "1 oz Cu",
+          "GoldFingersBevelling": "Yes (30°)",
+          "GoldPlatingType": "Immersion gold",
+          "Goldfingers": "Yes",
+          "Layers": 4,
+          "Length": 77.37,
+          "Material": "FR-4",
+          "MinHoleSize": 0.3,
+          "MinTrackSpacing": "5/5mil",
+          "Qty": 5,
+          "Silkscreen": "White",
+          "SolderMask": "Green",
+          "SurfaceFinish": "Immersion gold",
+          "Thickness": 1.6,
+          "ViaProcess": "Tenting vias",
+          "Width": 114.55
+        },
+        "varied": [
+          "Qty"
+        ],
+        "rows": [
+          {
+            "values": {
+              "Qty": 5
+            },
+            "price": 106,
+            "build_days": 4,
+            "shipping": 32.48,
+            "total": 138.48,
+            "unit_total": 27.696
+          },
+          {
+            "values": {
+              "Qty": 10
+            },
+            "price": 117.7,
+            "build_days": 4,
+            "shipping": 33.01,
+            "total": 150.71,
+            "unit_total": 15.071
+          },
+          {
+            "values": {
+              "Qty": 15
+            },
+            "price": 129.4,
+            "build_days": 4,
+            "shipping": 37.94,
+            "total": 167.34,
+            "unit_total": 11.156
+          },
+          {
+            "values": {
+              "Qty": 20
+            },
+            "price": 138.02,
+            "build_days": 4,
+            "shipping": 38.47,
+            "total": 176.49,
+            "unit_total": 8.8245
+          }
+        ],
+        "best_unit": {
+          "values": {
+            "Qty": 20
+          },
+          "price": 138.02,
+          "build_days": 4,
+          "shipping": 38.47,
+          "total": 176.49,
+          "unit_total": 8.8245
+        },
+        "best_total": {
+          "values": {
+            "Qty": 5
+          },
+          "price": 106,
+          "build_days": 4,
+          "shipping": 32.48,
+          "total": 138.48,
+          "unit_total": 27.696
+        },
+        "currency": "USD",
+        "warnings": [
+          "kicad: custom DRC rules (.kicad_dru) and zone fill widths are not read",
+          "priced on PCBWay's sandbox host (api-partner.pcbway.com); production prices may differ"
+        ]
+      }
+    }
+  }
+}
